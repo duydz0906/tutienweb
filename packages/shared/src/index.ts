@@ -1,6 +1,22 @@
 /* Wire contracts and public game data. Never put secrets or admin credentials here. */
 import levelConfig from './level_config.json' with { type: 'json' };
 export type Vector3 = { x: number; y: number; z: number };
+export type WorldZone = 'overworld' | 'wilderness';
+export type GameScene = WorldZone | 'tribulation';
+/** Both ends of the gate, their arrival pads and interaction distance are shared by client and server. */
+export const PORTALS = {
+  overworld: { scene: 'overworld', destination: 'wilderness', name: 'Cổng Hoang Vực',
+    position: { x: 0, y: 0, z: 2 }, arrival: { x: 0, y: 0, z: 27 }, radius: 4.2 },
+  wilderness: { scene: 'wilderness', destination: 'overworld', name: 'Cổng Hồi Tông',
+    position: { x: 0, y: 0, z: 34 }, arrival: { x: 0, y: 0, z: 10 }, radius: 4.2 },
+} as const satisfies Record<WorldZone, { scene: WorldZone; destination: WorldZone; name: string;
+  position: Vector3; arrival: Vector3; radius: number }>;
+/** Open-fronted rooms: width, depth and doorway are also used for authoritative wall collision. */
+export const SECT_BUILDINGS = [
+  { id: 'master', name: 'CHÍNH ĐIỆN', x: 0, z: 30, width: 19, depth: 13, doorway: 5.5, height: 5.6 },
+  { id: 'quest', name: 'NHIỆM VỤ CÁC', x: -17, z: 18.5, width: 12, depth: 10, doorway: 4.2, height: 4.8 },
+  { id: 'shop', name: 'TÀNG BẢO CÁC', x: 17, z: 18.5, width: 12, depth: 10, doorway: 4.2, height: 4.8 },
+] as const;
 export const LEVEL_CONFIG = levelConfig;
 export const REALMS = levelConfig.realms;
 export const MAX_REALM = REALMS.length - 1;
@@ -101,8 +117,8 @@ export type SectRank = 'outer' | 'inner' | 'true';
 export const SECT_RANK_LABEL: Record<SectRank, string> = { outer: 'Ngoại môn', inner: 'Nội môn', true: 'Chân truyền' };
 export const NPCS = {
   master: { id: 'master', name: 'Chưởng Môn Vân Thượng', role: 'Chính Điện · Cốt truyện và thăng cấp', position: { x: 0, y: 0, z: 29 } },
-  quest: { id: 'quest', name: 'Trưởng Lão Chấp Sự', role: 'Nhiệm Vụ Các · Nhiệm vụ hằng ngày', position: { x: -8, y: 0, z: 14 } },
-  shop: { id: 'shop', name: 'Trưởng Lão Hậu Cần', role: 'Tàng Bảo Các · Cửa hàng tông môn', position: { x: 8, y: 0, z: 14 } },
+  quest: { id: 'quest', name: 'Trưởng Lão Chấp Sự', role: 'Nhiệm Vụ Các · Nhiệm vụ hằng ngày', position: { x: -17, y: 0, z: 18.5 } },
+  shop: { id: 'shop', name: 'Trưởng Lão Hậu Cần', role: 'Tàng Bảo Các · Cửa hàng tông môn', position: { x: 17, y: 0, z: 18.5 } },
 } as const;
 export type NpcId = keyof typeof NPCS;
 /** Herbs in the wilderness: positions are public, availability and rewards are server-owned. */
@@ -147,7 +163,7 @@ export type CharacterState = {
   root: SpiritRoot; path: Path | null; realm: number; minorStage: number;
   cultivation: number; totalCultivation: number; lastCultivatedAt: number;
   hp: number; mp: number; maxHp: number; maxMp: number;
-  position: Vector3; rotation: number; scene: 'overworld' | 'tribulation';
+  position: Vector3; rotation: number; scene: GameScene; worldVersion: number;
   equipment: Partial<Record<EquipmentSlot, string>>; inventory: OwnedItem[]; resources: Resources;
   contribution: number; sectRank: SectRank; storyStep: number; storyKills: number; bossKills: number;
   dailyDay: string; dailyQuests: DailyQuestProgress[];
@@ -166,9 +182,9 @@ export type MonsterKind = 'wolf' | 'boar' | 'shade';
 export type MonsterState = { id: string; kind: MonsterKind; name: string; level: number;
   position: Vector3; hp: number; maxHp: number; radius: number; respawnAt: number | null };
 export type BossState = { id: string; name: string; position: Vector3; hp: number; maxHp: number; respawnAt: number | null };
-export type WorldDrop = { id: string; itemId: string; position: Vector3; expiresAt: number };
-export type FormationState = { id: string; ownerId: string; position: Vector3; radius: number; expiresAt: number };
-export type WorldSnapshot = { players: PublicPlayer[]; boss: BossState; monsters: MonsterState[]; herbs: HerbState[];
+export type WorldDrop = { id: string; itemId: string; scene: WorldZone; position: Vector3; expiresAt: number };
+export type FormationState = { id: string; ownerId: string; scene: WorldZone; position: Vector3; radius: number; expiresAt: number };
+export type WorldSnapshot = { scene: GameScene; players: PublicPlayer[]; boss: BossState | null; monsters: MonsterState[]; herbs: HerbState[];
   drops: WorldDrop[]; formations: FormationState[]; at: number };
 export type TribulationState = { active: boolean; wave: number; phase: 'waiting' | 'warning' | 'strike'; target: Vector3 | null; nextAt: number; hits: number; guarding: boolean; pillUsed: boolean };
 export type CombatEvent = {

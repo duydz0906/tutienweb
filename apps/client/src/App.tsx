@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { AlertCircle, CheckCircle2, LoaderCircle, Sparkles, X } from 'lucide-react';
-import { DEFAULT_APPEARANCE, type ActionResult, type Appearance, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
+import { DEFAULT_APPEARANCE, PORTALS, type ActionResult, type Appearance, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
   type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { WorldScene, type PreviewOptions } from './game/WorldScene';
 import { type VisualEffect } from './game/WorldDecor';
@@ -47,6 +47,10 @@ export function App() {
   const socketRef = useRef<Socket | null>(null);
   const touchMovement = useRef({ right: 0, forward: 0 });
   const previousRealm = useRef(0);
+  const previousScene = useRef<string | null>(null);
+  const livePositionRef = useRef<{ x: number; z: number } | null>(null);
+  livePositionRef.current = world?.scene === character?.scene ?
+    world?.players.find((p) => p.id === character?.id)?.position ?? character?.position ?? null : character?.position ?? null;
 
   const notify = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -154,6 +158,17 @@ export function App() {
   }, [character?.realm, character?.path, phase]);
 
   useEffect(() => {
+    if (!character) { previousScene.current = null; return; }
+    if (previousScene.current && previousScene.current !== character.scene) {
+      setSelectedTarget(null);
+      setEffects([]);
+      setMessages([]); // world chat and VFX belong to one instance only
+      setPanel(null);
+    }
+    previousScene.current = character.scene;
+  }, [character?.id, character?.scene]);
+
+  useEffect(() => {
     if (panel === 'leaderboard') void api<{ entries: LeaderboardEntry[] }>('/api/leaderboard')
       .then((data) => setLeaderboard(data.entries)).catch((e) => notify(e instanceof Error ? e.message : 'Không thể tải bảng xếp hạng.', 'bad'));
     if (panel === 'quests' && session) void api<{ day: string; quests: DailyQuestProgress[] }>('/api/quests/daily', session.token)
@@ -233,14 +248,17 @@ export function App() {
   }, []);
   const pickup = useCallback((id: string) => { void action('pickup', { dropId: id }); }, [action]);
   const gather = useCallback((id: string) => { void action('gather', { nodeId: id }); }, [action]);
+  const travel = useCallback(() => { void action('portal:travel'); }, [action]);
   const skill = useCallback((id: string) => {
-    const target = selectedTarget && (world?.monsters.some((m) => m.id === selectedTarget && m.hp > 0) ||
-      selectedTarget === world?.boss.id && world.boss.hp > 0) ? selectedTarget :
-      [...(world?.monsters.filter((m) => m.hp > 0) ?? []), ...(world?.boss.hp ? [world.boss] : [])]
-        .sort((a, b) => Math.hypot(a.position.x - (character?.position.x ?? 0), a.position.z - (character?.position.z ?? 0)) -
-          Math.hypot(b.position.x - (character?.position.x ?? 0), b.position.z - (character?.position.z ?? 0)))[0]?.id;
+    const activeWorld = world?.scene === character?.scene ? world : null;
+    const boss = activeWorld?.boss;
+    const target = selectedTarget && (activeWorld?.monsters.some((m) => m.id === selectedTarget && m.hp > 0) ||
+      selectedTarget === boss?.id && boss.hp > 0) ? selectedTarget :
+      [...(activeWorld?.monsters.filter((m) => m.hp > 0) ?? []), ...(boss && boss.hp > 0 ? [boss] : [])]
+        .sort((a, b) => Math.hypot(a.position.x - (livePositionRef.current?.x ?? 0), a.position.z - (livePositionRef.current?.z ?? 0)) -
+          Math.hypot(b.position.x - (livePositionRef.current?.x ?? 0), b.position.z - (livePositionRef.current?.z ?? 0)))[0]?.id;
     void action('cast', { skillId: id, ...(id !== 'healing_bloom' && target ? { targetId: target } : {}) });
-  }, [action, world, selectedTarget, character?.position.x, character?.position.z]);
+  }, [action, world, selectedTarget, character?.scene]);
   const basicAttack = useCallback(() => { playSwordWhoosh(); void action('basic-attack', { targetId: selectedTarget }); }, [action, selectedTarget]);
   const interactNpc = useCallback((id: NpcId) => { if (phase === 'game') openPanel(id === 'master' ? 'sect' : id === 'quest' ? 'quests' : 'shop'); }, [phase, character, panel]);
   const chat = useCallback((text: string) => { socketRef.current?.emit('chat', text); }, []);
@@ -257,7 +275,13 @@ export function App() {
       if (event.code === 'KeyQ') openPanel(panel === 'quests' ? null : 'quests');
       if (event.code === 'KeyK') openPanel(panel === 'skills' ? null : 'skills');
       if (event.code === 'KeyF' && character.scene === 'tribulation' && !panel) void action('guard');
-      if ((event.code === 'KeyJ' || event.code === 'Space') && !panel && !pathModal && character.scene === 'overworld') {
+      const gate = character.scene === 'tribulation' ? null : PORTALS[character.scene];
+      const position = livePositionRef.current ?? character.position;
+      if (event.code === 'KeyE' && gate && !panel && !pathModal &&
+        Math.hypot(position.x - gate.position.x, position.z - gate.position.z) <= gate.radius) {
+        event.preventDefault(); travel();
+      }
+      if ((event.code === 'KeyJ' || event.code === 'Space') && !panel && !pathModal && character.scene === 'wilderness') {
         event.preventDefault(); basicAttack();
       }
       if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(event.code) && !panel && !pathModal) {
@@ -267,14 +291,17 @@ export function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [character?.isAdmin, character?.hotbar, character?.scene, phase, panel, pathModal, skill, basicAttack, action]);
+  }, [character?.isAdmin, character?.hotbar, character?.scene,
+    phase, panel, pathModal, skill, basicAttack, action, travel]);
 
   const showCharacter = inWorld ? character : null;
+  const livePosition = world && character && world.scene === character.scene ? world.players.find((p) => p.id === character.id)?.position : null;
+  const panelCharacter = character && livePosition ? { ...character, position: livePosition } : character;
   const scenePreview = phase === 'reveal' && character ? { ...preview, root: character.root } : preview;
   return <div className="app-shell">
     <WorldScene character={showCharacter} world={phase === 'game' ? world : null} trial={trial} preview={scenePreview}
       appearanceDraft={panel === 'appearance' ? appearanceDraft : null} editorView={panel === 'appearance' ? editorView : null} effects={effects}
-      touch={touchMovement} onInput={input} onPickup={pickup} onGather={gather} onNpc={interactNpc}
+      touch={touchMovement} onInput={input} onPickup={pickup} onGather={gather} onPortal={travel} onNpc={interactNpc}
       onTarget={setSelectedTarget} selectedTarget={selectedTarget} />
     <div className="vignette" aria-hidden="true" />
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}
@@ -295,7 +322,7 @@ export function App() {
       <GameHUD character={character} world={world} trial={trial} connected={connected} cooldowns={cooldowns} messages={messages} panel={panel} selectedTarget={selectedTarget}
         onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onAttack={basicAttack} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
-      <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} character={character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
+      <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} character={panelCharacter ?? character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
         appearanceDraft={appearanceDraft} onAppearanceChange={setAppearanceDraft} onSaveAppearance={() => { void saveAppearance(); }} connected={connected}
         editorView={editorView} onEditorView={setEditorView} />
       {pathModal && character.realm >= 2 && !character.path && <PathModal onClose={() => setPathModal(false)} onSelect={selectPath} />}

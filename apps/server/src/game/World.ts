@@ -1,22 +1,23 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import {
-  CONSUMABLES, DAILY_QUESTS, HERB_NODES, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, REALMS, RECIPES, SHOP_STOCK, SKILLS, expForStage, skillsForPath,
+  CONSUMABLES, DAILY_QUESTS, HERB_NODES, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PORTALS, REALMS, RECIPES, SHOP_STOCK, SKILLS, expForStage, skillsForPath,
   type ActionResult, type BossState, type CharacterState, type ChatMessage, type DailyQuestId,
-  type CombatEvent, type FormationState, type MonsterKind, type MonsterState, type NpcId, type OwnCharacter, type Path, type PublicPlayer,
-  type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot,
+  type CombatEvent, type FormationState, type MonsterState, type OwnCharacter, type Path, type PublicPlayer,
+  type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot, type WorldZone,
 } from '@van-thuong/shared';
 import type { Identity } from '../auth.js';
 import type { CharacterStore } from '../db/store.js';
 import type { GameCache } from '../db/cache.js';
 import {
   addItem, advanceMinorStage, breakthroughCost, clampToWorld, completeMajorBreakthrough, distanceXZ, equipItem,
-  equippedStats, gainCultivation, GOD_STAT, hitsTarget, inSectSafeZone, parseAppearance, TRIAL_RADIUS, WORLD_RADIUS,
+  equippedStats, gainCultivation, GOD_STAT, hitsTarget, parseAppearance, TRIAL_RADIUS, WORLD_RADIUS,
 } from './rules.js';
+import { canWalkInSect } from './sectGeometry.js';
 import { activateDevMode, revokeDevMode } from './devMode.js';
 import { advanceDaily, claimDaily, ensureDaily, requireNpc } from './sect.js';
 
-type Trial = { state: TribulationState; returnPosition: Vector3 };
+type Trial = { state: TribulationState; returnPosition: Vector3; returnScene: WorldZone };
 type LivePlayer = {
   identity: Identity; character: CharacterState; socket: Socket;
   input: { x: number; z: number }; lastInputAt: number;
@@ -51,8 +52,8 @@ function publicPlayer(s: LivePlayer): PublicPlayer {
 const MONSTER_SPAWNS: MonsterState[] = [
   { id: 'wolf-1', kind: 'wolf', name: 'Linh Lang', level: 1, position: { x: -9, y: 0, z: -12 }, maxHp: 75, hp: 75, radius: 0.9, respawnAt: null },
   { id: 'wolf-2', kind: 'wolf', name: 'Linh Lang', level: 1, position: { x: 10, y: 0, z: -14 }, maxHp: 75, hp: 75, radius: 0.9, respawnAt: null },
-  { id: 'wolf-3', kind: 'wolf', name: 'Linh Lang', level: 2, position: { x: -13, y: 0, z: -24 }, maxHp: 95, hp: 95, radius: 0.9, respawnAt: null },
-  { id: 'wolf-4', kind: 'wolf', name: 'Linh Lang', level: 2, position: { x: 13, y: 0, z: -25 }, maxHp: 95, hp: 95, radius: 0.9, respawnAt: null },
+  { id: 'wolf-3', kind: 'wolf', name: 'Linh Lang', level: 2, position: { x: -14, y: 0, z: -7 }, maxHp: 95, hp: 95, radius: 0.9, respawnAt: null },
+  { id: 'wolf-4', kind: 'wolf', name: 'Linh Lang', level: 2, position: { x: 14, y: 0, z: -7 }, maxHp: 95, hp: 95, radius: 0.9, respawnAt: null },
   { id: 'boar-1', kind: 'boar', name: 'Thiết Giáp Trư', level: 3, position: { x: -24, y: 0, z: -18 }, maxHp: 185, hp: 185, radius: 1.3, respawnAt: null },
   { id: 'boar-2', kind: 'boar', name: 'Thiết Giáp Trư', level: 3, position: { x: -25, y: 0, z: -31 }, maxHp: 185, hp: 185, radius: 1.3, respawnAt: null },
   { id: 'shade-1', kind: 'shade', name: 'U Ảnh', level: 5, position: { x: 24, y: 0, z: -29 }, maxHp: 340, hp: 340, radius: 1.1, respawnAt: null },
@@ -67,7 +68,7 @@ export class World {
   private readonly drops = new Map<string, WorldDrop>();
   private readonly formations = new Map<string, FormationState>();
   private readonly boss: BossState = {
-    id: 'world-boss', name: 'Huyền Thiên Cổ Long', position: { x: 0, y: 0, z: -12 },
+    id: 'world-boss', name: 'Huyền Thiên Cổ Long', position: { x: 0, y: 0, z: -33 },
     hp: 850, maxHp: 850, respawnAt: null,
   };
   private readonly contributors = new Set<string>();
@@ -128,12 +129,20 @@ export class World {
       revokeDevMode(character);
       await this.store.save(character);
     }
-    if (ensureDaily(character)) await this.store.save(character);
-    // A disconnected trial never grants a breakthrough or leaves a stuck instance.
-    if (character.scene === 'tribulation') {
-      character.scene = 'overworld';
-      character.position = { x: 0, y: 0, z: 10 };
+    // One-time migration: old single-island saves had the wilderness at Z < 2.
+    // Versioning matters: a new player at Z < 2 on the sect map must NOT migrate on reconnect.
+    const legacyWorld = (character.worldVersion ?? 1) < 2;
+    if (legacyWorld) {
+      if (character.scene === 'overworld' && character.position.z < PORTALS.overworld.position.z) character.scene = 'wilderness';
+      character.worldVersion = 2;
     }
+    // A disconnected trial never grants a breakthrough or leaves a stuck instance.
+    const interruptedTrial = character.scene === 'tribulation';
+    if (interruptedTrial) {
+      character.scene = 'overworld';
+      character.position = { ...PORTALS.wilderness.arrival };
+    }
+    if (ensureDaily(character) || legacyWorld || interruptedTrial) await this.store.save(character);
     const retainedCooldowns = await this.cache.cooldowns(character.id);
     const s: LivePlayer = {
       identity: effectiveIdentity, character, socket, input: { x: 0, z: 0 }, lastInputAt: 0,
@@ -176,10 +185,11 @@ export class World {
       s.lastInputAt = Date.now();
     });
 
+    socket.on('portal:travel', action(async () => this.travel(s)));
     socket.on('cast', action(async (payload: unknown) => this.cast(s, payload)));
     socket.on('basic-attack', action(async (payload: unknown) => this.basicAttack(s, payload)));
     socket.on('cultivate', action(async () => {
-      if (s.character.scene !== 'overworld') throw new Error('Không thể tĩnh tọa giữa lôi kiếp.');
+      if (s.character.scene === 'tribulation') throw new Error('Không thể tĩnh tọa giữa lôi kiếp.');
       ensureDaily(s.character);
       const gained = gainCultivation(s.character);
       if (!gained) return 'Linh khí đang tụ lại. Hãy chờ thêm một chút.';
@@ -188,7 +198,7 @@ export class World {
       return `Tĩnh tọa hấp thu ${gained.toLocaleString('vi-VN')} tu vi.`;
     }));
     socket.on('advance-stage', action(async () => {
-      if (s.character.scene !== 'overworld' || s.character.hp <= 0) throw new Error('Không thể thăng tầng lúc này.');
+      if (s.character.scene === 'tribulation' || s.character.hp <= 0) throw new Error('Không thể thăng tầng lúc này.');
       advanceMinorStage(s.character);
       await this.sync(s);
       return `Thăng lên ${REALMS[s.character.realm]} tầng ${s.character.minorStage}! +${LEVEL_CONFIG.minorReward.maxHp} HP, +${LEVEL_CONFIG.minorReward.maxMp} Chân Khí vĩnh viễn.`;
@@ -197,7 +207,7 @@ export class World {
     socket.on('guard', action(async () => this.guard(s)));
     socket.on('choose-path', action(async (payload: unknown) => {
       const path = (payload as Record<string, unknown> | null)?.path;
-      if (s.character.realm < 2 || s.character.path || s.character.scene !== 'overworld') throw new Error('Cần đạt Trúc Cơ và chưa từng chọn đạo.');
+      if (s.character.realm < 2 || s.character.path || s.character.scene === 'tribulation') throw new Error('Cần đạt Trúc Cơ và chưa từng chọn đạo.');
       if (path !== 'kiem' && path !== 'phap' && path !== 'the') throw new Error('Đạo tu không hợp lệ.');
       s.character.path = path as Path;
       // Choosing a path teaches its first technique; advanced books come from the Sect Shop.
@@ -209,7 +219,7 @@ export class World {
     }));
     socket.on('equip', action(async (payload: unknown) => {
       const instanceId = (payload as Record<string, unknown> | null)?.instanceId;
-      if (typeof instanceId !== 'string' || s.character.scene !== 'overworld') throw new Error('Không thể trang bị lúc này.');
+      if (typeof instanceId !== 'string' || s.character.scene === 'tribulation') throw new Error('Không thể trang bị lúc này.');
       const slot = equipItem(s.character, instanceId);
       await this.sync(s);
       return `Đã thay trang bị vào ô ${slot}.`;
@@ -224,7 +234,7 @@ export class World {
     socket.on('use-item', action(async (payload: unknown) => this.useItem(s, payload)));
     socket.on('assign-hotbar', action(async (payload: unknown) => this.assignHotbar(s, payload)));
     socket.on('appearance:update', action(async (payload: unknown) => {
-      if (s.character.scene !== 'overworld') throw new Error('Không thể thay đổi ngoại hình trong lôi kiếp.');
+      if (s.character.scene === 'tribulation') throw new Error('Không thể thay đổi ngoại hình trong lôi kiếp.');
       if (Date.now() - s.lastAppearanceAt < 3000) throw new Error('Hãy đợi ba giây trước khi thay đổi tiếp.');
       const appearance = parseAppearance((payload as Record<string, unknown> | null)?.appearance);
       s.character.appearance = appearance;
@@ -274,12 +284,30 @@ export class World {
 
   private god(s: LivePlayer): boolean { return s.identity.isAdmin && s.character.devMode; }
 
+  /** The request contains no destination or position. Only the server's current scene and gate decide travel. */
+  private async travel(s: LivePlayer): Promise<string> {
+    const c = s.character;
+    if (c.scene === 'tribulation' || s.trial || c.hp <= 0) throw new Error('Không thể dùng cổng dịch chuyển lúc này.');
+    const gate = PORTALS[c.scene];
+    if (distanceXZ(c.position, gate.position) > gate.radius) throw new Error(`Hãy đến gần ${gate.name} để dịch chuyển.`);
+    c.scene = gate.destination;
+    c.position = { ...gate.arrival };
+    c.rotation = gate.destination === 'wilderness' ? Math.PI : 0;
+    s.input = { x: 0, z: 0 };
+    s.lastInputAt = 0;
+    await this.sync(s);
+    this.sendSnapshots();
+    return gate.destination === 'wilderness' ? 'Đã đến Hoang Vực. Hãy săn quái và hái linh thảo; quay về bằng Cổng Hồi Tông.' :
+      'Đã trở lại Tông Môn. Chính Điện và các trưởng lão đang ở phía trước.';
+  }
+
   /** No client-supplied damage, hit, HP or position is ever used for collision. */
   private hitEnemies(s: LivePlayer, shape: 'line' | 'sphere' | 'cone', range: number, radius: number,
     center: Vector3, baseDamage: number, skillId?: string): { count: number; total: number; crit: boolean } {
     const c = s.character;
+    if (c.scene !== 'wilderness') return { count: 0, total: 0, crit: false };
     const origin = { ...c.position };
-    const buffed = [...this.formations.values()].some((f) => distanceXZ(origin, f.position) <= f.radius);
+    const buffed = [...this.formations.values()].some((f) => f.scene === c.scene && distanceXZ(origin, f.position) <= f.radius);
     const stats = equippedStats(c);
     let count = 0, total = 0, crit = false;
     const damageFor = (hp: number) => {
@@ -324,7 +352,7 @@ export class World {
 
   private async basicAttack(s: LivePlayer, _payload: unknown): Promise<string> {
     const c = s.character;
-    if (c.scene !== 'overworld' || c.hp <= 0 || inSectSafeZone(c.position)) throw new Error('Chỉ được xuất kiếm ngoài khu vực an toàn.');
+    if (c.scene !== 'wilderness' || c.hp <= 0) throw new Error('Chỉ được xuất kiếm ở Hoang Vực.');
     if (!this.god(s)) {
       const ticket = await this.cache.reserveCooldown(c.id, 'basic_attack', 650);
       if (!ticket.allowed) throw new Error('Đòn đánh thường đang hồi.');
@@ -341,10 +369,10 @@ export class World {
     const skill = typeof data.skillId === 'string' && Object.hasOwn(SKILLS, data.skillId) ? SKILLS[data.skillId] : undefined;
     if (!skill) throw new Error('Kỹ năng không tồn tại.');
     const c = s.character;
-    if (c.scene !== 'overworld' || c.hp <= 0) throw new Error('Không thể xuất chiêu lúc này.');
+    if (c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể xuất chiêu lúc này.');
     if (!c.learnedSkills.includes(skill.id)) throw new Error('Hãy học sách công pháp trước khi sử dụng kỹ năng.');
     if (skill.path && (c.path !== skill.path || c.realm < 2)) throw new Error('Bạn chưa lĩnh ngộ kỹ năng này.');
-    if (skill.id !== 'healing_bloom' && inSectSafeZone(c.position)) throw new Error('Tông Môn là khu vực an toàn: không thể tấn công.');
+    if (skill.id !== 'healing_bloom' && c.scene !== 'wilderness') throw new Error('Tông Môn là khu vực an toàn: không thể tấn công.');
     if (data.targetId !== undefined && data.targetId !== this.boss.id &&
       (typeof data.targetId !== 'string' || !this.monsters.has(data.targetId))) throw new Error('Mục tiêu không hợp lệ.');
     if (skill.id === 'healing_bloom' && c.hp >= c.maxHp) throw new Error('Sinh lực đã đầy.');
@@ -356,8 +384,8 @@ export class World {
       if (!ticket.allowed) throw new Error(`Chiêu thức đang hồi (${Math.ceil((ticket.readyAt - Date.now()) / 1000)}s).`);
       const now = Date.now();
       const origin = { ...c.position };
-      const target = data.targetId === this.boss.id ? this.boss :
-        typeof data.targetId === 'string' ? this.monsters.get(data.targetId) : undefined;
+      const target = c.scene === 'wilderness' ? data.targetId === this.boss.id ? this.boss :
+        typeof data.targetId === 'string' ? this.monsters.get(data.targetId) : undefined : undefined;
       const targetAlive = target && target.hp > 0 && distanceXZ(origin, target.position) <= skill.range;
       // The impact position always comes from server state, never a client-provided vector.
       const sphereCenter = skill.range <= 1 ? origin : targetAlive ? { ...target.position } :
@@ -366,11 +394,11 @@ export class World {
       if (skill.id === 'diamond_body') s.shieldUntil = now + 6500;
       if (!this.god(s)) s.cooldowns.set(skill.id, ticket.readyAt);
       s.socket.emit('cooldowns', Object.fromEntries(s.cooldowns));
-      this.combat({ type: 'cast', skillId: skill.id, sourceId: c.id, position: { ...sphereCenter }, origin, at: now });
+      this.combat({ type: 'cast', skillId: skill.id, sourceId: c.id, position: { ...sphereCenter }, origin, at: now }, undefined, c.scene);
       if (skill.id === 'healing_bloom') {
         const amount = Math.min(80, c.maxHp - c.hp);
         c.hp += amount;
-        this.combat({ type: 'heal', skillId: skill.id, sourceId: c.id, targetId: c.id, position: origin, damage: amount, at: now });
+        this.combat({ type: 'heal', skillId: skill.id, sourceId: c.id, targetId: c.id, position: origin, damage: amount, at: now }, undefined, c.scene);
         await this.sync(s);
         return `Thanh Liên Dưỡng Khí: hồi ${amount} HP.`;
       }
@@ -388,7 +416,7 @@ export class World {
     this.bossAttackAt = this.boss.respawnAt + 8000;
     for (const id of this.contributors) {
       const contributor = this.players.get(id);
-      if (!contributor) continue;
+      if (!contributor || contributor.character.scene !== 'wilderness') continue;
       contributor.character.resources.stones += 18;
       contributor.character.resources.herbs += 2;
       contributor.character.resources.ore += 1;
@@ -400,19 +428,23 @@ export class World {
     this.contributors.clear();
     const prize = ['cloud_crown', 'spirit_ring', 'jade_necklace', 'immortal_sword'][randomInt(4)];
     this.dropItem(prize, this.boss.position);
-    this.io.emit('notice', `${killer.character.name} đã hạ Huyền Thiên Cổ Long! Chiến lợi phẩm xuất hiện.`);
+    this.noticeInZone('wilderness', `${killer.character.name} đã hạ Huyền Thiên Cổ Long! Chiến lợi phẩm xuất hiện.`);
   }
 
-  private dropItem(itemId: string, position: Vector3): void {
+  private noticeInZone(scene: WorldZone, text: string): void {
+    for (const player of this.players.values()) if (player.character.scene === scene) player.socket.emit('notice', text);
+  }
+
+  private dropItem(itemId: string, position: Vector3, scene: WorldZone = 'wilderness'): void {
     const id = randomUUID();
-    this.drops.set(id, { id, itemId, position: { ...position }, expiresAt: Date.now() + 90_000 });
+    this.drops.set(id, { id, itemId, scene, position: { ...position }, expiresAt: Date.now() + 90_000 });
   }
 
   private async pickup(s: LivePlayer, payload: unknown): Promise<string> {
     const id = (payload as Record<string, unknown> | null)?.dropId;
-    if (typeof id !== 'string' || s.character.scene !== 'overworld') throw new Error('Vật phẩm không hợp lệ.');
+    if (typeof id !== 'string' || s.character.scene === 'tribulation') throw new Error('Vật phẩm không hợp lệ.');
     const drop = this.drops.get(id);
-    if (!drop || drop.expiresAt <= Date.now()) throw new Error('Vật phẩm đã biến mất.');
+    if (!drop || drop.scene !== s.character.scene || drop.expiresAt <= Date.now()) throw new Error('Vật phẩm đã biến mất hoặc ở vùng khác.');
     if (distanceXZ(s.character.position, drop.position) > 3.5) throw new Error('Hãy đi đến gần vật phẩm hơn.');
     addItem(s.character, drop.itemId);
     this.drops.delete(id); // a drop can only be claimed once
@@ -424,7 +456,7 @@ export class World {
   private async craft(s: LivePlayer, payload: unknown): Promise<string> {
     const recipeId = (payload as Record<string, unknown> | null)?.recipeId;
     const recipe = typeof recipeId === 'string' && Object.hasOwn(RECIPES, recipeId) ? RECIPES[recipeId] : undefined;
-    if (!recipe || s.character.scene !== 'overworld') throw new Error('Công thức không hợp lệ.');
+    if (!recipe || s.character.scene === 'tribulation') throw new Error('Công thức không hợp lệ.');
     if (recipe.itemId && s.character.inventory.length >= 80) throw new Error('Túi đồ đã đầy.');
     for (const [key, amount] of Object.entries(recipe.cost)) {
       if (s.character.resources[key as keyof typeof s.character.resources] < amount) throw new Error('Không đủ nguyên liệu để chế tạo.');
@@ -440,7 +472,7 @@ export class World {
     const nodeId = (payload as Record<string, unknown> | null)?.nodeId;
     const node = HERB_NODES.find((entry) => entry.id === nodeId);
     const c = s.character;
-    if (!node || c.scene !== 'overworld' || c.hp <= 0 || distanceXZ(c.position, node.position) > 2.7)
+    if (!node || c.scene !== 'wilderness' || c.hp <= 0 || distanceXZ(c.position, node.position) > 2.7)
       throw new Error('Hãy lại gần bụi linh thảo ngoài Tông Môn.');
     const now = Date.now();
     if ((this.herbs.get(node.id) ?? 0) > now) throw new Error('Linh thảo đang tái sinh.');
@@ -539,7 +571,7 @@ export class World {
   private async useItem(s: LivePlayer, payload: unknown): Promise<string> {
     const instanceId = (payload as Record<string, unknown> | null)?.instanceId;
     const c = s.character;
-    if (typeof instanceId !== 'string' || c.scene !== 'overworld' || c.hp <= 0) throw new Error('Không thể dùng đan dược lúc này.');
+    if (typeof instanceId !== 'string' || c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể dùng đan dược lúc này.');
     const index = c.inventory.findIndex((entry) => entry.instanceId === instanceId);
     const itemId = c.inventory[index]?.itemId;
     if (itemId !== 'heal_pill' && itemId !== 'mana_pill') throw new Error('Trúc Cơ Đan chỉ dùng khi bắt đầu độ kiếp.');
@@ -547,7 +579,7 @@ export class World {
     c.inventory.splice(index, 1);
     const amount = itemId === 'heal_pill' ? Math.min(70, c.maxHp - c.hp) : Math.min(90, c.maxMp - c.mp);
     if (itemId === 'heal_pill') c.hp += amount; else c.mp += amount;
-    this.combat({ type: 'heal', sourceId: c.id, targetId: c.id, position: { ...c.position }, damage: amount, at: Date.now() });
+    this.combat({ type: 'heal', sourceId: c.id, targetId: c.id, position: { ...c.position }, damage: amount, at: Date.now() }, undefined, c.scene);
     await this.sync(s);
     return `Dùng ${CONSUMABLES[itemId].name}: hồi ${amount} ${itemId === 'heal_pill' ? 'HP' : 'Chân Khí'}.`;
   }
@@ -569,7 +601,7 @@ export class World {
   private async enableDevMode(s: LivePlayer): Promise<string> {
     // Both gates are mandatory. Demo role always returns false; a forged chat name/role never grants power.
     if (!s.identity.isAdmin || !await this.store.hasAdminRole(s.identity.uid)) throw new Error('Lệnh /devmode chỉ dành cho quản trị viên được xác thực.');
-    if (s.character.scene !== 'overworld' || s.trial) throw new Error('Hãy rời lôi kiếp trước khi kích hoạt dev mode.');
+    if (s.character.scene === 'tribulation' || s.trial) throw new Error('Hãy rời lôi kiếp trước khi kích hoạt dev mode.');
     if (!activateDevMode(s.character)) return 'Dev mode đã bật.';
     await this.sync(s);
     s.cooldowns.clear();
@@ -581,7 +613,7 @@ export class World {
 
   private async placeArray(s: LivePlayer): Promise<string> {
     const c = s.character;
-    if (c.scene !== 'overworld' || c.hp <= 0) throw new Error('Không thể lập trận lúc này.');
+    if (c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể lập trận lúc này.');
     if (c.resources.ink < 1 || c.resources.stones < 3) throw new Error('Cần 1 phù mực và 3 linh thạch.');
     if ([...this.formations.values()].filter((formation) => formation.ownerId === c.id).length >= 2) throw new Error('Mỗi đạo hữu chỉ được duy trì tối đa hai pháp trận.');
     const ticket = this.god(s) ? { allowed: true, readyAt: Date.now() } : await this.cache.reserveCooldown(c.id, 'formation_pillar', 25_000);
@@ -590,7 +622,7 @@ export class World {
     c.resources.stones -= 3;
     const position = clampToWorld({ x: c.position.x + Math.sin(c.rotation) * 3, y: 0, z: c.position.z + Math.cos(c.rotation) * 3 }, WORLD_RADIUS - 5);
     const id = randomUUID();
-    this.formations.set(id, { id, ownerId: c.id, position, radius: 5, expiresAt: Date.now() + 60_000 });
+    this.formations.set(id, { id, ownerId: c.id, scene: c.scene, position, radius: 5, expiresAt: Date.now() + 60_000 });
     await this.sync(s);
     this.sendSnapshots();
     return 'Tứ Tượng Trận đã mở! Đồng đội trong trận gây thêm 20% sát thương và hồi chân khí trong 60 giây.';
@@ -618,7 +650,7 @@ export class World {
     const c = s.character;
     const cost = breakthroughCost(c.realm, c.minorStage);
     if (!cost) throw new Error(c.realm >= MAX_REALM ? 'Bạn đã đạt Tiên Đế Đỉnh Phong.' : 'Cần đạt tầng 9 trước khi đột phá Đại cảnh giới.');
-    if (c.scene !== 'overworld' || s.trial || c.hp <= 0) throw new Error('Không thể độ kiếp lúc này.');
+    if (c.scene === 'tribulation' || s.trial || c.hp <= 0) throw new Error('Không thể độ kiếp lúc này.');
     if (c.cultivation < cost) throw new Error(`Cần ${cost.toLocaleString('vi-VN')} tu vi để đột phá ${REALMS[c.realm + 1]}.`);
     const usePill = (payload as Record<string, unknown> | null)?.usePill === true;
     if (usePill) {
@@ -628,7 +660,7 @@ export class World {
     }
     s.guardUntil = 0;
     s.trial = {
-      returnPosition: { ...c.position },
+      returnPosition: { ...c.position }, returnScene: c.scene,
       state: { active: true, wave: 0, phase: 'waiting', target: null, nextAt: Date.now() + 1100, hits: 0, guarding: false, pillUsed: usePill },
     };
     c.scene = 'tribulation';
@@ -643,7 +675,7 @@ export class World {
   private cancelTrial(s: LivePlayer): void {
     if (!s.trial) return;
     s.character.position = s.trial.returnPosition;
-    s.character.scene = 'overworld';
+    s.character.scene = s.trial.returnScene;
     s.guardUntil = 0;
     s.trial = null;
   }
@@ -731,17 +763,17 @@ export class World {
     const data = payload as Record<string, unknown>;
     const action = data.type;
     console.info(`[audit] admin=${s.identity.uid} action=${String(action).slice(0, 40)} target=${String(data.targetId ?? data.itemId ?? '').slice(0, 70)}`);
-    if (s.character.scene !== 'overworld') throw new Error('Thoát lôi kiếp trước khi sử dụng thần quyền.');
+    if (s.character.scene === 'tribulation') throw new Error('Thoát lôi kiếp trước khi sử dụng thần quyền.');
     if (action === 'spawn-item') {
       if (typeof data.itemId !== 'string' || !Object.hasOwn(ITEMS, data.itemId)) throw new Error('ID vật phẩm không hợp lệ.');
       if (this.drops.size >= 80) throw new Error('Thế giới có quá nhiều vật phẩm chưa được nhặt.');
-      this.dropItem(data.itemId, clampToWorld({ x: s.character.position.x + Math.sin(s.character.rotation) * 3, y: 0, z: s.character.position.z + Math.cos(s.character.rotation) * 3 }, WORLD_RADIUS));
+      this.dropItem(data.itemId, clampToWorld({ x: s.character.position.x + Math.sin(s.character.rotation) * 3, y: 0, z: s.character.position.z + Math.cos(s.character.rotation) * 3 }, WORLD_RADIUS), s.character.scene);
       this.sendSnapshots();
       return `Đã triệu hồi ${ITEMS[data.itemId].name}.`;
     }
     if (action === 'spawn-boss') {
       if (data.bossId !== this.boss.id) throw new Error('ID Boss không nằm trong danh mục.');
-      if (inSectSafeZone(s.character.position)) throw new Error('Chỉ gọi Boss ở Hoang Vực bên ngoài Tông Môn.');
+      if (s.character.scene !== 'wilderness') throw new Error('Chỉ gọi Boss ở Hoang Vực bên ngoài Tông Môn.');
       this.boss.position = clampToWorld({ x: s.character.position.x + Math.sin(s.character.rotation) * 12, y: 0, z: s.character.position.z + Math.cos(s.character.rotation) * 12 }, WORLD_RADIUS - 4);
       this.boss.hp = this.boss.maxHp;
       this.boss.respawnAt = null;
@@ -750,24 +782,30 @@ export class World {
       return 'Thế giới xuất hiện Huyền Thiên Cổ Long.';
     }
     const target = typeof data.targetId === 'string' ? this.players.get(data.targetId) : undefined;
-    if (!target || target.character.scene !== 'overworld') throw new Error('Người chơi không trực tuyến ở ngoại giới.');
+    if (!target || target.character.scene === 'tribulation') throw new Error('Người chơi không trực tuyến ở Tông Môn hoặc Hoang Vực.');
     if (action === 'teleport-to') {
+      s.character.scene = target.character.scene;
       s.character.position = { ...target.character.position, x: target.character.position.x + 2 };
       clampToWorld(s.character.position, WORLD_RADIUS);
+      s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
       await this.sync(s);
+      this.sendSnapshots();
       return `Đã dịch chuyển đến ${target.character.name}.`;
     }
     if (action === 'summon') {
+      target.character.scene = s.character.scene;
       target.character.position = { ...s.character.position, x: s.character.position.x + 2 };
       clampToWorld(target.character.position, WORLD_RADIUS);
+      target.input = { x: 0, z: 0 }; target.lastInputAt = 0;
       target.socket.emit('notice', 'Thiên đạo đã triệu hồi bạn đến vị trí của quản trị viên.');
       await this.sync(target);
+      this.sendSnapshots();
       return `Đã triệu hồi ${target.character.name}.`;
     }
     if (action === 'lightning') {
       this.combat({ type: 'lightning', sourceId: s.character.id, targetId: target.character.id,
         position: { ...target.character.position }, damage: this.god(target) ? 0 : target.character.hp,
-        at: Date.now() });
+        at: Date.now() }, undefined, target.character.scene);
       if (!this.god(target)) {
         target.character.hp = 0;
         target.respawnAt = Date.now() + 2500;
@@ -778,10 +816,10 @@ export class World {
     throw new Error('Hành động quản trị không được hỗ trợ.');
   }
 
-  private combat(event: CombatEvent, only?: Socket): void {
+  private combat(event: CombatEvent, only?: Socket, scene: WorldZone = 'wilderness'): void {
     if (only) { only.emit('combat', event); return; }
     for (const player of this.players.values()) {
-      if (player.character.scene === 'overworld') player.socket.emit('combat', event);
+      if (player.character.scene === scene) player.socket.emit('combat', event);
     }
   }
 
@@ -794,9 +832,11 @@ export class World {
         s.respawnAt = 0;
         s.character.hp = Math.ceil(s.character.maxHp * 0.6);
         s.character.mp = Math.ceil(s.character.maxMp * 0.6);
-        s.character.position = { x: 0, y: 0, z: 10 };
+        s.character.scene = 'overworld';
+        s.character.position = { ...PORTALS.wilderness.arrival };
+        s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
         s.socket.emit('character', own(s));
-        s.socket.emit('notice', 'Thần hồn quy vị. Bạn đã hồi sinh tại Vân Thượng.' );
+        s.socket.emit('notice', 'Thần hồn quy vị. Bạn đã hồi sinh tại Tông Môn.' );
       }
       if (now - s.lastInputAt <= 400 && (s.character.hp > 0 || this.god(s))) {
         const speed = this.god(s) ? 30 : 6;
@@ -805,20 +845,21 @@ export class World {
         s.character.position.z += s.input.z * speed * dt;
         clampToWorld(s.character.position, s.trial ? TRIAL_RADIUS : WORLD_RADIUS);
         if (!s.trial) {
+          const zone = s.character.scene;
           const obstacles = [
-            ...(this.boss.hp > 0 ? [{ position: this.boss.position, radius: 2.7 }] : []),
-            { position: { x: 0, y: 0, z: 32 }, radius: 5.2 },
-            { position: { x: -17, y: 0, z: 27 }, radius: 2.5 },
-            { position: { x: 17, y: 0, z: 27 }, radius: 2.5 },
-            ...[...this.monsters.values()].filter((m) => m.hp > 0).map((m) => ({ position: m.position, radius: m.radius + 0.35 })),
-            ...[...this.players.values()].filter((p) => p !== s && p.character.scene === 'overworld')
+            ...(zone === 'wilderness' && this.boss.hp > 0 ? [{ position: this.boss.position, radius: 2.7 }] : []),
+            ...(zone === 'wilderness' ? [...this.monsters.values()].filter((m) => m.hp > 0)
+              .map((m) => ({ position: m.position, radius: m.radius + 0.35 })) : []),
+            ...[...this.players.values()].filter((p) => p !== s && p.character.scene === zone)
               .map((p) => ({ position: p.character.position, radius: 1.05 })),
           ];
+          // Walls are swept AABBs: the only passage into each building is its visible doorway.
           // An already-overlapping spawn is allowed to walk OUT, not further in.
-          if (obstacles.some((obstacle) => {
-            const nextDistance = distanceXZ(s.character.position, obstacle.position);
-            return nextDistance < obstacle.radius && nextDistance < distanceXZ(previous, obstacle.position);
-          })) s.character.position = previous;
+          if ((zone === 'overworld' && !canWalkInSect(previous, s.character.position)) ||
+            obstacles.some((obstacle) => {
+              const nextDistance = distanceXZ(s.character.position, obstacle.position);
+              return nextDistance < obstacle.radius && nextDistance < distanceXZ(previous, obstacle.position);
+            })) s.character.position = previous;
         }
       }
       if (s.trial) this.advanceTrial(s, now);
@@ -826,13 +867,13 @@ export class World {
     if (this.boss.hp === 0 && this.boss.respawnAt && now >= this.boss.respawnAt) {
       this.boss.hp = this.boss.maxHp;
       this.boss.respawnAt = null;
-      this.io.emit('notice', 'Huyền Thiên Cổ Long đã thức tỉnh lần nữa!');
+      this.noticeInZone('wilderness', 'Huyền Thiên Cổ Long đã thức tỉnh lần nữa!');
     }
     if (this.boss.hp > 0 && now >= this.bossAttackAt) {
       this.bossAttackAt = now + 8000;
       for (const s of this.players.values()) {
-        if (s.character.scene !== 'overworld' || s.character.hp <= 0 || inSectSafeZone(s.character.position) || distanceXZ(s.character.position, this.boss.position) > 11) continue;
-        const inFormation = [...this.formations.values()].some((formation) => distanceXZ(s.character.position, formation.position) <= formation.radius);
+        if (s.character.scene !== 'wilderness' || s.character.hp <= 0 || distanceXZ(s.character.position, this.boss.position) > 11) continue;
+        const inFormation = [...this.formations.values()].some((formation) => formation.scene === 'wilderness' && distanceXZ(s.character.position, formation.position) <= formation.radius);
         const base = Math.max(3, 27 - Math.floor(equippedStats(s.character).defense * 0.6));
         const damage = this.god(s) ? 0 : Math.max(1, Math.round(base * (inFormation ? 0.8 : 1) * (s.shieldUntil > now ? 0.25 : 1)));
         if (damage) s.character.hp = Math.max(0, s.character.hp - damage);
@@ -852,9 +893,8 @@ export class World {
         continue;
       }
       if (now < (this.monsterAttackAt.get(monster.id) ?? 0)) continue;
-      const nearby = [...this.players.values()].filter((p) => p.character.scene === 'overworld' &&
-        p.character.hp > 0 && !inSectSafeZone(p.character.position) &&
-        distanceXZ(p.character.position, monster.position) < monster.radius + 1.8);
+      const nearby = [...this.players.values()].filter((p) => p.character.scene === 'wilderness' &&
+        p.character.hp > 0 && distanceXZ(p.character.position, monster.position) < monster.radius + 1.8);
       if (!nearby.length) continue;
       this.monsterAttackAt.set(monster.id, now + 3300);
       const victim = nearby.sort((a, b) => distanceXZ(a.character.position, monster.position) - distanceXZ(b.character.position, monster.position))[0];
@@ -873,7 +913,8 @@ export class World {
       for (const s of this.players.values()) {
         if (ensureDaily(s.character, now)) void this.serialize(s.character.id, async () => this.sync(s))
           .catch((error) => console.error('[world] Daily reset save failed:', error));
-        if (s.character.scene === 'overworld' && [...this.formations.values()].some((formation) => distanceXZ(s.character.position, formation.position) <= formation.radius)) {
+        if (s.character.scene !== 'tribulation' && [...this.formations.values()].some((formation) =>
+          formation.scene === s.character.scene && distanceXZ(s.character.position, formation.position) <= formation.radius)) {
           s.character.mp = Math.min(s.character.maxMp, s.character.mp + 2);
         }
         s.socket.emit('character', own(s));
@@ -893,16 +934,22 @@ export class World {
   }
 
   private sendSnapshots(): void {
-    const overworld = [...this.players.values()].filter((p) => p.character.scene === 'overworld').map(publicPlayer);
-    const trial = [...this.players.values()].filter((p) => p.character.scene === 'tribulation');
-    const normal: WorldSnapshot = { players: overworld, boss: { ...this.boss }, monsters: [...this.monsters.values()].map((m) => ({ ...m })),
-      herbs: HERB_NODES.map((node) => ({ id: node.id, position: node.position, availableAt: this.herbs.get(node.id) ?? 0 })),
-      drops: [...this.drops.values()], formations: [...this.formations.values()], at: Date.now() };
-    for (const player of this.players.values()) {
-      if (player.character.scene === 'overworld') player.socket.emit('world', normal);
+    const now = Date.now();
+    for (const scene of ['overworld', 'wilderness'] as const) {
+      const snapshot: WorldSnapshot = {
+        scene, players: [...this.players.values()].filter((p) => p.character.scene === scene).map(publicPlayer),
+        boss: scene === 'wilderness' ? { ...this.boss } : null,
+        monsters: scene === 'wilderness' ? [...this.monsters.values()].map((m) => ({ ...m })) : [],
+        herbs: scene === 'wilderness' ? HERB_NODES.map((node) =>
+          ({ id: node.id, position: node.position, availableAt: this.herbs.get(node.id) ?? 0 })) : [],
+        drops: [...this.drops.values()].filter((drop) => drop.scene === scene),
+        formations: [...this.formations.values()].filter((formation) => formation.scene === scene), at: now,
+      };
+      for (const player of this.players.values()) if (player.character.scene === scene) player.socket.emit('world', snapshot);
     }
-    for (const player of trial) {
-      player.socket.emit('world', { players: [publicPlayer(player)], boss: { ...this.boss, hp: 0 }, monsters: [], herbs: [], drops: [], formations: [], at: Date.now() } satisfies WorldSnapshot);
+    for (const player of this.players.values()) if (player.character.scene === 'tribulation') {
+      player.socket.emit('world', { scene: 'tribulation', players: [publicPlayer(player)],
+        boss: null, monsters: [], herbs: [], drops: [], formations: [], at: now } satisfies WorldSnapshot);
     }
   }
 

@@ -53,7 +53,8 @@ export const CharacterModel = mongoose.model('Character', new Schema({
   maxHp: { type: Number, required: true }, maxMp: { type: Number, required: true },
   position: { type: vectorSchema, required: true },
   rotation: { type: Number, required: true },
-  scene: { type: String, enum: ['overworld', 'tribulation'], default: 'overworld' },
+  scene: { type: String, enum: ['overworld', 'wilderness', 'tribulation'], default: 'overworld' },
+  worldVersion: { type: Number, default: 1 }, // legacy single-map records migrate once on join
   equipment: { type: new Schema(equipmentSlots, { _id: false }), default: () => ({}) },
   // Canonical ownership list. EquipmentModel is a queryable materialized view of it.
   inventory: { type: [inventoryItemSchema], default: [] },

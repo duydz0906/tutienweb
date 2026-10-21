@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { GameScene, Vector3 } from '@van-thuong/shared';
 
 /**
  * Owns the browser-only 3D controls. React Three Fiber supplies the renderer,
@@ -25,6 +26,7 @@ export class SceneEngine {
   private cinematicUntil = 0;
   private shakeUntil = 0;
   private isTribulation = false;
+  private isWilderness = false;
   private isAdminSky = false;
   private wasCinematic = false;
   private previewView: 'body' | 'face' | null = null;
@@ -79,6 +81,24 @@ export class SceneEngine {
     this.touchInput = { right: THREE.MathUtils.clamp(right, -1, 1), forward: THREE.MathUtils.clamp(forward, -1, 1) };
   }
 
+  /** Snap camera and input with the authoritative avatar when changing maps (never fly between islands). */
+  enterZone(zone: GameScene, position: Vector3): void {
+    this.keys.clear();
+    this.touchInput = { right: 0, forward: 0 };
+    // In the sect, frame the open halls without putting the gate between camera and player.
+    this.distance = zone === 'wilderness' ? 6.8 : zone === 'overworld' ? 7.6 : 14;
+    this.pitch = zone === 'tribulation' ? 0.31 : 0.14;
+    this.yaw = zone === 'overworld' ? Math.PI + 0.27 : 0.27;
+    this.lastRotation = zone === 'overworld' ? 0 : Math.PI;
+    this.lookAt.set(position.x, position.y + 1.65, position.z);
+    this.camera.position.set(
+      this.lookAt.x + Math.sin(this.yaw) * Math.cos(this.pitch) * this.distance,
+      this.lookAt.y + Math.sin(this.pitch) * this.distance + 1.2,
+      this.lookAt.z + Math.cos(this.yaw) * Math.cos(this.pitch) * this.distance,
+    );
+    this.camera.lookAt(this.lookAt);
+  }
+
   /** The real human's face morphs are visible close up; entering the world restores game framing. */
   setPreviewView(view: 'body' | 'face' | null, facing?: number): void {
     if (view === this.previewView) return;
@@ -91,8 +111,8 @@ export class SceneEngine {
       this.previousGameYaw = null;
     }
     this.previewView = view;
-    this.distance = view === 'face' ? 1.7 : view === 'body' ? 5.3 : 14;
-    this.pitch = view === 'face' ? 0.05 : view === 'body' ? 0.18 : 0.31;
+    this.distance = view === 'face' ? 1.7 : view === 'body' ? 5.3 : this.isWilderness ? 6.8 : 7.6;
+    this.pitch = view === 'face' ? 0.05 : view === 'body' ? 0.18 : this.isTribulation ? 0.31 : 0.14;
   }
 
   getMovement(): { x: number; z: number; rotation: number } {
@@ -168,22 +188,23 @@ export class SceneEngine {
     this.shakeUntil = performance.now() + durationMs;
   }
 
-  setAtmosphere(tribulation: boolean, admin: boolean): void {
+  setAtmosphere(tribulation: boolean, admin: boolean, wilderness = false): void {
     this.isTribulation = tribulation;
     this.isAdminSky = admin;
+    this.isWilderness = wilderness;
     this.applyAtmosphere();
   }
 
   private applyAtmosphere(): void {
     const dark = this.isTribulation || this.wasCinematic;
-    const color = dark ? '#171729' : this.isAdminSky ? '#b97c68' : '#8bb8bb';
+    const color = dark ? '#171729' : this.isAdminSky ? '#b97c68' : this.isWilderness ? '#828e9e' : '#8bb8bb';
     this.scene.background = new THREE.Color(color);
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.color.set(color);
-      this.scene.fog.density = dark ? 0.023 : 0.0095;
+      this.scene.fog.density = dark ? 0.023 : this.isWilderness ? 0.016 : 0.0095;
     }
-    this.sun.color.set(dark ? '#b1a5ed' : this.isAdminSky ? '#ffb77a' : '#ffebc8');
-    this.hemisphere.intensity = dark ? 0.65 : 1.6;
+    this.sun.color.set(dark ? '#b1a5ed' : this.isAdminSky ? '#ffb77a' : this.isWilderness ? '#e1d0c1' : '#ffebc8');
+    this.hemisphere.intensity = dark ? 0.65 : this.isWilderness ? 1.15 : 1.6;
   }
 
   dispose(): void {
