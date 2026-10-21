@@ -720,3 +720,21 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .hero-preview kbd { border: 1px solid var(--line); border-radius: 2px; padding: 0 4px; color: var(--cream); font-size: 8px; }
 .hud-bottom .utility-slot.camera-slot svg { color: #a9c8f4; }
 .hud-bottom .utility-slot.camera-slot.selected { border-color: #bcd8ff; color: #dcebff; background: rgba(96, 132, 196, .22); }
+
+/* Dev sandbox: fast realm step and instantaneous path swap */
+.dev-realm-card { display: flex; align-items: center; gap: 12px; padding: 12px; margin: 10px 0 4px;
+  border: 1px solid rgba(236, 197, 139, .34); border-radius: 5px; background: rgba(234, 197, 139, .09); }
+.dev-realm-card > div { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.dev-realm-card small { color: var(--faint); font-size: 8px; letter-spacing: .12em; }
+.dev-realm-card strong { color: var(--cream); font-family: 'Literata', Georgia, serif; font-size: 16px; }
+.dev-realm-card span { color: var(--muted); font-size: 9px; }
+.dev-realm-card .btn { flex: none; white-space: nowrap; }
+.dev-path-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 10px 0 12px; }
+.dev-path-grid button { display: grid; gap: 2px; padding: 9px 10px; text-align: left; border: 1px solid rgba(160, 226, 240, .28);
+  border-radius: 4px; color: var(--cream); background: rgba(88, 170, 190, .09); }
+.dev-path-grid button strong { font-size: 11px; }
+.dev-path-grid button small { color: var(--muted); font-size: 9px; }
+.dev-path-grid button:hover:not(:disabled) { border-color: #a6ecff; background: rgba(88, 170, 190, .2); }
+.dev-path-grid button.active { border-color: var(--gold); background: rgba(234, 197, 139, .18); box-shadow: 0 0 16px rgba(234, 197, 139, .12); }
+.dev-path-grid button:disabled { opacity: .5; }
+@media (max-width: 720px) { .dev-path-grid { grid-template-columns: 1fr; } .dev-realm-card { flex-direction: column; align-items: stretch; } }

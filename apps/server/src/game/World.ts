@@ -223,6 +223,8 @@ export class World {
     socket.on('flight:toggle', action(async () => this.toggleFlight(s)));
     // Dev sandbox only: a whitelisted destination id, never a client coordinate.
     socket.on('dev:teleport', action(async (payload: unknown) => this.devTeleport(s, payload)));
+    socket.on('dev:advance-realm', action(async () => this.devAdvanceRealm(s)));
+    socket.on('dev:set-path', action(async (payload: unknown) => this.devSetPath(s, payload)));
     socket.on('rebirth:choose', action(async () => {
       reincarnate(s.character);
       await this.sync(s);
@@ -442,6 +444,53 @@ export class World {
     s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
     await this.sync(s); this.sendSnapshots();
     return `Dev teleport: ${target.name}.`;
+  }
+
+  /** Dev: +1 cảnh giới — one major realm for free; at the ceiling it walks minor stages instead. */
+  private async devAdvanceRealm(s: LivePlayer): Promise<string> {
+    if (!this.god(s)) throw new Error('Tăng cảnh giới nhanh chỉ dành cho dev mode đã xác thực.');
+    const c = s.character;
+    if (c.scene === 'tribulation') throw new Error('Hãy rời lôi kiếp trước khi đổi cảnh giới.');
+    if (c.realm >= MAX_REALM && c.minorStage >= LEVEL_CONFIG.minorStages)
+      throw new Error(`Đã đạt đỉnh ${REALMS[MAX_REALM]} · tầng ${LEVEL_CONFIG.minorStages}.`);
+    bankCultivation(c);
+    if (c.realm >= MAX_REALM) {
+      // Same growth curve as a real tiểu đột phá, only without the cultivation cost.
+      c.minorStage += 1;
+      c.maxHp += LEVEL_CONFIG.minorReward.maxHp;
+      c.maxMp += LEVEL_CONFIG.minorReward.maxMp;
+      c.hp = c.maxHp;
+      c.mp = c.maxMp;
+    } else {
+      // Mirrors completeMajorBreakthrough, minus the tribulation and the EXP price.
+      c.realm += 1;
+      c.minorStage = 1;
+      c.maxHp += LEVEL_CONFIG.majorReward.maxHp;
+      c.maxMp += LEVEL_CONFIG.majorReward.maxMp;
+      c.hp = c.maxHp;
+      c.mp = c.maxMp;
+    }
+    c.highestRealm = Math.max(c.highestRealm, c.realm);
+    await this.sync(s);
+    this.sendSnapshots();
+    return `Dev: ${REALMS[c.realm]} · tầng ${c.minorStage}.`;
+  }
+
+  /** Dev: pick any of the five cultivation paths and receive its techniques immediately. */
+  private async devSetPath(s: LivePlayer, payload: unknown): Promise<string> {
+    if (!this.god(s)) throw new Error('Đổi đạo tu nhanh chỉ dành cho dev mode đã xác thực.');
+    const path = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>).path : undefined;
+    if (typeof path !== 'string' || !Object.hasOwn(PATH_LABEL, path)) throw new Error('Đạo tu không hợp lệ.');
+    const c = s.character;
+    if (c.scene === 'tribulation') throw new Error('Hãy rời lôi kiếp trước khi đổi đạo.');
+    c.path = path as Path;
+    const pathSkills = skillsForPath(c.path);
+    c.learnedSkills = [...new Set([...c.learnedSkills, ...pathSkills.map((skill) => skill.id)])];
+    // Techniques of the old path stay learned but leave the keys, exactly like choose-path.
+    c.hotbar = normalizeHotbar([SKILLS.spirit_cut.id, pathSkills[1].id, pathSkills.at(-2)!.id, pathSkills.at(-1)!.id]);
+    await this.sync(s);
+    this.sendSnapshots();
+    return `Dev: đã chuyển sang ${PATH_LABEL[c.path]} và nạp lại hotbar.`;
   }
 
   private async ascend(s: LivePlayer): Promise<string> {

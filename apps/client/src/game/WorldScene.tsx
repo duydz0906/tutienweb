@@ -66,6 +66,15 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   useEffect(() => {
     engine.current?.setPreviewView(character ? null : preview.view);
   }, [character?.id, preview.view]);
+  // Y: hand the camera to the engine in locked third person and snap it behind the body.
+  useEffect(() => { engine.current?.setCameraLock(cameraLock, character?.rotation); }, [cameraLock, character?.id]);
+  // Space: the engine owns the hop so an avatar re-render can never cancel it mid-air.
+  useEffect(() => { if (jumpAt) engine.current?.triggerJump(); }, [jumpAt]);
+  // Left click on the ground is the basic attack; dragging still orbits the camera.
+  useEffect(() => {
+    engine.current?.setPrimaryAction(onAttack);
+    return () => engine.current?.setPrimaryAction(null);
+  }, [onAttack]);
   useEffect(() => {
     const latest = effects.at(-1);
     if (!latest || latest.visualId === lastCinematic.current || !character) return;
@@ -129,7 +138,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       </> : character && <Wilderness zone={zone === 'ascendant' ? 'ascendant' : 'wilderness'} monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
-    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar} jumpAt={jumpAt}
+    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}
       attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at} />
     {local.devMode && <AdminFireTrail player={local} avatarRef={avatar} />}
     {!inTrial && others.map((player) => <Avatar key={player.id} player={player}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Feather, Flame, FlaskConical,
   Compass, Gem, Hammer, House, MapPin, Menu, MessageCircle, RotateCcw, Settings2, Shield, Sparkles, Swords, Target, Trophy, Users, Warehouse, WandSparkles, X, Zap } from 'lucide-react';
-import { CONSUMABLES, DEV_TELEPORTS, EQUIPMENT_SLOTS, HOME_CHEST, HOTBAR_SLOTS, ITEMS, MAX_REALM, NPCS, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
+import { CONSUMABLES, DEV_TELEPORTS, EQUIPMENT_SLOTS, HOME_CHEST, HOTBAR_SLOTS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
   canRideMount, flightItemOf, houseAbsorptionBonus, houseLevel, storageCapacity, type Appearance, type ConsumableId, type Gender, type LeaderboardEntry, type OwnCharacter, type Path } from '@van-thuong/shared';
 import { AppearanceControls } from './AppearanceControls';
 import { AlchemyPanel, BeastPanel, QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
@@ -10,6 +10,10 @@ import type { HudPrefs } from '../lib/uiPrefs';
 export type ActivePanel = 'inventory' | 'craft' | 'alchemy' | 'beast' | 'dev' | 'leaderboard' | 'help' | 'home' | 'menu' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
+/** Dev shortcuts: the five paths with a one-line reminder of what each one fights with. */
+const DEV_PATH_LABEL = { kiem: 'Kiếm Tu', phap: 'Pháp Tu', the: 'Thể Tu', thu: 'Ngự Thú', ma: 'Ma Tu' } as const;
+const DEV_PATH_HINT = { kiem: 'Ngự kiếm · sát thương đơn', phap: 'Phi đĩa · phép diện rộng', the: 'Phong hỏa luân · cận chiến',
+  thu: 'Linh thú · đồng hành', ma: 'Huyết vân · hút máu' } as const;
 
 export function Panels({ panel, onClose, onNavigate, onOpenPath, character, leaderboard, roster, onAction, onLogout, connected,
   hudPrefs, onHudPrefs }: {
@@ -56,7 +60,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
     { key: 'chatOpen', label: 'Khung chat', hint: 'Bật / ẩn chat thế giới (phím C)', icon: <MessageCircle size={16} /> },
     { key: 'cultivateOpen', label: 'Bảng tu luyện', hint: 'Hiện đầy đủ hoặc rút gọn bảng tu luyện (phím T)', icon: <Sparkles size={16} /> },
     { key: 'heroOpen', label: 'Bảng nhân vật', hint: 'Mở rộng / thu gọn thẻ nhân vật bên trái; cấp, máu và chân khí luôn hiện', icon: <Users size={16} /> },
-    { key: 'cameraLock', label: 'Khóa góc nhìn TPP', hint: 'Camera luôn bám sau lưng, không xoay tay (phím Y)', icon: <Compass size={16} /> },
+    { key: 'cameraLock', label: 'Khóa góc nhìn TPP', hint: 'Camera luôn ở sau lưng; lia chuột để xoay quanh nhân vật (phím Y)', icon: <Compass size={16} /> },
     { key: 'questCard', label: 'Bảng Tông Môn cũ', hint: 'Bảng nhiệm vụ bên phải (mặc định ẩn)', icon: <BookOpen size={16} /> },
     { key: 'minimap', label: 'Bản đồ nhỏ', hint: 'Hiện / ẩn bản đồ khu vực', icon: <Compass size={16} /> },
     { key: 'skillLabels', label: 'Tên kỹ năng', hint: 'Hiện tên dưới ô công pháp trong hotbar', icon: <Swords size={16} /> },
@@ -82,7 +86,20 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
 
       {panel === 'dev' && <div className="drawer-scroll dev-customizer">
         <div className="rounded border border-jade/30 bg-jade/10 p-4 text-xs leading-6 text-slate-300"><strong className="text-jade">Thế giới thử nghiệm</strong><p>Thay đổi đạo tu, hình dáng và nam/nữ ngay trên nhân vật {character.name}. Lưu riêng theo UID; không đổi chủ kho, không cấp quyền quản trị, thoát dev mode sẽ khôi phục nguyên trạng.</p></div>
-        <button className="btn btn-gold btn-full" onClick={onOpenPath}><Swords size={16} /> Đổi đạo tu: {character.path ? { kiem: 'Kiếm Tu', phap: 'Pháp Tu', the: 'Thể Tu', thu: 'Ngự Thú', ma: 'Ma Tu' }[character.path] : 'Chưa chọn'} <ArrowRight size={16} /></button>
+        <div className="drawer-section-heading"><Zap size={16} /> TĂNG NHANH CẢNH GIỚI</div>
+        <div className="dev-realm-card">
+          <div><small>HIỆN TẠI</small><strong>{REALMS[character.realm]} · Tầng {character.minorStage}</strong>
+            <span>Đỉnh: {REALMS[MAX_REALM]} · tầng {LEVEL_CONFIG.minorStages}</span></div>
+          <button className="btn btn-gold" disabled={!connected || character.scene === 'tribulation'}
+            onClick={() => onAction('dev:advance-realm')}><Zap size={15} /> +1 cảnh giới</button>
+        </div>
+        <div className="drawer-section-heading margin-top"><Swords size={16} /> ĐỔI ĐẠO TU HÀNH <span>Tức thì</span></div>
+        <div className="dev-path-grid">{(['kiem', 'phap', 'the', 'thu', 'ma'] as const).map((path) =>
+          <button key={path} className={character.path === path ? 'active' : ''} disabled={!connected || character.scene === 'tribulation'}
+            onClick={() => onAction('dev:set-path', { path })}>
+            <strong>{DEV_PATH_LABEL[path]}</strong><small>{DEV_PATH_HINT[path]}</small>
+          </button>)}</div>
+        <button className="btn btn-quiet btn-full" onClick={onOpenPath}><Swords size={16} /> Xem bảng chọn đạo đầy đủ</button>
         <button className="btn btn-quiet btn-full" onClick={() => onNavigate('skills')}><BookOpen size={16} /> Sắp xếp công pháp & Hotbar (1–{HOTBAR_SLOTS})</button>
         <div className="drawer-section-heading margin-top"><MapPin size={16} /> TELEPORT DEV MODE</div>
         <div className="teleport-grid">{DEV_TELEPORTS.map((point) => <button key={point.id} onClick={() => onAction('dev:teleport', { id: point.id })}>
@@ -248,8 +265,9 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
           <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
           <div className="help-row"><kbd>L</kbd><span>Chuột trái (LMB): chém thường · kéo chuột (hoặc chuột phải) để xoay / ngước nhìn bầu trời · cuộn để thu phóng</span></div>
-          <div className="help-row"><kbd>Y</kbd><span>Khóa góc nhìn thứ 3: camera tự bám sau lưng, nhấn Y lần nữa để xoay tự do</span></div>
-          <div className="help-row"><kbd>Space</kbd><span>Nhảy tại chỗ (chỉ hiển thị, không đổi va chạm hay máu)</span></div>
+          <div className="help-row"><kbd>Y</kbd><span>Khóa góc nhìn thứ 3: camera luôn nhìn từ sau lưng, lia chuột hoặc A/D để xoay camera quanh nhân vật; nhấn Y lần nữa để trả lại góc xoay tự do</span></div>
+          <div className="help-row"><kbd>Space</kbd><span>Nhảy tại chỗ (chỉ hiển thị, không đổi va chạm hay máu); không nhảy được khi đang bay, đang ngồi thiền, trong nhà hoặc trong lôi kiếp</span></div>
+          <div className="help-row"><kbd>Dev</kbd><span>Menu → Dev tools (hoặc bảng Dev trong thẻ nhân vật): <b>+1 cảnh giới</b> và <b>đổi đạo tu hành</b> ngay lập tức</span></div>
           <div className="help-row"><kbd>E</kbd><span>Đứng gần cổng Tông Môn / Hoang Vực / sơn đạo / làng để dịch chuyển</span></div>
           <div className="help-row"><kbd>J</kbd><span>Chém thường dự phòng · Hoang Vực và Thượng Giới (chuột trái là chính)</span></div>
           <div className="help-row"><kbd>1</kbd><kbd>…</kbd><kbd>9</kbd><span>Công pháp gán trên chín ô hotbar; cooldown hiện số ngay trong ô</span></div>

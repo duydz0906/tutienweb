@@ -28,6 +28,10 @@ export class SceneEngine {
   private primaryAction: (() => void) | null = null;
   /** Y lock: the camera trails the character's facing instead of orbiting manually. */
   private cameraLocked = false;
+  /** Space: purely visual hop of the avatar, timed here so it survives avatar re-renders. */
+  private jumpStartedAt = 0;
+  private static readonly JUMP_MS = 640;
+  private static readonly JUMP_HEIGHT = 1.35;
   private yaw = 0.27;
   private pitch = 0.31;
   private distance = 14;
@@ -94,18 +98,34 @@ export class SceneEngine {
     this.primaryAction = action;
   }
 
-  /** Y: always third person, camera trails behind the character with no manual orbit. */
-  setCameraLock(locked: boolean): void {
+  /**
+   * Y: locked third person. The body always faces away from the camera, the camera swings
+   * around behind it (mouse or A/D), and it never flips to a first-person or top-down shot.
+   */
+  setCameraLock(locked: boolean, facing = this.lastRotation): void {
     if (this.cameraLocked === locked) return;
     this.cameraLocked = locked;
+    this.dragging = false;
     if (locked) {
-      this.dragging = false;
-      this.pitch = 0.27;
-      this.distance = THREE.MathUtils.clamp(this.distance, 5.2, 11);
+      // Snap immediately so the first frame after Y already looks over the shoulder.
+      this.yaw = facing + Math.PI;
+      this.lastRotation = facing;
+      this.pitch = THREE.MathUtils.clamp(this.pitch, 0.08, 0.42) || 0.27;
+      this.distance = THREE.MathUtils.clamp(this.distance, 4.6, 10);
     }
   }
 
   isCameraLocked(): boolean { return this.cameraLocked; }
+
+  /** Space: hop in place. The server position never leaves the ground plane. */
+  triggerJump(): void { this.jumpStartedAt = performance.now(); }
+
+  private jumpOffset(): number {
+    if (!this.jumpStartedAt) return 0;
+    const progress = (performance.now() - this.jumpStartedAt) / SceneEngine.JUMP_MS;
+    if (progress >= 1) { this.jumpStartedAt = 0; return 0; }
+    return Math.sin(Math.max(0, progress) * Math.PI) * SceneEngine.JUMP_HEIGHT;
+  }
 
   setTouchInput(right: number, forward: number): void {
     this.touchInput = { right: THREE.MathUtils.clamp(right, -1, 1), forward: THREE.MathUtils.clamp(forward, -1, 1) };
@@ -159,6 +179,15 @@ export class SceneEngine {
       0,
       -right * Math.sin(this.yaw) - forward * Math.cos(this.yaw),
     );
+    if (this.cameraLocked) {
+      // Locked TPP: the body always faces away from the camera. Deriving the facing from the
+      // strafe vector instead would spin the character in a circle while the camera chases it.
+      if (magnitude > 0.08) this.direction.normalize().multiplyScalar(magnitude);
+      else this.direction.set(0, 0, 0);
+      const facing = Math.atan2(Math.sin(this.yaw + Math.PI), Math.cos(this.yaw + Math.PI));
+      this.lastRotation = facing;
+      return { x: this.direction.x, z: this.direction.z, rotation: facing };
+    }
     if (magnitude > 0.08) {
       this.direction.normalize().multiplyScalar(magnitude);
       this.lastRotation = Math.atan2(this.direction.x, this.direction.z);
@@ -180,22 +209,23 @@ export class SceneEngine {
         const { x, z, rotation } = this.getMovement();
         avatar.position.x += x * movementSpeed * dt;
         avatar.position.z += z * movementSpeed * dt;
-        if (x !== 0 || z !== 0) avatar.rotation.y = rotation;
+        // A locked camera also turns a standing body so it keeps facing away from the view.
+        if (x !== 0 || z !== 0 || this.cameraLocked) avatar.rotation.y = rotation;
       }
       this.target.set(serverPosition.x, serverPosition.y, serverPosition.z);
       if (avatar.position.distanceTo(this.target) > 6) avatar.position.copy(this.target);
       else avatar.position.lerp(this.target, Math.min(1, dt * 5));
+      // Applied after the reconciliation lerp so the hop is not pulled back to the ground.
+      const hop = this.jumpOffset();
+      if (hop > 0) avatar.position.y += hop;
       this.lookAt.copy(avatar.position).add(new THREE.Vector3(0, this.previewView === 'face' ? 1.62 : this.previewView ? 1.03 : 1.65, 0));
     } else {
       this.lookAt.set(0, this.previewView === 'face' ? 1.62 : 1.65, 0);
     }
 
-    // Locked camera: chase the avatar's facing so the view stays a stable TPP shot.
-    if (this.cameraLocked && avatar && !this.previewView) {
-      const target = avatar.rotation.y + Math.PI;
-      const delta = Math.atan2(Math.sin(target - this.yaw), Math.cos(target - this.yaw));
-      this.yaw += delta * Math.min(1, dt * 3.4);
-      this.pitch += (0.27 - this.pitch) * Math.min(1, dt * 3);
+    // Locked camera keeps a stable over-the-shoulder angle; only zoom stays manual.
+    if (this.cameraLocked && !this.previewView) {
+      this.pitch += (THREE.MathUtils.clamp(this.pitch, 0.08, 0.42) - this.pitch) * Math.min(1, dt * 2.2);
     }
 
     const cinematic = performance.now() < this.cinematicUntil;
@@ -317,11 +347,12 @@ export class SceneEngine {
       this.previousPointerY = this.primaryStartY;
     }
     if (!this.dragging) return;
-    // A locked camera ignores orbit input entirely; the character's facing drives the view.
-    if (this.cameraLocked) return;
+    // Panning still works while locked: the camera sweeps around and the body turns with it,
+    // it just can never drop into a first-person or top-down angle.
     this.yaw -= (event.clientX - this.previousPointerX) * 0.006;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + (event.clientY - this.previousPointerY) * 0.004,
-      this.isInterior || this.previewView ? 0.18 : -1.15, 1.13);
+    const minPitch = this.cameraLocked ? 0.06 : this.isInterior || this.previewView ? 0.18 : -1.15;
+    const maxPitch = this.cameraLocked ? 0.68 : 1.13;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + (event.clientY - this.previousPointerY) * 0.004, minPitch, maxPitch);
     this.previousPointerX = event.clientX;
     this.previousPointerY = event.clientY;
   };
