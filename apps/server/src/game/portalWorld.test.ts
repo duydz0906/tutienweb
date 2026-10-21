@@ -9,7 +9,7 @@ import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
 import { MemoryStore } from '../db/store.js';
 import { newCharacter } from './rules.js';
-import { World } from './World.js';
+import { SPAWNS_PER_HABITAT, World } from './World.js';
 
 function ack(socket: ClientSocket, event: string, payload: object = {}): Promise<ActionResult> {
   return new Promise((resolve, reject) => socket.timeout(4000).emit(event, payload,
@@ -79,7 +79,7 @@ describe('sect ↔ wilderness portal instances', () => {
       expect([sect.boss, sect.monsters, sect.herbs, sect.players.some((p) => p.id === wrongNpc.id)])
         .toEqual([null, [], [], false]);
       expect([wild.boss?.hp, wild.monsters.length, wild.herbs.length, wild.players[0].id])
-        .toEqual([850, HABITATS.filter((habitat) => habitat.scene === 'wilderness').length * 3, HERB_NODES.length, wrongNpc.id]);
+        .toEqual([850, HABITATS.filter((habitat) => habitat.scene === 'wilderness').length * SPAWNS_PER_HABITAT, HERB_NODES.length, wrongNpc.id]);
       expect((await ack(b, 'portal:travel', { position: PORTALS.overworld.position, destination: 'wilderness' })).ok).toBe(false);
       expect((await ack(c, 'quest:claim', { questId: 'gather_herbs', position: NPCS.quest.position })).ok).toBe(false);
       expect((await ack(d, 'gather', { nodeId: HERB_NODES[0].id, position: HERB_NODES[0].position })).ok).toBe(false);

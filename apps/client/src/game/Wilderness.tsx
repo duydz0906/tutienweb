@@ -16,11 +16,11 @@ function Monster({ monster, selected, onSelect }: { monster: MonsterState; selec
   const isGhost = monster.kind === 'shade' || monster.kind === 'sky_wraith';
   const isSerpent = monster.kind === 'forest_serpent' || monster.kind === 'void_serpent';
   const isStone = monster.kind === 'stone_golem' || monster.kind === 'star_guardian';
-  const isCrane = monster.kind === 'cloud_crane';
+  const isCrane = monster.kind === 'cloud_crane' || monster.kind === 'thunder_bird';
   const color = isWolf ? '#737e8b' : isBoar ? '#7a6665' : isStag ? '#c1c6c0' : isSerpent ? monster.kind === 'void_serpent' ? '#5d518c' : '#52836a'
-    : isStone ? monster.kind === 'star_guardian' ? '#9aa2bb' : '#888375' : isCrane ? '#dbe9e1' : monster.kind === 'sky_wraith' ? '#85aac1' : '#584773';
+    : isStone ? monster.kind === 'star_guardian' ? '#9aa2bb' : '#888375' : isCrane ? monster.kind === 'thunder_bird' ? '#c9dcf2' : '#dbe9e1' : monster.kind === 'sky_wraith' ? '#85aac1' : '#584773';
   const glow = isWolf ? '#bbdff0' : isBoar ? '#e1a888' : isStag ? '#b8f7dc' : isSerpent ? '#95ffdc'
-    : isStone ? '#ffe4b2' : isCrane ? '#d7f4ff' : monster.kind === 'sky_wraith' ? '#a3e7f8' : '#c28bff';
+    : isStone ? '#ffe4b2' : isCrane ? monster.kind === 'thunder_bird' ? '#b9e2ff' : '#d7f4ff' : monster.kind === 'sky_wraith' ? '#a3e7f8' : '#c28bff';
   useFrame(({ clock, camera }) => {
     if (group.current) group.current.position.y = Math.sin(clock.elapsedTime * 2.2 + monster.position.x) * 0.06;
     if (health.current) health.current.quaternion.copy(camera.quaternion);

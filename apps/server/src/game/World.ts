@@ -3,7 +3,7 @@ import type { Server, Socket } from 'socket.io';
 import {
   CONSUMABLES, DAILY_QUESTS, HERB_NODES, ASCENDANT_HERBS, ASCENDANT_GATE, HOME_GATE, HOME_EXIT, SECRET_GATE,
   SANCTUM_EXIT, HABITATS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PATH_LABEL, PORTALS, PUBLIC_ZONES, REALMS, RECIPES, SHOP_STOCK, SKILLS,
-  TAMEABLE_BEASTS, expForStage, skillRealm, skillsForPath, isWorldZone,
+  TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_RADIUS, DEV_TELEPORTS, HOTBAR_SLOTS, SLOT_LABEL, canRideMount, expForStage, flightItemOf, isSafeScene, normalizeHotbar, skillRealm, skillsForPath, isWorldZone,
   type ActionResult, type BossState, type CharacterState, type ChatMessage, type DailyQuestId,
   type CombatEvent, type FormationState, type GameScene, type MonsterState, type OwnCharacter, type Path, type PublicPlayer,
   type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot, type WorldZone,
@@ -27,12 +27,14 @@ type LivePlayer = {
   input: { x: number; z: number }; lastInputAt: number;
   cooldowns: Map<string, number>; lastChatAt: number; lastAdminAt: number;
   casting: boolean; shieldUntil: number;
-  guardUntil: number; trial: Trial | null; respawnAt: number;
+  guardUntil: number; trial: Trial | null; respawnAt: number; flightDrainAt: number;
 };
 type Ack = (result: ActionResult) => void;
 
 function message(error: unknown): string { return error instanceof Error ? error.message : 'Thao tác thất bại.'; }
-function worldRadius(scene: WorldZone): number { return scene === 'overworld' ? SECT_RADIUS : WORLD_RADIUS; }
+function worldRadius(scene: WorldZone): number {
+  return scene === 'overworld' ? SECT_RADIUS : scene === 'village' ? VILLAGE_RADIUS : WORLD_RADIUS;
+}
 function own(s: LivePlayer): OwnCharacter {
   return { ...ownCharacter(s.character, s.identity), shieldUntil: s.shieldUntil };
 }
@@ -48,11 +50,14 @@ function publicPlayer(s: LivePlayer): PublicPlayer {
       return [slot, item?.itemId];
     }).filter(([, id]) => id)) as PublicPlayer['equipment'],
     isAdmin: s.identity.isAdmin, devMode: god, shieldUntil: s.shieldUntil,
+    flying: c.flying === true && isWorldZone(c.scene),
   };
 }
 
+/** More enemies per clearing: four monsters keep every level band busy without a shard split. */
+export const SPAWNS_PER_HABITAT = 4;
 export const MONSTER_SPAWNS: MonsterState[] = HABITATS.flatMap((habitat) =>
-  [[-2.2, -1.5], [2.3, 1.4], [0.5, -2.7]].map(([dx, dz], index) => ({
+  [[-2.2, -1.5], [2.3, 1.4], [0.5, -2.7], [-1.6, 2.6]].map(([dx, dz], index) => ({
     scene: habitat.scene, id: `${habitat.id}-${index + 1}`, kind: habitat.kind,
     name: habitat.name, level: habitat.level,
     position: { x: habitat.center.x + dx, y: 0, z: habitat.center.z + dz },
@@ -147,6 +152,11 @@ export class World {
     }
     // Legacy saves lack the private-instance, rebirth and bank fields; never re-roll the root.
     character.cultivationBank ??= 0;
+    // An older four-slot hotbar is padded to nine keys; learned techniques keep their key.
+    character.hotbar = normalizeHotbar(character.hotbar);
+    if (!character.hotbar.some(Boolean)) character.hotbar = normalizeHotbar(skillsForPath(character.path).map((skill) => skill.id));
+    // Never reconnect already airborne: flight is re-activated with a real, path-allowed mount.
+    character.flying = false;
     character.stash ??= [];
     character.rebirths ??= 0;
     character.highestRealm = Math.max(character.highestRealm ?? 0, character.devMode ? character.devModeBackup?.realm ?? 0 : character.realm);
@@ -159,7 +169,7 @@ export class World {
       identity: effectiveIdentity, character, socket, input: { x: 0, z: 0 }, lastInputAt: 0,
       cooldowns: new Map(Object.entries(retainedCooldowns)), lastChatAt: 0, lastAdminAt: 0,
       casting: false, shieldUntil: 0,
-      guardUntil: 0, trial: null, respawnAt: 0,
+      guardUntil: 0, trial: null, respawnAt: 0, flightDrainAt: 0,
     };
     this.players.set(character.id, s);
     socket.emit('character', own(s));
@@ -208,6 +218,11 @@ export class World {
     socket.on('sanctum:enter', action(async () => this.enterPrivate(s, 'sanctum')));
     socket.on('sanctum:exit', action(async () => this.exitPrivate(s, 'sanctum')));
     socket.on('sanctum:ascend', action(async () => this.ascend(s)));
+    socket.on('village:enter', action(async () => this.enterVillage(s)));
+    socket.on('village:exit', action(async () => this.exitVillage(s)));
+    socket.on('flight:toggle', action(async () => this.toggleFlight(s)));
+    // Dev sandbox only: a whitelisted destination id, never a client coordinate.
+    socket.on('dev:teleport', action(async (payload: unknown) => this.devTeleport(s, payload)));
     socket.on('rebirth:choose', action(async () => {
       reincarnate(s.character);
       await this.sync(s);
@@ -247,9 +262,10 @@ export class World {
       const starter = pathSkills[1].id;
       if (god) {
         c.learnedSkills = [...new Set([...c.learnedSkills, ...pathSkills.map((skill) => skill.id)])];
-        c.hotbar = [SKILLS.spirit_cut.id, starter, pathSkills.at(-2)!.id, pathSkills.at(-1)!.id];
+        c.hotbar = normalizeHotbar([SKILLS.spirit_cut.id, starter, pathSkills.at(-2)!.id, pathSkills.at(-1)!.id]);
       } else {
         if (!c.learnedSkills.includes(starter)) c.learnedSkills.push(starter);
+        c.hotbar = normalizeHotbar(c.hotbar);
         c.hotbar[1] = starter;
       }
       await this.sync(s);
@@ -335,6 +351,7 @@ export class World {
     if (destination === 'sanctum' && !canEnterSanctum(c))
       throw new Error('Mật thất chỉ hiện ra khi đạt Tiên Đế tầng 9.');
     bankCultivation(c);
+    c.flying = false;
     c.scene = destination;
     c.position = { ...gate.arrival };
     c.rotation = Math.PI;
@@ -349,6 +366,7 @@ export class World {
     if (c.scene !== from || c.hp <= 0 || distanceXZ(c.position, exit.position) > exit.radius)
       throw new Error('Hãy trở lại cửa phòng để rời đi.');
     bankCultivation(c);
+    c.flying = false;
     c.scene = 'overworld';
     c.position = { ...(from === 'residence' ? HOME_GATE.exit : SECRET_GATE.exit) };
     c.rotation = Math.PI;
@@ -357,11 +375,81 @@ export class World {
     return 'Đã trở về sườn núi Tông Môn.';
   }
 
+  /** The village is public and safe, but its own map instance: no NPC or monster leaks across. */
+  private async enterVillage(s: LivePlayer): Promise<string> {
+    const c = s.character;
+    if (c.scene !== 'overworld' || c.hp <= 0 || distanceXZ(c.position, VILLAGE_GATE.position) > VILLAGE_GATE.radius)
+      throw new Error('Hãy đi tới sơn đạo phía nam Tông Môn (X 0, Z −50) để xuống làng.');
+    bankCultivation(c);
+    c.flying = false;
+    c.scene = 'village';
+    c.position = { ...VILLAGE_GATE.arrival };
+    c.rotation = Math.PI;
+    s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
+    await this.sync(s); this.sendSnapshots();
+    return 'Đã xuống núi tới Vân Cốc. Chợ làng bán trang bị và vật phẩm phi hành.';
+  }
+
+  private async exitVillage(s: LivePlayer): Promise<string> {
+    const c = s.character;
+    if (c.scene !== 'village' || c.hp <= 0 || distanceXZ(c.position, PORTALS.village.position) > PORTALS.village.radius)
+      throw new Error('Hãy tới Cổng Về Tông Môn ở phía bắc làng (X 0, Z −24).');
+    bankCultivation(c);
+    c.flying = false;
+    c.scene = 'overworld';
+    c.position = { ...VILLAGE_GATE.exit };
+    c.rotation = 0;
+    s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
+    await this.sync(s); this.sendSnapshots();
+    return 'Đã trở lại sơn đạo Tông Môn.';
+  }
+
+  /** Flight is server-owned: a real equipped mount, the right path and enough chân khí are required. */
+  private async toggleFlight(s: LivePlayer): Promise<string> {
+    const c = s.character;
+    if (c.hp <= 0) throw new Error('Không thể phi hành khi đã gục ngã.');
+    if (!isWorldZone(c.scene)) throw new Error('Chỉ có thể phi hành ngoài trời.');
+    if (c.flying) {
+      c.flying = false;
+      await this.sync(s);
+      return 'Đã hạ xuống mặt đất.';
+    }
+    const mount = flightItemOf(c.equipment, c.inventory);
+    if (!mount) throw new Error('Hãy trang bị vật phẩm phi hành (ô Phi hành) trước.');
+    if (!canRideMount(c.path, mount, c.realm, this.god(s)))
+      throw new Error(c.realm < 2 ? 'Cần đạt Trúc Cơ để phi hành.' : `${mount.name} không dành cho đạo tu của bạn.`);
+    if (!this.god(s) && c.mp < 10) throw new Error('Cần ít nhất 10 chân khí để cất cánh.');
+    c.flying = true;
+    await this.sync(s);
+    return `${mount.name}: đã cất cánh. Di chuyển nhanh hơn, chân khí tiêu hao dần.`;
+  }
+
+  /** Only verified dev power may jump between these fixed points; ordinary players walk. */
+  private async devTeleport(s: LivePlayer, payload: unknown): Promise<string> {
+    if (!this.god(s)) throw new Error('Dịch chuyển nhanh chỉ dành cho dev mode đã xác thực.');
+    if (s.character.scene === 'tribulation') throw new Error('Hãy rời lôi kiếp trước khi dịch chuyển.');
+    const id = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>).id : undefined;
+    const target = typeof id === 'string' ? DEV_TELEPORTS.find((entry) => entry.id === id) : undefined;
+    if (!target) throw new Error('Điểm dịch chuyển không hợp lệ.');
+    if (target.scene === 'ascendant' && !s.character.rebirths && !this.god(s))
+      throw new Error('Cần tái sinh trước khi đến Thượng Giới.');
+    const c = s.character;
+    bankCultivation(c);
+    c.flying = false;
+    c.scene = target.scene;
+    c.position = { ...target.position };
+    c.rotation = target.scene === 'overworld' ? 0 : Math.PI;
+    s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
+    await this.sync(s); this.sendSnapshots();
+    return `Dev teleport: ${target.name}.`;
+  }
+
   private async ascend(s: LivePlayer): Promise<string> {
     const c = s.character;
     if (c.scene !== 'sanctum' || c.hp <= 0 || !c.rebirths || distanceXZ(c.position, ASCENDANT_GATE.position) > ASCENDANT_GATE.radius)
       throw new Error('Chỉ đạo hữu đã tái sinh mới có thể bước qua Cổng Thượng Giới.');
     bankCultivation(c);
+    c.flying = false;
     c.scene = 'ascendant'; c.position = { ...ASCENDANT_GATE.arrival }; c.rotation = Math.PI;
     s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
     await this.sync(s); this.sendSnapshots();
@@ -375,6 +463,7 @@ export class World {
     const gate = PORTALS[c.scene];
     if (distanceXZ(c.position, gate.position) > gate.radius) throw new Error(`Hãy đến gần ${gate.name} để dịch chuyển.`);
     bankCultivation(c);
+    c.flying = false;
     c.scene = gate.destination;
     c.position = { ...gate.arrival };
     c.rotation = gate.destination === 'overworld' ? 0 : Math.PI;
@@ -393,7 +482,9 @@ export class World {
     const buffed = [...this.formations.values()].some((f) => f.scene === c.scene && distanceXZ(origin, f.position) <= f.radius);
     const stats = equippedStats(c);
     let count = 0, total = 0, crit = false;
-    const companion = c.inventory.some((owned) => owned.instanceId === c.equipment.pet && ITEMS[owned.itemId]?.slot === 'pet');
+    // A riding beast (Vân Hạc / Ngọc Lộc) also fights alongside a Ngự Thú cultivator.
+    const companion = c.inventory.some((owned) => owned.instanceId === c.equipment.pet && ITEMS[owned.itemId]?.slot === 'pet') ||
+      Boolean(flightItemOf(c.equipment, c.inventory)?.flight?.beast);
     const damageFor = (hp: number) => {
       const critical = randomInt(100) < 12 + (c.root.tier === 'bien_di' ? 8 : 0);
       const damage = this.god(s) ? hp : Math.max(1, Math.round((baseDamage + c.realm * 9 + stats.attack * 1.4) *
@@ -467,7 +558,7 @@ export class World {
     if (!c.learnedSkills.includes(skill.id)) throw new Error('Hãy học sách công pháp trước khi sử dụng kỹ năng.');
     if (c.realm < skillRealm(skill) || skill.path && c.path !== skill.path) throw new Error('Bạn chưa đạt cảnh giới hoặc không theo đạo tu của kỹ năng này.');
     if (!isWorldZone(c.scene)) throw new Error('Không thể thi triển công pháp trong nhà hoặc mật thất.');
-    if (skill.id !== 'healing_bloom' && c.scene === 'overworld') throw new Error('Tông Môn là khu vực an toàn: không thể tấn công.');
+    if (skill.id !== 'healing_bloom' && isSafeScene(c.scene)) throw new Error('Tông Môn và Vân Cốc là khu vực an toàn: không thể tấn công.');
     if (data.targetId !== undefined && (data.targetId === this.boss.id ? c.scene !== 'wilderness' :
       typeof data.targetId !== 'string' || this.monsters.get(data.targetId)?.scene !== c.scene))
       throw new Error('Mục tiêu không thuộc vùng này.');
@@ -648,7 +739,11 @@ export class World {
 
   private async buy(s: LivePlayer, payload: unknown): Promise<string> {
     const c = s.character;
-    if (!this.god(s)) requireNpc(c, 'shop');
+    if (!this.god(s)) {
+      const atSectShop = c.scene === 'overworld' && distanceXZ(c.position, NPCS.shop.position) <= 4.2;
+      const atVillageShop = c.scene === 'village' && distanceXZ(c.position, NPCS.village_shop.position) <= 4.2;
+      if (!atSectShop && !atVillageShop) throw new Error('Hãy đến gần Trưởng Lão Hậu Cần hoặc Lão Trương ở chợ Vân Cốc.');
+    }
     else if (c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể giao dịch lúc này.');
     const offerId = (payload as Record<string, unknown> | null)?.offerId;
     const offer = SHOP_STOCK.find((entry) => entry.id === offerId);
@@ -698,7 +793,9 @@ export class World {
     beast.respawnAt = Date.now() + 18_000;
     await this.sync(s);
     this.sendSnapshots();
-    return `Đã kết khế ước với ${beast.name}! ${ITEMS[petId].name} đã vào ô Linh thú, Ngự Thú đạo tăng 22% sát thương khi có thú.`;
+    const tamed = ITEMS[petId];
+    return `Đã kết khế ước với ${beast.name}! ${tamed.name} đã vào ô ${SLOT_LABEL[tamed.slot]}` +
+      `${tamed.flight ? ' · nhấn R để phi hành' : ''}. Ngự Thú đạo tăng 22% sát thương khi có thú đồng hành.`;
   }
 
   private async useItem(s: LivePlayer, payload: unknown): Promise<string> {
@@ -720,7 +817,8 @@ export class World {
   private async assignHotbar(s: LivePlayer, payload: unknown): Promise<string> {
     const { slot, skillId } = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
     const c = s.character;
-    if (!Number.isInteger(slot) || typeof slot !== 'number' || slot < 0 || slot > 3) throw new Error('Ô hotbar phải là phím 1–4.');
+    if (!Number.isInteger(slot) || typeof slot !== 'number' || slot < 0 || slot >= HOTBAR_SLOTS) throw new Error(`Ô hotbar phải là phím 1–${HOTBAR_SLOTS}.`);
+    s.character.hotbar = normalizeHotbar(s.character.hotbar);
     if (skillId !== null && (typeof skillId !== 'string' || !Object.hasOwn(SKILLS, skillId) || !c.learnedSkills.includes(skillId)))
       throw new Error('Bạn chưa học công pháp này.');
     if (typeof skillId === 'string' && (c.realm < skillRealm(SKILLS[skillId]) ||
@@ -980,6 +1078,7 @@ export class World {
         s.character.hp = Math.ceil(s.character.maxHp * 0.6);
         s.character.mp = Math.ceil(s.character.maxMp * 0.6);
         bankCultivation(s.character, now);
+        s.character.flying = false;
         s.character.scene = 'overworld';
         s.character.position = { ...PORTALS.wilderness.arrival };
         s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
@@ -987,7 +1086,8 @@ export class World {
         s.socket.emit('notice', 'Thần hồn quy vị. Bạn đã hồi sinh tại Tông Môn.' );
       }
       if (now - s.lastInputAt <= 400 && (s.character.hp > 0 || this.god(s))) {
-        const speed = 6; // dev uses the same walking pace as everyone else
+        // Flight is a real mount speed; walking pace stays identical for admins and players.
+        const speed = s.character.flying ? 10.5 : 6;
         const previous = { ...s.character.position };
         s.character.position.x += s.input.x * speed * dt;
         s.character.position.z += s.input.z * speed * dt;
@@ -1010,6 +1110,22 @@ export class World {
             })) s.character.position = previous;
           if (zone === 'overworld' && isAtSpiritLake(zone, previous) !== isAtSpiritLake(zone, s.character.position))
             bankCultivation(s.character, now, { scene: zone, position: previous });
+        }
+      }
+      // Sky-riding spends chân khí. Running dry lands the rider instead of leaving them stranded.
+      if (s.character.flying) {
+        // Losing the mount (or the sky) during a flight grounds the rider immediately.
+        if (!isWorldZone(s.character.scene) || s.character.hp <= 0 || !flightItemOf(s.character.equipment, s.character.inventory))
+          s.character.flying = false;
+        else if (now >= s.flightDrainAt) {
+          s.flightDrainAt = now + 1000;
+          if (!this.god(s)) {
+            s.character.mp = Math.max(0, s.character.mp - 1);
+            if (s.character.mp === 0) {
+              s.character.flying = false;
+              s.socket.emit('notice', 'Chân khí đã cạn, bạn hạ xuống mặt đất.');
+            }
+          }
         }
       }
       if (s.trial) this.advanceTrial(s, now);

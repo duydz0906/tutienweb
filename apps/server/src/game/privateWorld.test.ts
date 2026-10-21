@@ -9,7 +9,7 @@ import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
 import { MemoryStore } from '../db/store.js';
 import { addItem, newCharacter } from './rules.js';
-import { World } from './World.js';
+import { SPAWNS_PER_HABITAT, World } from './World.js';
 
 function ack(socket: ClientSocket, event: string, payload: object = {}): Promise<ActionResult> {
   return new Promise((resolve, reject) => socket.timeout(4000).emit(event, payload,
@@ -124,7 +124,7 @@ describe('server-owned homes, hidden chamber and Ascendant world', () => {
       if (entry.ok) expect([entry.character?.scene, entry.character?.position]).toEqual(['ascendant', ASCENDANT_GATE.arrival]);
       const upper = await snapshot(a, 'ascendant');
       expect(upper.players.map((p) => p.id)).toEqual([top.id]);
-      expect([upper.boss, upper.monsters.length, upper.herbs.length]).toEqual([null, HABITATS.filter((h) => h.scene === 'ascendant').length * 3, ASCENDANT_HERBS.length]);
+      expect([upper.boss, upper.monsters.length, upper.herbs.length]).toEqual([null, HABITATS.filter((h) => h.scene === 'ascendant').length * SPAWNS_PER_HABITAT, ASCENDANT_HERBS.length]);
       expect((await snapshot(b, 'overworld')).players.some((p) => p.id === top.id)).toBe(false);
       expect((await ack(a, 'cast', { skillId: 'spirit_cut', targetId: 'wolf-1' })).ok).toBe(false);
       expect((await ack(a, 'gather', { nodeId: 'herb-1' })).ok).toBe(false);

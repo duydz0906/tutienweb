@@ -16,9 +16,9 @@ const roles: { id: NpcId; gender: Gender; appearance: Partial<Appearance>; glow:
 ];
 
 /** NPCs and disciples use the same fitted HumanForge body, hair, clothes and facial morphs as players. */
-function person(id: string, name: string, gender: Gender, appearance: Partial<Appearance>, position: Vector3): PublicPlayer {
+function person(id: string, name: string, gender: Gender, appearance: Partial<Appearance>, position: Vector3, rotation = Math.PI): PublicPlayer {
   return {
-    id, name, gender, appearance: { ...DEFAULT_APPEARANCE, ...appearance }, position, rotation: Math.PI,
+    id, name, gender, appearance: { ...DEFAULT_APPEARANCE, ...appearance }, position, rotation,
     hp: 100, maxHp: 100, realm: 1, minorStage: 1, path: null,
     root: { tier: 'chan', elements: ['moc'], multiplier: 1 },
     equipment: { robe: 'novice_robe' }, isAdmin: false, devMode: false,
@@ -46,10 +46,12 @@ function Disciple({ index }: { index: number }) {
   const group = useRef<THREE.Group>(null);
   const ring = useRef<THREE.Group>(null);
   const meditate = index >= 2;
+  // rotation 0: the walking group already turns toward each waypoint. The old avatar-π made
+  // wandering disciples face (and appear to walk) backwards.
   const actor = useMemo(() => person(`sect-disciple-${index}`, 'Đệ tử Vân Thượng', index % 2 ? 'nu' : 'nam', {
     hair: index % 2 ? 'braid' : 'short', hairColor: index === 3 ? 'chestnut' : 'ink',
     robeColor: index % 2 ? 'jade' : 'ivory', height: 0.35 + index * 0.08,
-  }, { x: 0, y: 0, z: 0 }), [index]);
+  }, { x: 0, y: 0, z: 0 }, 0), [index]);
   useFrame(({ clock }, delta) => {
     const t = clock.elapsedTime;
     if (!group.current) return;

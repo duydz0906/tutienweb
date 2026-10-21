@@ -1,7 +1,12 @@
-import { expForStage, MAX_REALM, ROOT_MULTIPLIER, SKILLS, skillsForPath, type CharacterState, type DevModeBackup, type OwnCharacter } from '@van-thuong/shared';
+import { randomUUID } from 'node:crypto';
+import { expForStage, ITEMS, MAX_REALM, ROOT_MULTIPLIER, SKILLS, normalizeHotbar, skillsForPath,
+  type CharacterState, type DevModeBackup, type OwnCharacter } from '@van-thuong/shared';
 import type { Identity } from '../auth.js';
 import { isLocalDevIdentity } from '../localDev.js';
 import { GOD_STAT } from './rules.js';
+
+/** Stable instance ids for sandbox-only items; they must never survive a dev-mode revoke. */
+export const isDevGrant = (instanceId: string) => instanceId.startsWith('dev-grant-') || instanceId.startsWith('dev-sample-');
 
 export function hasDevPower(c: CharacterState, identity: Identity): boolean {
   return c.devMode && (identity.isAdmin || isLocalDevIdentity(identity));
@@ -34,14 +39,34 @@ export function equipDevLoadout(c: CharacterState): boolean {
     if (backup.appearance === undefined) backup.appearance = structuredClone(c.appearance);
     if (backup.learnedSkills === undefined) backup.learnedSkills = [...c.learnedSkills];
     if (backup.hotbar === undefined) backup.hotbar = [...c.hotbar];
-    if (backup.inventory === undefined) backup.inventory = structuredClone(c.inventory);
-    if (backup.equipment === undefined) backup.equipment = structuredClone(c.equipment);
+    // Dev sample items are granted below; never snapshot them into the restore copy.
+    if (backup.inventory === undefined)
+      backup.inventory = structuredClone(c.inventory.filter((item) => !isDevGrant(item.instanceId)));
+    if (backup.equipment === undefined) backup.equipment = Object.fromEntries(Object.entries(structuredClone(c.equipment))
+      .filter(([, instanceId]) => typeof instanceId !== 'string' || !isDevGrant(instanceId))) as CharacterState['equipment'];
     if (backup.stash === undefined) backup.stash = structuredClone(c.stash ?? []);
   }
   c.path ??= 'kiem';
   const skills = skillsForPath(c.path);
   c.learnedSkills = [...new Set([...c.learnedSkills, ...skills.map((skill) => skill.id)])];
-  if (c.hotbar.filter(Boolean).length < 2) c.hotbar = [SKILLS.spirit_cut.id, skills[1].id, skills.at(-2)!.id, skills.at(-1)!.id];
+  c.hotbar = normalizeHotbar(c.hotbar);
+  if (c.hotbar.filter(Boolean).length < 2)
+    c.hotbar = normalizeHotbar([SKILLS.spirit_cut.id, skills[1].id, skills[2].id, skills.at(-2)!.id, skills.at(-1)!.id]);
+  // Dev sandbox also carries one of every flight item, so sky-riding can be tested without farming.
+  const flightIds = Object.values(ITEMS).filter((item) => item.flight).map((item) => item.id);
+  for (const itemId of flightIds) {
+    if (!c.inventory.some((item) => item.itemId === itemId))
+      c.inventory.push({ instanceId: `dev-grant-${itemId}`, itemId, acquiredAt: Date.now() });
+  }
+  if (!c.equipment.mount) {
+    const sword = c.inventory.find((item) => item.itemId === 'flying_sword');
+    if (sword) c.equipment.mount = sword.instanceId;
+  }
+  // Dev sandbox gets one sample of every flight item so the new mechanic can be tested without farming.
+  for (const itemId of ['flying_sword', 'cloud_disc', 'wind_fire_wheel', 'cloud_crane_mount', 'ink_cloud', 'spirit_cloud']) {
+    if (!c.inventory.some((owned) => owned.itemId === itemId))
+      c.inventory.push({ instanceId: `dev-sample-${itemId}`, itemId, acquiredAt: Date.now() });
+  }
   return before !== JSON.stringify([c.path, c.learnedSkills, c.hotbar, c.devModeBackup]);
 }
 
@@ -93,7 +118,7 @@ export function revokeDevMode(c: CharacterState): void {
   if (b.gender) c.gender = b.gender;
   if (b.appearance) c.appearance = structuredClone(b.appearance);
   if (b.learnedSkills) c.learnedSkills = [...b.learnedSkills];
-  if (b.hotbar) c.hotbar = [...b.hotbar];
+  if (b.hotbar) c.hotbar = normalizeHotbar(b.hotbar);
   if (b.inventory) c.inventory = structuredClone(b.inventory);
   if (b.equipment) c.equipment = structuredClone(b.equipment);
   if (b.stash) c.stash = structuredClone(b.stash);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { AlertCircle, CheckCircle2, LoaderCircle, Sparkles, X } from 'lucide-react';
-import { DEFAULT_APPEARANCE, ASCENDANT_GATE, HOME_CHEST, HOME_EXIT, HOME_GATE, MAX_REALM, PORTALS, REBIRTH_ALTAR, SANCTUM_EXIT, SECRET_GATE, isWorldZone, type ActionResult, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
+import { DEFAULT_APPEARANCE, ASCENDANT_GATE, HOME_CHEST, HOME_EXIT, HOME_GATE, MAX_REALM, PORTALS, REBIRTH_ALTAR, SANCTUM_EXIT, SECRET_GATE, SKILLS, VILLAGE_GATE, isSafeScene, isWorldZone, skillRealm, type ActionResult, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
   type NpcId, type OwnCharacter, type Path, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { WorldScene, type PreviewOptions } from './game/WorldScene';
 import { type VisualEffect } from './game/WorldDecor';
@@ -12,6 +12,7 @@ import { GameHUD } from './components/GameHUD';
 import { TouchJoystick } from './components/TouchJoystick';
 import { Panels, PathModal, type ActivePanel, type AdminPlayer } from './components/Panels';
 import { ApiError, api } from './lib/api';
+import { loadHudPrefs, saveHudPrefs, type HudPrefs } from './lib/uiPrefs';
 import { firebaseEnabled, loginGoogle, loginPassword, logoutFirebase, observeFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
 
@@ -21,6 +22,8 @@ type Toast = { id: string; text: string; kind: 'good' | 'bad' | 'info' };
 const DEMO_KEY = 'van-thuong:demo-session';
 const GUEST_KEY = 'van-thuong:local-guest'; // opt-in guest identity survives a local dev restart
 const initialPreview: PreviewOptions = { name: '', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE }, view: 'body' };
+// Cooldown, mana and miss results are already shown on the skill slot / combat feedback.
+const QUIET_CAST = /(đang hồi|chân khí|không trúng|Đòn đánh trượt|Sinh lực đã đầy|Hãy để chiêu trước)/i;
 
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -44,6 +47,8 @@ export function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [roster, setRoster] = useState<AdminPlayer[]>([]);
   const [now, setNow] = useState(Date.now());
+  const [hudPrefs, setHudPrefs] = useState<HudPrefs>(loadHudPrefs);
+  const [lastCast, setLastCast] = useState<{ id: number; name: string } | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const touchMovement = useRef({ right: 0, forward: 0 });
   const previousRealm = useRef(0);
@@ -51,6 +56,9 @@ export function App() {
   const livePositionRef = useRef<{ x: number; z: number } | null>(null);
   livePositionRef.current = world?.scene === character?.scene ?
     world?.players.find((p) => p.id === character?.id)?.position ?? character?.position ?? null : character?.position ?? null;
+
+  useEffect(() => { saveHudPrefs(hudPrefs); }, [hudPrefs]);
+  const updateHudPrefs = useCallback((patch: Partial<HudPrefs>) => setHudPrefs((current) => ({ ...current, ...patch })), []);
 
   const notify = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -236,7 +244,7 @@ export function App() {
     setPhase('login'); setError(null);
   };
 
-  const action = useCallback(async (event: string, payload: object = {}): Promise<boolean> => {
+  const action = useCallback(async (event: string, payload: object = {}, options?: { quiet?: boolean }): Promise<boolean> => {
     const socket = socketRef.current;
     if (!socket?.connected) { notify('Đang kết nối thế giới. Vui lòng chờ...', 'bad'); return false; }
     try {
@@ -246,9 +254,13 @@ export function App() {
           else resolve(response);
         });
       });
-      if (!result.ok) { notify(result.error, 'bad'); return false; }
+      if (!result.ok) {
+        // A cooling skill only counts down on its slot, never as a toast over the battlefield.
+        if (!options?.quiet || !QUIET_CAST.test(result.error)) notify(result.error, 'bad');
+        return false;
+      }
       if (result.character) setCharacter(result.character);
-      if (result.message) notify(result.message, 'good');
+      if (result.message && !options?.quiet) notify(result.message, 'good');
       return true;
     } catch (e) { notify(e instanceof Error ? e.message : 'Thao tác thất bại.', 'bad'); return false; }
   }, [notify]);
@@ -269,6 +281,15 @@ export function App() {
   const gather = useCallback((id: string) => { void action('gather', { nodeId: id }); }, [action]);
   const travel = useCallback(() => { void action('portal:travel'); }, [action]);
   const skill = useCallback((id: string) => {
+    const definition = SKILLS[id];
+    // Locked/cooling keys stay silent: the slot itself already shows the countdown.
+    if (!definition || !character || character.hp <= 0 || !isWorldZone(character.scene)) return;
+    if (definition.id !== 'healing_bloom' && isSafeScene(character.scene)) return;
+    if (character.realm < skillRealm(definition) || (definition.path && definition.path !== character.path)) return;
+    if (!character.devMode && (cooldowns[definition.id] ?? 0) > Date.now()) return;
+    const stamp = Date.now();
+    setLastCast({ id: stamp, name: definition.name });
+    window.setTimeout(() => setLastCast((current) => current?.id === stamp ? null : current), 1600);
     const activeWorld = world?.scene === character?.scene ? world : null;
     const boss = activeWorld?.boss;
     const target = selectedTarget && (activeWorld?.monsters.some((m) => m.id === selectedTarget && m.hp > 0) ||
@@ -276,11 +297,14 @@ export function App() {
       [...(activeWorld?.monsters.filter((m) => m.hp > 0) ?? []), ...(boss && boss.hp > 0 ? [boss] : [])]
         .sort((a, b) => Math.hypot(a.position.x - (livePositionRef.current?.x ?? 0), a.position.z - (livePositionRef.current?.z ?? 0)) -
           Math.hypot(b.position.x - (livePositionRef.current?.x ?? 0), b.position.z - (livePositionRef.current?.z ?? 0)))[0]?.id;
-    void action('cast', { skillId: id, ...(id !== 'healing_bloom' && target ? { targetId: target } : {}) });
-  }, [action, world, selectedTarget, character?.scene]);
-  const basicAttack = useCallback(() => { playSwordWhoosh(); void action('basic-attack', { targetId: selectedTarget }); }, [action, selectedTarget]);
+    void action('cast', { skillId: id, ...(id !== 'healing_bloom' && target ? { targetId: target } : {}) }, { quiet: true });
+  }, [action, world, selectedTarget, character, cooldowns]);
+  const basicAttack = useCallback(() => { playSwordWhoosh(); void action('basic-attack', { targetId: selectedTarget }, { quiet: true }); }, [action, selectedTarget]);
   const interactNpc = useCallback((id: NpcId) => {
-    if (phase === 'game') openPanel(id === 'master' ? 'sect' : id === 'quest' ? 'quests' : id === 'alchemist' ? 'alchemy' : id === 'beast' ? 'beast' : 'shop');
+    if (phase !== 'game') return;
+    // The village elder points newcomers at the handbook instead of opening a shop.
+    openPanel(id === 'master' ? 'sect' : id === 'quest' ? 'quests' : id === 'alchemist' ? 'alchemy' : id === 'beast' ? 'beast'
+      : id === 'village_elder' ? 'help' : 'shop');
   }, [phase]);
   const chat = useCallback((text: string) => { socketRef.current?.emit('chat', text); }, []);
   const selectPath = (path: Path) => { void action('choose-path', { path }).then((ok) => { if (ok) setPathModal(false); }); };
@@ -295,6 +319,10 @@ export function App() {
       if (event.code === 'KeyI') openPanel(panel === 'inventory' ? null : 'inventory');
       if (event.code === 'KeyQ') openPanel(panel === 'quests' ? null : 'quests');
       if (event.code === 'KeyK') openPanel(panel === 'skills' ? null : 'skills');
+      if (event.code === 'KeyM') openPanel(panel === 'menu' ? null : 'menu');
+      if (event.code === 'KeyC' && !panel) updateHudPrefs({ chatOpen: !hudPrefs.chatOpen });
+      if (event.code === 'KeyT' && !panel) updateHudPrefs({ cultivateOpen: !hudPrefs.cultivateOpen });
+      if (event.code === 'KeyR' && !panel && !pathModal) void action('flight:toggle');
       if (event.code === 'KeyF' && character.scene === 'tribulation' && !panel) void action('guard');
       const position = livePositionRef.current ?? character.position;
       const near = (target: { position: { x: number; z: number }; radius: number }) =>
@@ -302,6 +330,7 @@ export function App() {
       if (event.code === 'KeyE' && !panel && !pathModal) {
         const gate = isWorldZone(character.scene) ? PORTALS[character.scene] : null;
         if (gate && near(gate)) { event.preventDefault(); travel(); }
+        else if (character.scene === 'overworld' && near(VILLAGE_GATE)) { event.preventDefault(); void action('village:enter'); }
         else if (character.scene === 'overworld' && near(HOME_GATE)) { event.preventDefault(); void action('home:enter'); }
         else if (character.scene === 'overworld' && (character.rebirths > 0 || character.realm === MAX_REALM && character.minorStage === 9) && near(SECRET_GATE)) {
           event.preventDefault(); void action('sanctum:enter');
@@ -316,15 +345,16 @@ export function App() {
           (character.scene === 'wilderness' || character.scene === 'ascendant')) {
         event.preventDefault(); basicAttack();
       }
-      if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(event.code) && !panel && !pathModal) {
-        const move = character.hotbar[Number(event.code.slice(-1)) - 1];
+      const digit = /^Digit([1-9])$/.exec(event.code);
+      if (digit && !panel && !pathModal) {
+        const move = character.hotbar[Number(digit[1]) - 1];
         if (move) skill(move);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [character?.isAdmin, character?.hotbar, character?.scene, character?.rebirths, character?.realm, character?.minorStage,
-    phase, panel, pathModal, skill, basicAttack, action, travel]);
+    phase, panel, pathModal, skill, basicAttack, action, travel, hudPrefs.chatOpen, hudPrefs.cultivateOpen, updateHudPrefs]);
 
   const showCharacter = inWorld ? character : null;
   const livePosition = world && character && world.scene === character.scene ? world.players.find((p) => p.id === character.id)?.position : null;
@@ -353,10 +383,11 @@ export function App() {
     </div>}
     {phase === 'game' && character && <>
       <GameHUD character={character} world={world} trial={trial} connected={connected} cooldowns={cooldowns} messages={messages} panel={panel} selectedTarget={selectedTarget}
+        hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} lastCast={lastCast}
         onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onAttack={basicAttack} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
       <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} onOpenPath={() => { openPanel(null); setPathModal(true); }} character={panelCharacter ?? character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
-        connected={connected} />
+        connected={connected} hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} />
       {pathModal && character.realm >= 2 && (!character.path || character.devMode) && <PathModal devMode={character.devMode} onClose={() => setPathModal(false)} onSelect={selectPath} />}
     </>}
     <div className="toast-stack" aria-live="polite">{toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.kind === 'bad' ? <AlertCircle size={18} /> : toast.kind === 'good' ? <CheckCircle2 size={18} /> : <Sparkles size={18} />}<span>{toast.text}</span><button aria-label="Đóng thông báo" onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}><X size={14} /></button></div>)}</div>

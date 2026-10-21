@@ -57,7 +57,7 @@ export const CharacterModel = mongoose.model('Character', new Schema({
   maxHp: { type: Number, required: true }, maxMp: { type: Number, required: true },
   position: { type: vectorSchema, required: true },
   rotation: { type: Number, required: true },
-  scene: { type: String, enum: ['overworld', 'wilderness', 'ascendant', 'residence', 'sanctum', 'tribulation'], default: 'overworld' },
+  scene: { type: String, enum: ['overworld', 'wilderness', 'ascendant', 'village', 'residence', 'sanctum', 'tribulation'], default: 'overworld' },
   worldVersion: { type: Number, default: 1 }, // legacy single-map records migrate once on join
   equipment: { type: new Schema(equipmentSlots, { _id: false }), default: () => ({}) },
   // Canonical ownership list. EquipmentModel is a queryable materialized view of it.
@@ -73,7 +73,8 @@ export const CharacterModel = mongoose.model('Character', new Schema({
   dailyDay: { type: String, default: '' },
   dailyQuests: { type: [new Schema({ id: String, progress: { type: Number, min: 0, default: 0 }, claimed: { type: Boolean, default: false } }, { _id: false })], default: [] },
   learnedSkills: { type: [String], default: ['spirit_cut'] },
-  hotbar: { type: [String], default: ['spirit_cut', null, null, null] },
+  hotbar: { type: [String], default: () => Array.from({ length: 9 }, (_, index) => index === 0 ? 'spirit_cut' : null) },
+  flying: { type: Boolean, default: false },
   devMode: { type: Boolean, default: false },
   // Set by the server only, so a revoked admin session can restore the original character.
   devModeBackup: { type: Schema.Types.Mixed, default: undefined },

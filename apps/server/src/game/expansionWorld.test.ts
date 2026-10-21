@@ -8,7 +8,7 @@ import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
 import { MemoryStore } from '../db/store.js';
 import { newCharacter } from './rules.js';
-import { MONSTER_SPAWNS, World } from './World.js';
+import { MONSTER_SPAWNS, SPAWNS_PER_HABITAT, World } from './World.js';
 
 function ack(socket: ClientSocket, event: string, payload: object = {}): Promise<ActionResult> {
   return new Promise((resolve, reject) => socket.timeout(4000).emit(event, payload,
@@ -23,14 +23,14 @@ function next<T>(socket: ClientSocket, event: string): Promise<T> {
 }
 
 describe('new habitats, spirit beasts and alchemy (authoritative server)', () => {
-  it('spawns three kinds of enemies in every spaced-out level habitat', () => {
-    expect(HABITATS).toHaveLength(14);
-    expect(MONSTER_SPAWNS).toHaveLength(42);
+  it('spawns one pack of enemies in every spaced-out level habitat', () => {
+    expect(HABITATS).toHaveLength(20);
+    expect(MONSTER_SPAWNS).toHaveLength(20 * SPAWNS_PER_HABITAT);
     expect(new Set(HABITATS.map((habitat) => habitat.level)).size).toBe(14);
     expect(new Set(HABITATS.map((habitat) => habitat.biome)).size).toBeGreaterThanOrEqual(7);
     for (const habitat of HABITATS) {
       const spawned = MONSTER_SPAWNS.filter((monster) => monster.id.startsWith(`${habitat.id}-`));
-      expect(spawned).toHaveLength(3);
+      expect(spawned).toHaveLength(SPAWNS_PER_HABITAT);
       expect(spawned.every((monster) => monster.scene === habitat.scene && monster.kind === habitat.kind && monster.level === habitat.level &&
         Math.hypot(monster.position.x - habitat.center.x, monster.position.z - habitat.center.z) < habitat.radius)).toBe(true);
       for (const other of HABITATS) {

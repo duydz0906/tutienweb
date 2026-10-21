@@ -91,11 +91,12 @@ export class SceneEngine {
     // Place the camera to the side of the room's entry door. Otherwise the exit door
     // blocks the avatar and its sprite fills the screen on arrival.
     const interior = zone === 'residence' || zone === 'sanctum';
-    this.distance = zone === 'overworld' ? 7.1 : interior ? 5.0 : zone === 'tribulation' ? 12 : 7.5;
+    const safeOpen = zone === 'overworld' || zone === 'village';
+    this.distance = safeOpen ? 7.1 : interior ? 5.0 : zone === 'tribulation' ? 12 : 7.5;
     this.pitch = zone === 'tribulation' ? 0.34 : interior ? 0.24 : 0.27;
     // Third-person chase axis: W advances away from the camera, never toward it.
     // The sect spawns facing +Z; wilderness, Ascendant and private rooms face -Z.
-    this.yaw = zone === 'overworld' ? Math.PI : interior ? 0.85 : 0;
+    this.yaw = safeOpen ? Math.PI : interior ? 0.85 : 0;
     this.lastRotation = zone === 'overworld' ? 0 : Math.PI;
     this.lookAt.set(position.x, position.y + 1.65, position.z);
     this.camera.position.set(
