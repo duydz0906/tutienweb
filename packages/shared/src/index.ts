@@ -1,6 +1,9 @@
 /* Wire contracts and public game data. Never put secrets or admin credentials here. */
 import levelConfig from './level_config.json' with { type: 'json' };
 export type Vector3 = { x: number; y: number; z: number };
+/** One map boundary for authoritative movement, rendering and minimap. */
+export const WORLD_RADIUS = 68;
+export const SECT_RADIUS = 58;
 export type WorldZone = 'overworld' | 'wilderness' | 'ascendant';
 export type GameScene = WorldZone | 'residence' | 'sanctum' | 'tribulation';
 export const PUBLIC_ZONES: readonly WorldZone[] = ['overworld', 'wilderness', 'ascendant'];
@@ -52,6 +55,8 @@ export const SECT_BUILDINGS = [
   { id: 'disciples', name: 'ĐỆ TỬ XÁ', x: -33, z: 18, width: 9, depth: 9, doorway: 3.4, height: 4.2 },
   { id: 'disciples-west', name: 'ĐỆ TỬ XÁ · TÂY', x: -32, z: -5, width: 9, depth: 8, doorway: 3.2, height: 4.0 },
   { id: 'disciples-south', name: 'ĐỆ TỬ XÁ · NAM', x: -31, z: -16, width: 9, depth: 8, doorway: 3.2, height: 4.0 },
+  { id: 'beast', name: 'NGỰ THÚ VIỆN', x: -17, z: -4, width: 12, depth: 10, doorway: 4.2, height: 4.8 },
+  { id: 'alchemy', name: 'PHÒNG LUYỆN ĐAN', x: 17, z: -8, width: 13, depth: 11, doorway: 4.4, height: 5.0 },
 ] as const;
 export const LEVEL_CONFIG = levelConfig;
 export const REALMS = levelConfig.realms;
@@ -68,7 +73,10 @@ export function majorBreakthroughCost(realm: number, stage: number): number | nu
   return stage === levelConfig.minorStages ? expForStage(stage) : null;
 }
 export type Gender = 'nam' | 'nu';
-export type Path = 'kiem' | 'phap' | 'the';
+export type Path = 'kiem' | 'phap' | 'the' | 'thu' | 'ma';
+export const PATH_LABEL: Record<Path, string> = {
+  kiem: 'Kiếm Tu', phap: 'Pháp Tu', the: 'Thể Tu', thu: 'Ngự Thú', ma: 'Ma Tu',
+};
 export type RootTier = 'tap' | 'chan' | 'thien' | 'bien_di' | 'hon_don';
 export type Element = 'kim' | 'moc' | 'thuy' | 'hoa' | 'tho' | 'bang' | 'phong' | 'loi' | 'am' | 'quang';
 export const ELEMENT_LABEL: Record<Element, string> = {
@@ -139,6 +147,12 @@ export const ITEMS: Record<string, ItemDefinition> = {
   jade_necklace: { id: 'jade_necklace', name: 'Ngọc Tâm Bội', slot: 'necklace', rarity: 'rare', description: 'Ngọc bội tĩnh tâm dưỡng khí.', attack: 3, defense: 4, icon: '◇' },
   fate_orb: { id: 'fate_orb', name: 'Bản Mệnh Châu', slot: 'artifact', rarity: 'epic', description: 'Pháp bảo bay quanh chủ nhân.', attack: 12, defense: 3, icon: '✧' },
   spirit_fox: { id: 'spirit_fox', name: 'Linh Hồ', slot: 'pet', rarity: 'epic', description: 'Tiểu hồ ly theo bước tu tiên.', attack: 5, defense: 5, icon: '✿' },
+  spirit_wolf: { id: 'spirit_wolf', name: 'Linh Lang Thuần Hóa', slot: 'pet', rarity: 'rare', description: 'Bạn đồng hành thuần phục từ bãi sói.', attack: 9, defense: 3, icon: '♟' },
+  iron_boar: { id: 'iron_boar', name: 'Thiết Giáp Linh Trư', slot: 'pet', rarity: 'rare', description: 'Linh thú thủ hộ đến từ bãi đá.', attack: 5, defense: 10, icon: '◈' },
+  cloud_crane_pet: { id: 'cloud_crane_pet', name: 'Vân Hạc', slot: 'pet', rarity: 'epic', description: 'Hạc tiên từ Thượng Giới.', attack: 14, defense: 7, icon: '❖' },
+  spirit_stag_pet: { id: 'spirit_stag_pet', name: 'Ngọc Giác Linh Lộc', slot: 'pet', rarity: 'epic', description: 'Linh lộc thuần phục từ rừng Thượng Giới.', attack: 11, defense: 11, icon: '✥' },
+  spirit_serpent: { id: 'spirit_serpent', name: 'Thanh Lân Linh Xà', slot: 'pet', rarity: 'epic', description: 'Rắn linh hộ pháp từ Hoang Vực hoặc Thượng Giới.', attack: 16, defense: 4, icon: '☯' },
+  shadow_raven: { id: 'shadow_raven', name: 'Ám Nha', slot: 'pet', rarity: 'epic', description: 'Linh thú Ám hệ thuần phục bên rìa Hoang Vực.', attack: 13, defense: 4, icon: '◆' },
   lotus_talisman: { id: 'lotus_talisman', name: 'Liên Hoa Phù', slot: 'talisman', rarity: 'rare', description: 'Phù văn bảo vệ thần hồn.', attack: 2, defense: 7, icon: '✦' },
 };
 export const CONSUMABLES = {
@@ -155,6 +169,8 @@ export const NPCS = {
   master: { id: 'master', name: 'Chưởng Môn Vân Thượng', role: 'Chính Điện · Cốt truyện và thăng cấp', position: { x: 0, y: 0, z: 29 } },
   quest: { id: 'quest', name: 'Trưởng Lão Chấp Sự', role: 'Nhiệm Vụ Các · Nhiệm vụ hằng ngày', position: { x: -17, y: 0, z: 18.5 } },
   shop: { id: 'shop', name: 'Trưởng Lão Hậu Cần', role: 'Tàng Bảo Các · Cửa hàng tông môn', position: { x: 17, y: 0, z: 18.5 } },
+  beast: { id: 'beast', name: 'Ngự Thú Sư', role: 'Ngự Thú Viện · Thuần hóa linh thú', position: { x: -17, y: 0, z: -4 } },
+  alchemist: { id: 'alchemist', name: 'Đan Sư', role: 'Phòng Luyện Đan · Luyện đan dược', position: { x: 17, y: 0, z: -8 } },
 } as const;
 export type NpcId = keyof typeof NPCS;
 /** Herbs in the wilderness: positions are public, availability and rewards are server-owned. */
@@ -182,8 +198,13 @@ export const DAILY_QUESTS = {
 } as const;
 export type DailyQuestId = keyof typeof DAILY_QUESTS;
 export type DailyQuestProgress = { id: DailyQuestId; progress: number; claimed: boolean };
-export type ShopOffer = { id: string; itemId?: string; skillId?: string; stones: number; contribution: number };
+export type ShopOffer = { id: string; itemId?: string; skillId?: string; resource?: keyof Resources; quantity?: number; stones: number; contribution: number };
 export const SHOP_STOCK: ShopOffer[] = [
+  { id: 'stones_bundle', resource: 'stones', quantity: 8, stones: 0, contribution: 5 },
+  { id: 'herbs_bundle', resource: 'herbs', quantity: 3, stones: 9, contribution: 0 },
+  { id: 'ore_bundle', resource: 'ore', quantity: 2, stones: 10, contribution: 0 },
+  { id: 'ink_bundle', resource: 'ink', quantity: 2, stones: 12, contribution: 0 },
+  { id: 'spirit_fox', itemId: 'spirit_fox', stones: 50, contribution: 15 },
   { id: 'moon_robe', itemId: 'moon_robe', stones: 16, contribution: 0 },
   { id: 'jade_blade', itemId: 'jade_blade', stones: 30, contribution: 10 },
   { id: 'cloud_crown', itemId: 'cloud_crown', stones: 15, contribution: 0 },
@@ -195,12 +216,26 @@ export const SHOP_STOCK: ShopOffer[] = [
   { id: 'sword_book', skillId: 'sword_domain', stones: 28, contribution: 35 },
   { id: 'meteor_book', skillId: 'void_meteor', stones: 28, contribution: 35 },
   { id: 'diamond_book', skillId: 'diamond_body', stones: 28, contribution: 35 },
+  { id: 'heaven_blade_book', skillId: 'heaven_blade', stones: 65, contribution: 60 },
+  { id: 'celestial_swords_book', skillId: 'celestial_swords', stones: 130, contribution: 120 },
+  { id: 'frost_lotus_book', skillId: 'frost_lotus', stones: 65, contribution: 60 },
+  { id: 'thunder_stars_book', skillId: 'thunder_stars', stones: 130, contribution: 120 },
+  { id: 'dragon_fist_book', skillId: 'dragon_fist', stones: 65, contribution: 60 },
+  { id: 'immortal_body_book', skillId: 'immortal_body', stones: 130, contribution: 120 },
+  { id: 'beast_roar_book', skillId: 'beast_roar', stones: 65, contribution: 60 },
+  { id: 'myriad_beasts_book', skillId: 'myriad_beasts', stones: 130, contribution: 120 },
+  { id: 'blood_moon_book', skillId: 'blood_moon', stones: 65, contribution: 60 },
+  { id: 'abyss_reap_book', skillId: 'abyss_reap', stones: 130, contribution: 120 },
 ];
 export type DevModeBackup = {
   root: SpiritRoot; realm: number; minorStage: number; cultivation: number; totalCultivation: number;
   hp: number; mp: number; maxHp: number; maxMp: number;
   /** Optional for characters whose dev mode was saved before resource backup was added. */
   resources?: Resources; contribution?: number;
+  /** Dev-only customization and free acquisitions must not survive role revocation. Older backups lack these fields. */
+  path?: Path | null; gender?: Gender; appearance?: Appearance;
+  learnedSkills?: string[]; hotbar?: (string | null)[];
+  inventory?: OwnedItem[]; equipment?: Partial<Record<EquipmentSlot, string>>; stash?: OwnedItem[];
 };
 export type CharacterState = {
   id: string; ownerUid: string; name: string; gender: Gender; appearance: Appearance;
@@ -226,7 +261,33 @@ export type PublicPlayer = {
   root: SpiritRoot; gender: Gender; appearance: Appearance;
   equipment: Partial<Record<EquipmentSlot, string>>; isAdmin: boolean; devMode: boolean; shieldUntil?: number;
 };
-export type MonsterKind = 'wolf' | 'boar' | 'shade' | 'spirit_stag' | 'sky_wraith';
+export const MONSTER_KINDS = ['wolf', 'boar', 'shade', 'forest_serpent', 'stone_golem',
+  'spirit_stag', 'sky_wraith', 'cloud_crane', 'void_serpent', 'star_guardian'] as const;
+export type MonsterKind = (typeof MONSTER_KINDS)[number];
+export const TAMEABLE_BEASTS: Partial<Record<MonsterKind, keyof typeof ITEMS>> = {
+  wolf: 'spirit_wolf', boar: 'iron_boar', shade: 'shadow_raven', forest_serpent: 'spirit_serpent',
+  spirit_stag: 'spirit_stag_pet', cloud_crane: 'cloud_crane_pet', sky_wraith: 'shadow_raven', void_serpent: 'spirit_serpent',
+};
+/** One biome per level: server spawns here, client renders matching terrain and wayfinding. */
+export type Habitat = { id: string; scene: 'wilderness' | 'ascendant'; kind: MonsterKind; name: string;
+  level: number; center: { x: number; z: number }; radius: number; color: string;
+  biome: 'pine' | 'rock' | 'mist' | 'swamp' | 'ruins' | 'grove' | 'cloud' | 'crystal'; hp: number };
+export const HABITATS: readonly Habitat[] = [
+  { id: 'wolf-glen', scene: 'wilderness', kind: 'wolf', name: 'Linh Lang', level: 1, center: { x: -14, z: 6 }, radius: 7, color: '#a9d7c5', biome: 'pine', hp: 75 },
+  { id: 'wolf-ridge', scene: 'wilderness', kind: 'wolf', name: 'Linh Lang Đầu Đàn', level: 2, center: { x: 13, z: -8 }, radius: 7, color: '#b2d4ec', biome: 'pine', hp: 105 },
+  { id: 'boar-quarry', scene: 'wilderness', kind: 'boar', name: 'Thiết Giáp Trư', level: 3, center: { x: -38, z: -10 }, radius: 7, color: '#e6b292', biome: 'rock', hp: 185 },
+  { id: 'boar-ravine', scene: 'wilderness', kind: 'boar', name: 'Nham Giáp Trư', level: 4, center: { x: -44, z: -37 }, radius: 7, color: '#e89b73', biome: 'rock', hp: 235 },
+  { id: 'shade-mist', scene: 'wilderness', kind: 'shade', name: 'U Ảnh', level: 5, center: { x: 36, z: -23 }, radius: 7, color: '#baa3f0', biome: 'mist', hp: 340 },
+  { id: 'shade-marsh', scene: 'wilderness', kind: 'shade', name: 'Huyết Ảnh', level: 6, center: { x: 36, z: -50 }, radius: 7, color: '#ed9fc7', biome: 'swamp', hp: 420 },
+  { id: 'serpent-thicket', scene: 'wilderness', kind: 'forest_serpent', name: 'Thanh Lân Xà', level: 7, center: { x: -19, z: -44 }, radius: 7, color: '#75d5a0', biome: 'swamp', hp: 505 },
+  { id: 'golem-ruins', scene: 'wilderness', kind: 'stone_golem', name: 'Cổ Thạch Khôi', level: 8, center: { x: 7, z: -26 }, radius: 7, color: '#d8c298', biome: 'ruins', hp: 640 },
+  { id: 'stag-grove', scene: 'ascendant', kind: 'spirit_stag', name: 'Linh Lộc Thượng Giới', level: 9, center: { x: -17, z: 1 }, radius: 7, color: '#b3f4db', biome: 'grove', hp: 520 },
+  { id: 'stag-spring', scene: 'ascendant', kind: 'spirit_stag', name: 'Ngọc Giác Linh Lộc', level: 10, center: { x: -30, z: -28 }, radius: 7, color: '#a1f5db', biome: 'grove', hp: 620 },
+  { id: 'crane-peak', scene: 'ascendant', kind: 'cloud_crane', name: 'Vân Hạc', level: 11, center: { x: 15, z: -9 }, radius: 7, color: '#c1e8ff', biome: 'cloud', hp: 770 },
+  { id: 'wraith-cloud', scene: 'ascendant', kind: 'sky_wraith', name: 'Thiên Ảnh', level: 12, center: { x: 36, z: -35 }, radius: 7, color: '#ccb9ff', biome: 'mist', hp: 940 },
+  { id: 'serpent-void', scene: 'ascendant', kind: 'void_serpent', name: 'Hư Không Mãng', level: 14, center: { x: -20, z: -52 }, radius: 7, color: '#a29beb', biome: 'crystal', hp: 1230 },
+  { id: 'guardian-star', scene: 'ascendant', kind: 'star_guardian', name: 'Tinh Thần Hộ Vệ', level: 16, center: { x: 18, z: -53 }, radius: 7, color: '#f4cc86', biome: 'ruins', hp: 1570 },
+];
 export type MonsterState = { id: string; scene: 'wilderness' | 'ascendant'; kind: MonsterKind; name: string; level: number;
   position: Vector3; hp: number; maxHp: number; radius: number; respawnAt: number | null };
 export type BossState = { id: string; name: string; position: Vector3; hp: number; maxHp: number; respawnAt: number | null };
@@ -247,7 +308,8 @@ export type LeaderboardEntry = { id: string; name: string; score: number; realm:
 export type SkillDefinition = {
   id: string; name: string; description: string; path: Path | null; shape: 'line' | 'sphere' | 'cone';
   range: number; radius: number; damage: number; mana: number; cooldown: number; ultimate?: boolean;
-  icon: string; color: string;
+  /** Path skills default to Trúc Cơ (2); higher techniques require their book and realm. */
+  minRealm?: number; icon: string; color: string;
 };
 export const SKILLS: Record<string, SkillDefinition> = {
   spirit_cut: { id: 'spirit_cut', name: 'Linh Khí Trảm', description: 'Kiếm khí thẳng phía trước.', path: null, shape: 'line', range: 9, radius: 1.15, damage: 19, mana: 5, cooldown: 1.6, icon: '✦', color: '#f3d8a3' },
@@ -258,16 +320,29 @@ export const SKILLS: Record<string, SkillDefinition> = {
   void_meteor: { id: 'void_meteor', name: 'Diệt Thế Tinh Vẫn', description: 'Triệu hồi thiên thạch từ hư không.', path: 'phap', shape: 'sphere', range: 19, radius: 7, damage: 150, mana: 70, cooldown: 36, ultimate: true, icon: '✺', color: '#ff795e' },
   earth_shatter: { id: 'earth_shatter', name: 'Chấn Địa Quyền', description: 'Nắm đấm tạo sóng xung kích.', path: 'the', shape: 'sphere', range: 1, radius: 5, damage: 43, mana: 16, cooldown: 6, icon: '◉', color: '#f3cc81' },
   diamond_body: { id: 'diamond_body', name: 'Kim Cang Hộ Thể', description: 'Hộ thân, hút máu và chấn địa.', path: 'the', shape: 'sphere', range: 1, radius: 7, damage: 98, mana: 55, cooldown: 33, ultimate: true, icon: '❖', color: '#ffdf81' },
+  heaven_blade: { id: 'heaven_blade', name: 'Phá Thiên Kiếm', description: 'Kiếm quang đâm xuyên nhiều tầng yêu thú; cần Hóa Thần.', path: 'kiem', minRealm: 5, shape: 'line', range: 18, radius: 2, damage: 175, mana: 65, cooldown: 12, icon: '⚔', color: '#a5fff2' },
+  celestial_swords: { id: 'celestial_swords', name: 'Tiên Kiếm Triều Thiên', description: 'Vạn kiếm đổ xuống trước mặt; cần Chân Tiên.', path: 'kiem', minRealm: 10, shape: 'cone', range: 17, radius: 0, damage: 310, mana: 105, cooldown: 38, ultimate: true, icon: '✧', color: '#dcfff5' },
+  frost_lotus: { id: 'frost_lotus', name: 'Băng Liên Trận', description: 'Linh liên đóng băng một vùng; cần Hóa Thần.', path: 'phap', minRealm: 5, shape: 'sphere', range: 18, radius: 5.3, damage: 168, mana: 64, cooldown: 12, icon: '❄', color: '#9cddff' },
+  thunder_stars: { id: 'thunder_stars', name: 'Cửu Thiên Tinh Lôi', description: 'Tinh lôi quét sạch thiên địa; cần Chân Tiên.', path: 'phap', minRealm: 10, shape: 'sphere', range: 19, radius: 8, damage: 312, mana: 110, cooldown: 39, ultimate: true, icon: '☄', color: '#d0b5ff' },
+  dragon_fist: { id: 'dragon_fist', name: 'Long Tượng Quyền', description: 'Quyền phong rung chuyển mặt đất; cần Hóa Thần.', path: 'the', minRealm: 5, shape: 'cone', range: 11, radius: 0, damage: 169, mana: 60, cooldown: 12, icon: '◉', color: '#ffc787' },
+  immortal_body: { id: 'immortal_body', name: 'Bất Diệt Kim Thân', description: 'Địa chấn cuồng bạo; cần Chân Tiên.', path: 'the', minRealm: 10, shape: 'sphere', range: 1, radius: 10, damage: 299, mana: 98, cooldown: 37, ultimate: true, icon: '❖', color: '#ffe698' },
+  beast_pact: { id: 'beast_pact', name: 'Linh Thú Hiệp Kích', description: 'Linh thú phối hợp đánh phía trước. Trang bị thú tăng thêm sát thương.', path: 'thu', shape: 'cone', range: 10, radius: 0, damage: 54, mana: 21, cooldown: 6, icon: '✿', color: '#8ee3ac' },
+  beast_roar: { id: 'beast_roar', name: 'Vạn Thú Khiếu', description: 'Tiếng gầm linh thú tràn ra bốn phía; cần Hóa Thần.', path: 'thu', minRealm: 5, shape: 'sphere', range: 1, radius: 7, damage: 175, mana: 67, cooldown: 14, icon: '❀', color: '#81d8bc' },
+  myriad_beasts: { id: 'myriad_beasts', name: 'Bách Thú Triều Tông', description: 'Đàn thú xông lên như sóng, cần Chân Tiên.', path: 'thu', minRealm: 10, shape: 'cone', range: 18, radius: 0, damage: 304, mana: 108, cooldown: 39, ultimate: true, icon: '✥', color: '#c4ffcd' },
+  shadow_claw: { id: 'shadow_claw', name: 'U Minh Trảo', description: 'Ma khí hóa trảo xuyên qua yêu thú.', path: 'ma', shape: 'line', range: 12, radius: 1.7, damage: 61, mana: 23, cooldown: 6, icon: '◆', color: '#e29cb8' },
+  blood_moon: { id: 'blood_moon', name: 'Huyết Nguyệt Ấn', description: 'Phủ Huyết Ấn lên một vùng, cần Hóa Thần.', path: 'ma', minRealm: 5, shape: 'sphere', range: 16, radius: 5, damage: 181, mana: 71, cooldown: 14, icon: '☾', color: '#e47f9a' },
+  abyss_reap: { id: 'abyss_reap', name: 'Vạn Hồn Quy Khư', description: 'Ma niệm thôn phệ chiến trường, cần Chân Tiên.', path: 'ma', minRealm: 10, shape: 'cone', range: 18, radius: 0, damage: 322, mana: 112, cooldown: 40, ultimate: true, icon: '✺', color: '#dd81bf' },
 };
+export function skillRealm(skill: SkillDefinition): number { return skill.minRealm ?? (skill.path ? 2 : 0); }
 export function skillsForPath(path: Path | null): SkillDefinition[] {
-  if (path === 'kiem') return [SKILLS.spirit_cut, SKILLS.flying_swords, SKILLS.sword_domain];
-  if (path === 'phap') return [SKILLS.spirit_cut, SKILLS.falling_star, SKILLS.void_meteor];
-  if (path === 'the') return [SKILLS.spirit_cut, SKILLS.earth_shatter, SKILLS.diamond_body];
-  return [SKILLS.spirit_cut];
+  return [SKILLS.spirit_cut, ...Object.values(SKILLS).filter((skill) => skill.path === path && path !== null)];
 }
-export type Recipe = { id: string; name: string; profession: 'dan' | 'khi' | 'tran'; cost: Partial<Resources>; itemId?: string; reward?: Partial<Resources>; description: string };
+export type Recipe = { id: string; name: string; profession: 'dan' | 'khi' | 'tran'; cost: Partial<Resources>; itemId?: string; reward?: Partial<Resources>; station?: 'alchemy'; description: string };
 export const RECIPES: Record<string, Recipe> = {
-  spirit_pill: { id: 'spirit_pill', name: 'Tụ Khí Đan', profession: 'dan', cost: { herbs: 3, stones: 4 }, reward: { stones: 10 }, description: 'Luyện đan: chuyển dược thảo thành linh thạch.' },
+  spirit_pill: { id: 'spirit_pill', name: 'Tụ Khí Đan', profession: 'dan', cost: { herbs: 3, stones: 4 }, reward: { stones: 10 }, description: 'Luyện đan cơ bản: đổi dược thảo thành linh thạch, có thể làm khi hành tẩu.' },
+  heal_pill: { id: 'heal_pill', name: 'Hồi Huyết Đan', profession: 'dan', station: 'alchemy', cost: { herbs: 3, stones: 4 }, itemId: 'heal_pill', description: 'Trong Phòng Luyện Đan: luyện thuốc hồi 70 sinh lực.' },
+  mana_pill: { id: 'mana_pill', name: 'Hồi Linh Đan', profession: 'dan', station: 'alchemy', cost: { herbs: 4, stones: 5 }, itemId: 'mana_pill', description: 'Trong Phòng Luyện Đan: luyện thuốc hồi 90 chân khí.' },
+  foundation_pill: { id: 'foundation_pill', name: 'Trúc Cơ Đan', profession: 'dan', station: 'alchemy', cost: { herbs: 8, ore: 2, stones: 12 }, itemId: 'foundation_pill', description: 'Trong Phòng Luyện Đan: giúp vượt lôi kiếp (dùng khi bắt đầu độ kiếp).' },
   jade_blade: { id: 'jade_blade', name: 'Thanh Liên Kiếm', profession: 'khi', cost: { ore: 4, stones: 12 }, itemId: 'jade_blade', description: 'Luyện khí: rèn một thanh kiếm phẩm Tím.' },
   fate_orb: { id: 'fate_orb', name: 'Bản Mệnh Châu', profession: 'tran', cost: { ink: 3, stones: 16 }, itemId: 'fate_orb', description: 'Trận pháp: ngưng tụ pháp bảo bản mệnh.' },
 };

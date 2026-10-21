@@ -108,14 +108,18 @@ export class MongoStore implements CharacterStore {
     return character;
   }
   async save(character: CharacterState): Promise<void> {
-    const result = await CharacterModel.updateOne({ id: character.id, ownerUid: character.ownerUid }, { $set: character }, { runValidators: true });
+    const { devModeBackup, ...saved } = character;
+    // $set alone leaves an old Mixed backup in Mongo after revoking dev mode.
+    const update = devModeBackup === undefined
+      ? { $set: saved, $unset: { devModeBackup: 1 } }
+      : { $set: { ...saved, devModeBackup } };
+    const result = await CharacterModel.updateOne({ id: character.id, ownerUid: character.ownerUid }, update, { runValidators: true });
     if (result.matchedCount !== 1) throw new Error('Character disappeared during save.');
     await this.syncEquipment(character);
   }
   private async syncEquipment(character: CharacterState): Promise<void> {
     const equipment = [...character.inventory, ...character.stash].filter((owned) => Object.hasOwn(ITEMS, owned.itemId));
-    if (!equipment.length) return;
-    await EquipmentModel.bulkWrite(equipment.map((owned) => {
+    if (equipment.length) await EquipmentModel.bulkWrite(equipment.map((owned) => {
       const definition = ITEMS[owned.itemId];
       if (!definition) throw new Error('Unknown equipment item in inventory.');
       return { updateOne: {
@@ -129,6 +133,10 @@ export class MongoStore implements CharacterStore {
         } }, upsert: true,
       } };
     }), { ordered: false });
+    // The inventory/stash are canonical. A dev-only purchase removed on role
+    // revocation must not survive as an orphaned, apparently owned view record.
+    await EquipmentModel.deleteMany({ ownerUid: character.ownerUid, characterId: character.id,
+      instanceId: { $nin: equipment.map((owned) => owned.instanceId) } });
   }
   async close(): Promise<void> { await mongoose.disconnect(); }
 }

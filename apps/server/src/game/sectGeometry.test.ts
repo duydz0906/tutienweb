@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NPCS, PORTALS, SECT_BUILDINGS } from '@van-thuong/shared';
+import { NPCS, PORTALS, SECT_BUILDINGS, type NpcId } from '@van-thuong/shared';
 import { canWalkInSect } from './sectGeometry.js';
 
 const p = (x: number, z: number) => ({ x, y: 0, z });
@@ -12,7 +12,7 @@ describe('walkable, server-authoritative sect buildings', () => {
       const inside = p(room.x, room.z - room.depth / 2 + 1.6);
       expect(canWalkInSect(before, inside)).toBe(true);
       expect(canWalkInSect(inside, before)).toBe(true);
-      if (room.id === 'master' || room.id === 'quest' || room.id === 'shop') expect(canWalkInSect(inside, NPCS[room.id].position)).toBe(true);
+      if (Object.hasOwn(NPCS, room.id)) expect(canWalkInSect(inside, NPCS[room.id as NpcId].position)).toBe(true);
     }
   });
 

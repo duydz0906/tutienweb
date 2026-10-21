@@ -4,6 +4,41 @@ import { BillboardLabel } from './Billboard';
 
 type Room = (typeof SECT_BUILDINGS)[number];
 
+function HallDetails({ room }: { room: Room }) {
+  if (room.id === 'alchemy') return <group>
+    {/* The usable furnace stands to the side of the NPC, not across the open doorway. */}
+    <mesh castShadow position={[3.6, 0.54, 1.15]}><cylinderGeometry args={[0.71, 0.8, 1.08, 12]} />
+      <meshStandardMaterial color="#685858" metalness={0.63} roughness={0.43} /></mesh>
+    <mesh position={[3.6, 1.14, 1.15]} rotation={[-Math.PI / 2, 0, 0]}><torusGeometry args={[0.57, 0.105, 8, 28]} />
+      <meshStandardMaterial color="#dbc08d" emissive="#b2793f" emissiveIntensity={0.35} metalness={0.65} /></mesh>
+    <mesh position={[3.6, 1.18, 1.15]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.51, 24]} />
+      <meshBasicMaterial color="#d79e6c" transparent opacity={0.32} side={THREE.DoubleSide} /></mesh>
+    <pointLight color="#ffd0a1" intensity={2} distance={6} position={[3.6, 1.5, 1.15]} />
+    {[-1, 1].map((side) => <group key={side} position={[-3.9, 0, 0.9 + side * 1.25]}>
+      <mesh castShadow position={[0, 0.55, 0]}><boxGeometry args={[1.1, 1.1, 0.5]} /><meshStandardMaterial color="#705a45" /></mesh>
+      {[0, 1, 2].map((i) => <mesh key={i} position={[(i - 1) * 0.27, 1.25, 0]}>
+        <sphereGeometry args={[0.17, 9, 7]} /><meshStandardMaterial color={i % 2 ? '#9bc4aa' : '#d9b48a'} emissive={i % 2 ? '#51785f' : '#8a5a38'} emissiveIntensity={0.3} /></mesh>)}
+    </group>)}
+  </group>;
+  if (room.id === 'beast') return <group>
+    {[-1, 1].map((side) => <group key={side} position={[side * 4, 0, 1]}>
+      <mesh castShadow position={[0, 0.53, 0]}><boxGeometry args={[1.6, 1, 2.4]} /><meshStandardMaterial color="#635f4d" roughness={1} /></mesh>
+      <mesh position={[0, 1.17, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.5, 0.57, 28]} />
+        <meshBasicMaterial color="#97deaf" transparent opacity={0.75} side={THREE.DoubleSide} /></mesh>
+      <mesh position={[0, 1.23, 0]}><icosahedronGeometry args={[0.23, 1]} /><meshStandardMaterial color="#b3eac2" emissive="#56b87f" emissiveIntensity={0.85} /></mesh>
+      {[-1, 1].map((z) => <mesh key={z} position={[0, 0.95, z * 1.17]}><boxGeometry args={[1.8, 0.12, 0.13]} /><meshStandardMaterial color="#baa377" /></mesh>)}
+    </group>)}
+  </group>;
+  if (room.id.startsWith('disciples')) return <group>
+    {[-1, 1].map((side) => <group key={side} position={[side * 2.3, 0, 1]}>
+      <mesh castShadow position={[0, 0.32, 0]}><boxGeometry args={[1.25, 0.53, 2.25]} /><meshStandardMaterial color="#5b554a" /></mesh>
+      <mesh position={[0, 0.63, 0]}><boxGeometry args={[1.15, 0.19, 1.98]} /><meshStandardMaterial color="#7a9b8a" roughness={0.98} /></mesh>
+      <mesh position={[0, 0.8, -0.8]}><boxGeometry args={[1.1, 0.2, 0.4]} /><meshStandardMaterial color="#e7d6b7" /></mesh>
+    </group>)}
+  </group>;
+  return null;
+}
+
 /** Full-size, open-fronted sect halls. Roofs lift away locally so NPCs stay visible after entry. */
 function SectHall({ room, playerPosition }: { room: Room; playerPosition: Vector3 }) {
   const { x, z, width, depth, doorway, height } = room;
@@ -67,6 +102,7 @@ function SectHall({ room, playerPosition }: { room: Room; playerPosition: Vector
       <mesh position={[0, 0.12, 0]}><boxGeometry args={[0.78, 0.11, 0.78]} /><meshStandardMaterial color="#50463e" /></mesh>
     </group>)}
 
+    <HallDetails room={room} />
     {/* Two pitched jade roof planes, ridges, deep gold-edged eaves; hidden above the local player indoors. */}
     <group visible={!inside}>
       {[-1, 1].map((sign) => <mesh key={sign} castShadow receiveShadow

@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APPEARANCE, HERB_NODES, NPCS, PORTALS, SECT_BUILDINGS,
+import { DEFAULT_APPEARANCE, HABITATS, HERB_NODES, NPCS, PORTALS, SECT_BUILDINGS,
   type ActionResult, type CharacterState, type OwnCharacter, type WorldSnapshot } from '@van-thuong/shared';
 import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
@@ -79,7 +79,7 @@ describe('sect ↔ wilderness portal instances', () => {
       expect([sect.boss, sect.monsters, sect.herbs, sect.players.some((p) => p.id === wrongNpc.id)])
         .toEqual([null, [], [], false]);
       expect([wild.boss?.hp, wild.monsters.length, wild.herbs.length, wild.players[0].id])
-        .toEqual([850, 7, HERB_NODES.length, wrongNpc.id]);
+        .toEqual([850, HABITATS.filter((habitat) => habitat.scene === 'wilderness').length * 3, HERB_NODES.length, wrongNpc.id]);
       expect((await ack(b, 'portal:travel', { position: PORTALS.overworld.position, destination: 'wilderness' })).ok).toBe(false);
       expect((await ack(c, 'quest:claim', { questId: 'gather_herbs', position: NPCS.quest.position })).ok).toBe(false);
       expect((await ack(d, 'gather', { nodeId: HERB_NODES[0].id, position: HERB_NODES[0].position })).ok).toBe(false);

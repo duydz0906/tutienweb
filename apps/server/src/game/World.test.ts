@@ -32,7 +32,7 @@ describe('authoritative multiplayer world', () => {
     const second = makeDemoSession();
     const charA = newCharacter(first.identity.uid, { name: 'Kiếm Khách', gender: 'nam', appearance: { ...DEFAULT_APPEARANCE, hair: 'tied', robeColor: 'jade' } });
     const charB = newCharacter(second.identity.uid, { name: 'Dược Sư', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE, hairColor: 'silver' } });
-    charA.scene = 'wilderness'; charA.position = { x: 0, y: 0, z: -29 };
+    charA.scene = 'wilderness'; charA.position = { x: 0, y: 0, z: -50 };
     charA.rotation = Math.PI;
     charA.cultivation = 150;
     charA.resources.stones = 60;

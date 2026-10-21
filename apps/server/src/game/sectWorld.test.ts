@@ -83,6 +83,9 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       expect((await host.world.dailyQuests(quest.identity.uid))?.quests.find((q) => q.id === 'gather_herbs')?.claimed).toBe(true);
       expect((await store.get(quest.identity.uid))?.contribution).toBe(25);
 
+      expect((await ack(bob, 'shop:buy', { offerId: 'heaven_blade_book', realm: MAX_REALM })).ok).toBe(false);
+      const ore = await ack(bob, 'shop:buy', { offerId: 'ore_bundle', quantity: 9999 });
+      expect(ore.ok && ore.character?.resources.ore).toBe(b.resources.ore + 2); // quantity comes from server stock
       const robe = await ack(bob, 'shop:buy', { offerId: 'moon_robe', price: 0, itemId: 'immortal_sword' });
       expect(robe.ok).toBe(true);
       const item = robe.ok && robe.character?.inventory.find((owned) => owned.itemId === 'moon_robe');
@@ -120,7 +123,7 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
     const store = new RoleStore();
     const identity: Identity = { uid: 'verified-admin-fixture', displayName: 'Chủ Tông Môn', provider: 'password', isAdmin: true };
     const c = newCharacter(identity.uid, { name: 'daniel965', gender: 'nam', appearance: DEFAULT_APPEARANCE });
-    c.scene = 'wilderness'; c.position = { x: 0, y: 0, z: -29 }; c.rotation = Math.PI;
+    c.scene = 'wilderness'; c.position = { x: 0, y: 0, z: -51 }; c.rotation = Math.PI;
     c.resources = { stones: 0, herbs: 0, ore: 0, ink: 0 };
     await store.create(c);
     // This middleware simulates a successfully verified custom-claim+UID identity; the DB role is still separate.
@@ -135,6 +138,8 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       expect(denied.ok).toBe(false);
       expect((await store.get(identity.uid))?.devMode).toBe(false);
       expect((await ack(admin, 'admin:action', { type: 'spawn-item', itemId: 'immortal_sword' })).ok).toBe(false);
+      expect((await ack(admin, 'appearance:update', { gender: 'nu', appearance: DEFAULT_APPEARANCE })).ok).toBe(false);
+      expect((await ack(admin, 'shop:buy', { offerId: 'herbs_bundle' })).ok).toBe(false);
       store.role = true;
       admin.disconnect(); await sleep(110);
       admin = clientIo(host.url, { transports: ['websocket'], auth: { token: 'verified-token-fixture' } });
@@ -147,6 +152,19 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       expect(enabled.ok && enabled.character?.resources.stones).toBe(999_999_999);
       expect((await ack(admin, 'craft', { recipeId: 'fate_orb' })).ok).toBe(true);
       expect((await store.get(identity.uid))?.resources.stones).toBe(0);
+      for (const offerId of ['stones_bundle', 'herbs_bundle', 'ore_bundle', 'ink_bundle'])
+        expect((await ack(admin, 'shop:buy', { offerId, resources: { stones: 1000000 } })).ok).toBe(true);
+      expect((await store.get(identity.uid))?.resources).toEqual({ stones: 0, herbs: 0, ore: 0, ink: 0 });
+      const switched = await ack(admin, 'choose-path', { path: 'ma', realm: 999 });
+      expect(switched.ok && switched.character?.hotbar).toContain('abyss_reap');
+      expect(switched.ok && switched.character?.learnedSkills).toContain('blood_moon');
+      const style = { ...DEFAULT_APPEARANCE, hair: 'braid' as const, face: 'angular' as const, build: 0.81 };
+      expect((await ack(admin, 'appearance:update', { gender: 'nu', appearance: style, ownerUid: 'someone-else' })).ok).toBe(true);
+      const devCraft = await ack(admin, 'craft', { recipeId: 'heal_pill', cost: {} });
+      expect(devCraft.ok).toBe(true); // verified dev can work remotely without writing phantom resources
+      expect(devCraft.ok && devCraft.character?.inventory.some((item) => item.itemId === 'heal_pill')).toBe(true);
+      expect((await ack(admin, 'appearance:update', { gender: 'dragon', appearance: style })).ok).toBe(false);
+      expect((await ack(admin, 'appearance:update', { gender: 'nu', appearance: { ...style, height: -3 } })).ok).toBe(false);
       const kill = await ack(admin, 'basic-attack', { targetId: 'world-boss', damage: 1 });
       expect(kill.ok).toBe(true);
       const snapshot = await nextEvent<WorldSnapshot>(admin, 'world');
@@ -157,7 +175,11 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       admin.disconnect(); await sleep(110);
       admin = clientIo(host.url, { transports: ['websocket'], auth: { token: 'verified-token-fixture' } });
       const demoted = await nextEvent<OwnCharacter>(admin, 'character');
-      expect([demoted.devMode, demoted.realm, demoted.root.tier, demoted.maxHp]).toEqual([false, 0, c.root.tier, 120]);
+      expect([demoted.devMode, demoted.isAdmin, demoted.realm, demoted.root.tier, demoted.maxHp]).toEqual([false, false, 0, c.root.tier, 120]);
+      expect([demoted.path, demoted.gender, demoted.appearance, demoted.learnedSkills, demoted.hotbar])
+        .toEqual([null, 'nam', DEFAULT_APPEARANCE, ['spirit_cut'], ['spirit_cut', null, null, null]]);
+      expect(demoted.inventory).toEqual(c.inventory); // dev purchases, pills and forged owner never leak
+      expect((await store.get(identity.uid))?.ownerUid).toBe(identity.uid);
       expect((await store.get(identity.uid))?.devMode).toBe(false);
       expect((await store.get(identity.uid))?.resources).toEqual({ stones: 0, herbs: 0, ore: 0, ink: 0 });
       expect((await store.get(identity.uid))?.devModeBackup).toBeUndefined();

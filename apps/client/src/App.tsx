@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { AlertCircle, CheckCircle2, LoaderCircle, Sparkles, X } from 'lucide-react';
 import { DEFAULT_APPEARANCE, ASCENDANT_GATE, HOME_CHEST, HOME_EXIT, HOME_GATE, MAX_REALM, PORTALS, REBIRTH_ALTAR, SANCTUM_EXIT, SECRET_GATE, isWorldZone, type ActionResult, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
-  type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
+  type NpcId, type OwnCharacter, type Path, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { WorldScene, type PreviewOptions } from './game/WorldScene';
 import { type VisualEffect } from './game/WorldDecor';
 import { playSwordWhoosh } from './game/sound';
@@ -54,7 +54,8 @@ export function App() {
 
   const notify = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((current) => [...current.slice(-3), { id, text, kind }]);
+    // Keep at most two compact notices on screen; repeated combat ticks replace themselves.
+    setToasts((current) => [...current.filter((toast) => toast.text !== text).slice(-1), { id, text, kind }]);
     setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 5000);
   }, []);
 
@@ -278,9 +279,11 @@ export function App() {
     void action('cast', { skillId: id, ...(id !== 'healing_bloom' && target ? { targetId: target } : {}) });
   }, [action, world, selectedTarget, character?.scene]);
   const basicAttack = useCallback(() => { playSwordWhoosh(); void action('basic-attack', { targetId: selectedTarget }); }, [action, selectedTarget]);
-  const interactNpc = useCallback((id: NpcId) => { if (phase === 'game') openPanel(id === 'master' ? 'sect' : id === 'quest' ? 'quests' : 'shop'); }, [phase, character, panel]);
+  const interactNpc = useCallback((id: NpcId) => {
+    if (phase === 'game') openPanel(id === 'master' ? 'sect' : id === 'quest' ? 'quests' : id === 'alchemist' ? 'alchemy' : id === 'beast' ? 'beast' : 'shop');
+  }, [phase]);
   const chat = useCallback((text: string) => { socketRef.current?.emit('chat', text); }, []);
-  const selectPath = (path: 'kiem' | 'phap' | 'the') => { void action('choose-path', { path }); setPathModal(false); };
+  const selectPath = (path: Path) => { void action('choose-path', { path }).then((ok) => { if (ok) setPathModal(false); }); };
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -352,9 +355,9 @@ export function App() {
       <GameHUD character={character} world={world} trial={trial} connected={connected} cooldowns={cooldowns} messages={messages} panel={panel} selectedTarget={selectedTarget}
         onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onAttack={basicAttack} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
-      <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} character={panelCharacter ?? character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
+      <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} onOpenPath={() => { openPanel(null); setPathModal(true); }} character={panelCharacter ?? character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
         connected={connected} />
-      {pathModal && character.realm >= 2 && !character.path && <PathModal onClose={() => setPathModal(false)} onSelect={selectPath} />}
+      {pathModal && character.realm >= 2 && (!character.path || character.devMode) && <PathModal devMode={character.devMode} onClose={() => setPathModal(false)} onSelect={selectPath} />}
     </>}
     <div className="toast-stack" aria-live="polite">{toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.kind === 'bad' ? <AlertCircle size={18} /> : toast.kind === 'good' ? <CheckCircle2 size={18} /> : <Sparkles size={18} />}<span>{toast.text}</span><button aria-label="Đóng thông báo" onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}><X size={14} /></button></div>)}</div>
   </div>;

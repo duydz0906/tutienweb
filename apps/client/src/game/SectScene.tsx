@@ -11,6 +11,8 @@ const roles: { id: NpcId; gender: Gender; appearance: Partial<Appearance>; glow:
   { id: 'master', gender: 'nam', appearance: { hair: 'long', hairColor: 'silver', robeColor: 'ivory', face: 'angular', height: 0.8 }, glow: '#ffe2a0' },
   { id: 'quest', gender: 'nu', appearance: { hair: 'bun', hairColor: 'ink', robeColor: 'jade', face: 'heart', height: 0.55 }, glow: '#9ef0cc' },
   { id: 'shop', gender: 'nam', appearance: { hair: 'tied', hairColor: 'ash', robeColor: 'lilac', face: 'round', build: 0.65 }, glow: '#c9c4ff' },
+  { id: 'beast', gender: 'nu', appearance: { hair: 'braid', hairColor: 'chestnut', robeColor: 'jade', face: 'angular', build: 0.7 }, glow: '#adf0b6' },
+  { id: 'alchemist', gender: 'nam', appearance: { hair: 'bun', hairColor: 'silver', robeColor: 'ember', face: 'oval', height: 0.72 }, glow: '#ffd5a0' },
 ];
 
 /** NPCs and disciples use the same fitted HumanForge body, hair, clothes and facial morphs as players. */
@@ -34,8 +36,8 @@ function SectNpc({ id, gender, appearance, glow, onInteract }: typeof roles[numb
       <ringGeometry args={[0.76, 0.82, 42]} /><meshBasicMaterial color={glow} transparent opacity={0.65} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
     <BillboardLabel text={NPCS[id].name} color={glow} position={[p.x, 2.55, p.z]} width={3.6} />
-    <BillboardLabel text={id === 'master' ? 'CHÍNH ĐIỆN' : id === 'quest' ? 'NHIỆM VỤ CÁC' : 'TÀNG BẢO CÁC'}
-      color="#f5e6bf" position={[p.x, 2.16, p.z]} width={2.4} />
+    <BillboardLabel text={id === 'master' ? 'CHÍNH ĐIỆN' : id === 'quest' ? 'NHIỆM VỤ CÁC' : id === 'beast' ? 'NGỰ THÚ VIỆN' : id === 'alchemist' ? 'PHÒNG LUYỆN ĐAN' : 'TÀNG BẢO CÁC'}
+      color="#f5e6bf" position={[p.x, 2.16, p.z]} width={id === 'alchemist' ? 3.3 : 2.5} />
   </group>;
 }
 

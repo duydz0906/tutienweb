@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Backpack, BookOpen, ChevronRight, CircleHelp, Compass, Crown, Flame,
   FlaskConical, Gem, House, MapPin, MessageCircle, Radio, RotateCcw, ScrollText, Send, Shield, Sparkles, Store, Swords, Trophy, Waves, Wifi, WifiOff, Zap } from 'lucide-react';
-import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HOME_CHEST, HOME_EXIT, HOME_GATE, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, NPCS, PORTALS, REALMS, REBIRTH_ALTAR, ROOT_LABEL, SANCTUM_EXIT, SECRET_GATE, SECT_RANK_LABEL, SKILLS, SPIRIT_LAKE, absorptionMultiplier, houseAbsorptionBonus, houseLevel, inSpiritLake, isWorldZone,
+import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HABITATS, HOME_CHEST, HOME_EXIT, HOME_GATE, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, NPCS, PORTALS, REALMS, REBIRTH_ALTAR, ROOT_LABEL, SANCTUM_EXIT, SECRET_GATE, SECT_RANK_LABEL, SKILLS, SPIRIT_LAKE, TAMEABLE_BEASTS, WORLD_RADIUS, absorptionMultiplier, houseAbsorptionBonus, houseLevel, inSpiritLake, isWorldZone, skillRealm,
   type ChatMessage, type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import type { ActivePanel } from './Panels';
 
@@ -50,13 +50,17 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   const hasFoundationPill = character.inventory.some((item) => item.itemId === 'foundation_pill');
   const nearNpc = inSect && (Object.keys(NPCS) as NpcId[]).find((id) => Math.hypot(livePosition.x - NPCS[id].position.x,
     livePosition.z - NPCS[id].position.z) <= 4.2);
-  const npcPanel = nearNpc === 'master' ? 'sect' : nearNpc === 'quest' ? 'quests' : 'shop';
+  const npcPanel = nearNpc === 'master' ? 'sect' : nearNpc === 'quest' ? 'quests' : nearNpc === 'alchemist' ? 'alchemy' : nearNpc === 'beast' ? 'beast' : 'shop';
   const boss = activeWorld?.boss;
   const focusedMonster = activeWorld?.monsters.find((m) => m.hp > 0 && m.id === selectedTarget) ??
     (inAscendant ? activeWorld?.monsters.find((m) => m.hp > 0) : undefined);
+  const tameable = focusedMonster && selectedTarget === focusedMonster.id && Object.hasOwn(TAMEABLE_BEASTS, focusedMonster.kind) &&
+    (character.path === 'thu' || character.devMode) && character.realm >= 2 && (character.devMode || focusedMonster.level <= character.realm + 2) &&
+    focusedMonster.hp <= focusedMonster.maxHp * .35 &&
+    Math.hypot(focusedMonster.position.x - livePosition.x, focusedMonster.position.z - livePosition.z) <= 3.5;
   const nearestDrop = activeWorld?.drops.find((drop) => Math.hypot(drop.position.x - livePosition.x, drop.position.z - livePosition.z) < 3.5);
-  const mapX = (x: number) => `${50 + x / 90 * 100}%`;
-  const mapZ = (z: number) => `${50 - z / 90 * 100}%`;
+  const mapX = (x: number) => `${50 + x / WORLD_RADIUS * 50}%`;
+  const mapZ = (z: number) => `${50 - z / WORLD_RADIUS * 50}%`;
   const available = (amount: number) => character.devMode ? '∞' : format(amount);
 
   return <div className="hud" aria-label="Giao diện trò chơi">
@@ -80,6 +84,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <div className="vital-row"><div className="vital-label"><span><Sparkles size={14} /> Chân khí</span><b>{available(character.mp)} / {available(character.maxMp)}</b></div><div className="vital-track"><span className="vital-fill mana" style={{ width: `${Math.max(0, character.mp / character.maxMp * 100)}%` }} /></div></div>
         <div className="root-banner" style={{ '--root-accent': rootColor } as React.CSSProperties}><span className="root-glyph">✥</span><div><small>BẢN MỆNH LINH CĂN</small><strong>{ROOT_LABEL[character.root.tier]}</strong><span>{character.root.elements.map((element) => ELEMENT_LABEL[element]).join(' · ')} · ×{character.root.multiplier.toFixed(1)} hấp thu</span></div></div>
         <button className="appearance-open" onClick={() => onPanel('home')}><House size={14} /> Nhà cấp {tier} · +{Math.round(houseAbsorptionBonus(tier - 1) * 100)}% hấp thụ <span>✧</span></button>
+        {character.devMode && <button className="appearance-open dev-open" onClick={() => onPanel('dev')}><Sparkles size={14} /> Đổi đạo · nhân vật · công pháp <span>✦</span></button>}
       </section>
 
       <section className="cultivate-card glass-panel">
@@ -96,6 +101,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
       </section>
       {character.realm >= 2 && !character.path && <button className="path-prompt" onClick={onOpenPath}><span className="path-prompt-icon"><Swords size={22} /></span><span><strong>Đã đạt Trúc Cơ!</strong><small>Chọn con đường tu luyện của bạn</small></span><ArrowRight size={17} /></button>}
       {nearestDrop && !inTrial && <button className="loot-prompt" onClick={() => onPickup(nearestDrop.id)}><Sparkles size={17} /> Nhặt {ITEMS[nearestDrop.itemId]?.name ?? 'vật phẩm'} <span>↵</span></button>}
+      {tameable && focusedMonster && <button className="loot-prompt tame-prompt" disabled={!connected || character.inventory.length >= 80} onClick={() => onAction('beast:tame', { targetId: focusedMonster.id })}><Sparkles size={17} /> Thuần hóa {focusedMonster.name} · 3 thảo + 5 đá <span>↵</span></button>}
     </div>
 
     <div className="hud-right">
@@ -103,12 +109,15 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <div className="map-top"><span><Compass size={15} /> BẢN ĐỒ KHU VỰC</span><span>{inTrial ? 'LÔI ĐÀI' : inSect ? 'TÔNG MÔN' : inHome ? 'NHÀ RIÊNG' : inSanctum ? 'MẬT THẤT' : inAscendant ? 'THƯỢNG GIỚI' : 'HOANG VỰC'}</span></div>
         <div className={`minimap ${inSect ? '' : 'wilderness'}`}>
           <span className="map-compass">BẮC ↑</span><div className="map-path" />
-          {inSect && <><div className="map-temple" title="Chính Điện">⌂</div>
+          {inSect && <><div className="map-temple" title="Chính Điện" style={{ left: mapX(0), top: mapZ(30) }}>⌂</div>
             <span className="map-npc" title="Đệ Tử Xá · Nhà riêng" style={{ left: mapX(HOME_GATE.position.x), top: mapZ(HOME_GATE.position.z) }}>⌂</span>
             <span className="map-npc" title="Hồ Tụ Linh +15%" style={{ left: mapX(SPIRIT_LAKE.position.x), top: mapZ(SPIRIT_LAKE.position.z) }}>≈</span>
             {canOpenSanctum && <span className="map-portal" title="Mật Thất Tái Sinh" style={{ left: mapX(SECRET_GATE.position.x), top: mapZ(SECRET_GATE.position.z) }}>✧</span>}</>}
           {inSect && (Object.keys(NPCS) as NpcId[]).map((id) => <span key={id} className="map-npc"
             title={`${NPCS[id].name} · ${NPCS[id].role}`} style={{ left: mapX(NPCS[id].position.x), top: mapZ(NPCS[id].position.z) }}>✶</span>)}
+          {inBattle && HABITATS.filter((habitat) => habitat.scene === character.scene).map((habitat) =>
+            <span key={habitat.id} className="map-habitat" title={`${habitat.name} · Cấp ${habitat.level}`}
+              style={{ left: mapX(habitat.center.x), top: mapZ(habitat.center.z), '--habitat-color': habitat.color } as React.CSSProperties}>{habitat.level}</span>)}
           {gate && <span className="map-portal" title={`${gate.name} · X ${gate.position.x}, Z ${gate.position.z}`}
             style={{ left: mapX(gate.position.x), top: mapZ(gate.position.z) }}>◈</span>}
           {!inSect && !inTrial && boss && boss.hp > 0 && <span className="map-boss" title="Huyền Thiên Cổ Long"
@@ -119,6 +128,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         </div>
         <div className="map-footer"><span><span className="legend-dot player" /> Bạn</span>
           {isWorldZone(character.scene) && <span className="portal-legend">◈ Cổng dịch chuyển</span>}
+          {inBattle && <span>① Bãi quái (cấp)</span>}
           {character.scene === 'wilderness' && <span><span className="legend-dot boss" /> Boss</span>}</div>
       </section>
       {inSect ? <section className="zone-card glass-panel">
@@ -126,6 +136,9 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <p>Tông Môn trên đỉnh núi là khu an toàn. Hồ Tụ Linh ở <b>X −10, Z −24</b> tăng 15% khi AFK. Nhà riêng tại <b>X −33, Z 12</b>. Bãi quái ở <b>X 0, Z 2</b>.</p>
         <button className="zone-card-button" disabled={!connected || !nearPortal || character.hp <= 0} onClick={() => onAction('portal:travel')}>
           {nearPortal ? 'Dịch chuyển đến Hoang Vực' : 'Hãy đến gần cổng · X 0, Z 2'} <ArrowRight size={14} />
+        </button>
+        <button className="zone-card-button housing-entry" disabled={!connected || !nearHomeGate || character.hp <= 0} onClick={() => onAction('home:enter')}>
+          {nearHomeGate ? 'Bước vào Đệ Tử Xá' : 'Đệ Tử Xá · X −33, Z 12 (đến gần để vào)'} <House size={14} />
         </button>
       </section> : inHome || inSanctum ? <section className="zone-card glass-panel">
         <div className="zone-card-heading"><span className="zone-emblem">{inHome ? '⌂' : '✧'}</span><div><small>{inHome ? 'KHÔNG GIAN RIÊNG · CHỈ MỘT CHỦ NHÂN' : 'TIÊN ĐẾ TẦNG 9 · MẬT THẤT'}</small><strong>{inHome ? `Rương đồ · Nhà cấp ${tier}` : 'Tái Sinh Đài'}</strong></div></div>
@@ -146,7 +159,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <p>{character.storyStep === 0 ? 'Gặp Chưởng Môn trong Chính Điện (X 0, Z 29) để bắt đầu hành trình.' : character.storyStep === 1 ? `Qua Cổng Hoang Vực · Hạ ${Math.min(character.storyKills, 3)}/3 yêu thú.` : character.storyStep === 2 ? 'Đến Long Vực ở Hoang Vực để đánh bại Huyền Thiên Cổ Long.' : 'Hoàn thành 5 nhiệm vụ hằng ngày để tích lũy cống hiến.'}</p>
         {inBattle && <div className="quest-route">◈ Trở về: {inAscendant ? 'Cổng Quy Sơn' : 'Cổng Hồi Tông'} · X 0, Z 34</div>}
         <div className="quest-status"><span className="quest-status-circle">✓</span>{character.dailyQuests.filter((q) => q.claimed).length}/5 nhiệm vụ đã lĩnh thưởng <ChevronRight size={15} /></div>
-        <div className="sect-menu"><button onClick={() => onPanel('sect')}>Chính Điện</button><button onClick={() => onPanel('quests')}>Nhiệm vụ</button><button onClick={() => onPanel('shop')}>Cửa hàng</button></div>
+        <div className="sect-menu"><button onClick={() => onPanel('sect')}>Chính Điện</button><button onClick={() => onPanel('quests')}>Nhiệm vụ</button><button onClick={() => onPanel('shop')}>Cửa hàng</button><button onClick={() => onPanel('alchemy')}>Luyện đan</button><button onClick={() => onPanel('beast')}>Ngự thú</button></div>
       </section>
     </div>
 
@@ -189,7 +202,9 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
           const id = character.hotbar[index];
           const skill = id && Object.hasOwn(SKILLS, id) ? SKILLS[id] : null;
           const remaining = skill && !character.devMode ? Math.max(0, Math.ceil(((cooldowns[skill.id] ?? 0) - now) / 1000)) : 0;
-          return <button key={index} className={`skill-slot ${!skill ? 'locked' : ''} ${skill?.ultimate ? 'ultimate' : ''}`} disabled={!skill || !connected || !isWorldZone(character.scene) || (inSect && skill.id !== 'healing_bloom') || character.hp <= 0 || Boolean(remaining)} onClick={() => skill && onSkill(skill.id)} title={skill ? `${skill.name} — ${skill.description} (${skill.mana} MP)` : 'Mở Công Pháp để gán phím'}>
+          return <button key={index} className={`skill-slot ${!skill || skill && (character.realm < skillRealm(skill) || skill.path && skill.path !== character.path) ? 'locked' : ''} ${skill?.ultimate ? 'ultimate' : ''}`}
+            disabled={!skill || !connected || character.realm < skillRealm(skill) || Boolean(skill.path && skill.path !== character.path) || !isWorldZone(character.scene) || (inSect && skill.id !== 'healing_bloom') || character.hp <= 0 || Boolean(remaining)}
+            onClick={() => skill && onSkill(skill.id)} title={skill ? `${skill.name} — ${skill.description} (từ ${REALMS[skillRealm(skill)]}; ${skill.mana} MP)` : 'Mở Công Pháp để gán phím'}>
             <kbd>{index + 1}</kbd><span className="skill-symbol" style={{ color: skill?.color }}>{skill?.icon ?? '⊘'}</span><span className="skill-name">{skill?.name ?? 'Chưa gán'}</span>
             {Boolean(remaining) && <span className="skill-cooldown">{remaining}</span>}{skill && <span className="skill-mana">{skill.mana} MP</span>}
           </button>;

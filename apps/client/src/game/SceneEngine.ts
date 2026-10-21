@@ -16,6 +16,7 @@ export class SceneEngine {
   private readonly desiredCamera = new THREE.Vector3();
   private readonly lookAt = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
+  private readonly cameraAim = new THREE.Vector3();
   private dragging = false;
   private previousPointerX = 0;
   private previousPointerY = 0;
@@ -178,6 +179,11 @@ export class SceneEngine {
         this.lookAt.z + Math.cos(this.yaw) * Math.cos(this.pitch) * this.distance,
       );
     }
+    // Looking up requires a negative pitch. Keep the camera above the ground and
+    // raise its aim separately; a simple negative orbit would bury it below terrain.
+    const skyward = !this.isInterior && !this.previewView && !cinematic ? Math.max(0, -this.pitch) : 0;
+    if (skyward && avatar) this.desiredCamera.y = Math.max(this.desiredCamera.y, avatar.position.y + 1.35);
+    this.cameraAim.copy(this.lookAt).addScaledVector(THREE.Object3D.DEFAULT_UP, skyward * this.distance * 1.35);
     // Keep an interior chase camera on the player's side of the walls even after
     // zooming, rotating, or walking right up to a cupboard.
     if (this.isInterior && avatar) {
@@ -190,7 +196,7 @@ export class SceneEngine {
       this.camera.position.x += (Math.random() - 0.5) * 0.12;
       this.camera.position.y += (Math.random() - 0.5) * 0.12;
     }
-    this.camera.lookAt(this.lookAt);
+    this.camera.lookAt(this.cameraAim);
   }
 
   playCinematic(durationMs = 1550): void {
@@ -255,7 +261,8 @@ export class SceneEngine {
   private onPointerMove = (event: PointerEvent): void => {
     if (!this.dragging) return;
     this.yaw -= (event.clientX - this.previousPointerX) * 0.006;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + (event.clientY - this.previousPointerY) * 0.004, 0.18, 1.13);
+    this.pitch = THREE.MathUtils.clamp(this.pitch + (event.clientY - this.previousPointerY) * 0.004,
+      this.isInterior || this.previewView ? 0.18 : -1.15, 1.13);
     this.previousPointerX = event.clientX;
     this.previousPointerY = event.clientY;
   };

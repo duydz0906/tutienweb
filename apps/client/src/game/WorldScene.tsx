@@ -100,7 +100,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const controller = engine.current;
     if (!controller) return;
     controller.setTouchInput(touch.current.right, touch.current.forward);
-    controller.update(delta, avatar.current, serverPosition, character?.devMode ? 30 : 6, Boolean(character));
+    controller.update(delta, avatar.current, serverPosition, 6, Boolean(character));
   });
 
   return <>
@@ -152,7 +152,7 @@ export function WorldScene(props: Props) {
   // WebGL disabled by policy). Keep login and HUD usable rather than blanking the app.
   const supported = useMemo(supportsWebGL2, []);
   return <div className="world-canvas" aria-label="Thế giới 3D Vân Thượng">
-    {supported ? <Canvas shadows dpr={[1, window.matchMedia('(max-width: 720px)').matches ? 1.2 : 1.65]} camera={{ fov: 52, near: 0.1, far: 210, position: [8, 8, 20] }}
+    {supported ? <Canvas shadows dpr={[1, window.matchMedia('(max-width: 720px)').matches ? 1.2 : 1.65]} camera={{ fov: 52, near: 0.1, far: 320, position: [8, 8, 20] }}
       gl={{ antialias: true, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping }}
       fallback={<div className="webgl-fallback">Trình duyệt cần hỗ trợ WebGL để hiển thị thế giới 3D.</div>}>
       <SceneContent {...props} />
