@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { ITEMS, SKILLS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop } from '@van-thuong/shared';
+import { ITEMS, SECT_BUILDINGS, SKILLS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
 
 const JADE = '#82cdbb';
 const GOLD = '#eac58b';
@@ -10,9 +10,12 @@ const stonePositions = Array.from({ length: 29 }, (_, i) => ({
   z: Math.cos(i * 2.77) * 30,
   size: 0.6 + (i % 5) * 0.28,
 })).filter(({ x, z }) => Math.hypot(x, z) > 9 && Math.hypot(x, z) < 41);
-const treePositions: [number, number, number][] = [
-  [-22, 16, 1.2], [-27, -4, 1], [-22, -25, 1.4], [22, 19, 1.2],
-  [28, 1, 1], [24, -24, 1.4], [-36, 18, 0.8], [34, -17, 0.9],
+const sectStones = stonePositions.filter(({ x, z }) =>
+  SECT_BUILDINGS.every((room) => Math.abs(x - room.x) > room.width / 2 + 1.5 || Math.abs(z - room.z) > room.depth / 2 + 1.5) &&
+  Math.hypot(x, z - 2) > 5.5);
+const sectTrees: [number, number, number][] = [
+  [-29, 29, 1.05], [-32, 9, 1], [-25, -14, 1.2], [29, 29, 1.05],
+  [32, 9, 1], [25, -14, 1.2], [-36, 18, 0.8], [36, 18, 0.8],
 ];
 
 function RuneCircle({ x, z, radius = 3, color = JADE, opacity = 0.48 }: { x: number; z: number; radius?: number; color?: string; opacity?: number }) {
@@ -131,28 +134,6 @@ function MountainHorizon() {
   </>;
 }
 
-function Pagoda({ x, z, scale = 1 }: { x: number; z: number; scale?: number }) {
-  return <group position={[x, 0, z]} scale={scale}>
-    <mesh receiveShadow position={[0, 0.4, 0]}><cylinderGeometry args={[4.4, 4.8, 0.8, 4]} /><meshStandardMaterial color="#9a9a89" roughness={1} /></mesh>
-    {[0, 1, 2].map((tier) => <group key={tier} position={[0, 0.75 + tier * 2.2, 0]}>
-      <mesh castShadow position={[0, 0.86, 0]}><boxGeometry args={[3.65 - tier * 0.55, 1.75, 3.65 - tier * 0.55]} /><meshStandardMaterial color="#b5a68c" roughness={0.9} /></mesh>
-      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) =>
-        <mesh key={i} castShadow position={[sx * (1.4 - tier * 0.22), 0.9, sz * (1.4 - tier * 0.22)]}>
-          <cylinderGeometry args={[0.11, 0.11, 1.8, 7]} /><meshStandardMaterial color="#65483d" />
-        </mesh>)}
-      <mesh castShadow position={[0, 1.94, 0]} rotation={[0, Math.PI / 4, 0]}>
-        <coneGeometry args={[3.65 - tier * 0.48, 1.25, 4]} />
-        <meshStandardMaterial color="#275e5c" roughness={0.63} metalness={0.12} flatShading />
-      </mesh>
-      <mesh position={[0, 1.29, 0]} rotation={[0, Math.PI / 4, 0]}>
-        <cylinderGeometry args={[3.72 - tier * 0.48, 3.72 - tier * 0.48, 0.09, 4]} />
-        <meshStandardMaterial color="#c8ac74" metalness={0.5} />
-      </mesh>
-    </group>)}
-    <mesh castShadow position={[0, 8.25, 0]}><coneGeometry args={[0.22, 1.3, 7]} /><meshStandardMaterial color={GOLD} metalness={0.75} roughness={0.2} /></mesh>
-  </group>;
-}
-
 function Lantern({ x, z }: { x: number; z: number }) {
   return <group position={[x, 0, z]}>
     <mesh castShadow position={[0, 1.7, 0]}><cylinderGeometry args={[0.085, 0.14, 3.4, 7]} /><meshStandardMaterial color="#3d5b59" metalness={0.4} /></mesh>
@@ -189,40 +170,48 @@ function SpiritParticles({ storm = false }: { storm?: boolean }) {
   return <points ref={group} geometry={geometry} material={material} />;
 }
 
-export function Overworld({ boss, drops, formations, onPickup }: { boss: BossState | null; drops: WorldDrop[]; formations: FormationState[]; onPickup: (id: string) => void }) {
+export function Overworld({ zone, boss, drops, formations, onPickup }: {
+  zone: WorldZone; boss: BossState | null; drops: WorldDrop[]; formations: FormationState[]; onPickup: (id: string) => void;
+}) {
+  const sect = zone === 'overworld';
   return <>
     <MountainHorizon />
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -3.7, 0]}>
-      <circleGeometry args={[300, 96]} /><meshStandardMaterial color="#7fa8a6" roughness={0.44} metalness={0.12} />
+      <circleGeometry args={[300, 96]} /><meshStandardMaterial color={sect ? '#7fa8a6' : '#647c8e'} roughness={0.44} metalness={0.12} />
     </mesh>
     <mesh castShadow receiveShadow position={[0, -1.45, 0]}>
-      <cylinderGeometry args={[47, 42, 3.1, 72]} /><meshStandardMaterial color="#526b63" roughness={1} flatShading />
+      <cylinderGeometry args={[47, 42, 3.1, 72]} /><meshStandardMaterial color={sect ? '#526b63' : '#434b50'} roughness={1} flatShading />
     </mesh>
     <mesh receiveShadow position={[0, 0, 0]}>
-      <cylinderGeometry args={[46.9, 47, 0.14, 72]} /><meshStandardMaterial color="#748c77" roughness={1} />
+      <cylinderGeometry args={[46.9, 47, 0.14, 72]} /><meshStandardMaterial color={sect ? '#748c77' : '#56645e'} roughness={1} />
     </mesh>
     <mesh position={[0, 0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[43.7, 44.1, 96]} /><meshBasicMaterial color="#b9bd94" transparent opacity={0.55} side={THREE.DoubleSide} />
+      <ringGeometry args={[43.7, 44.1, 96]} /><meshBasicMaterial color={sect ? '#b9bd94' : '#a39da7'} transparent opacity={0.55} side={THREE.DoubleSide} />
     </mesh>
-    {Array.from({ length: 16 }, (_, i) => <mesh key={i} castShadow receiveShadow position={[0, 0.06, 23 - i * 3.5]} rotation={[0, Math.sin(i * 3.4) * 0.07, 0]}>
-      <boxGeometry args={[2.65 + (i % 3) * 0.2, 0.11, 1.76]} /><meshStandardMaterial color={i % 3 === 0 ? '#b7ae92' : '#a6aa96'} roughness={1} />
-    </mesh>)}
-    <RuneCircle x={0} z={10} radius={5.1} />
-    <RuneCircle x={0} z={-12} radius={6.7} color="#d7ba86" opacity={0.5} />
-    {stonePositions.map(({ x, z, size }, i) => <mesh key={i} castShadow position={[x, size * 0.32, z]} rotation={[0, i * 2.3, 0]}>
-      <dodecahedronGeometry args={[size, 0]} /><meshStandardMaterial color={i % 3 ? '#87988a' : '#a8ab99'} roughness={1} flatShading />
-    </mesh>)}
-    <BambooGrove />
-    <GroundFoliage />
-    {treePositions.map(([x, z, scale], i) => <CherryTree key={i} x={x} z={z} scale={scale} />)}
-    <Pagoda x={0} z={32} scale={1.18} />
-    <Pagoda x={-17} z={27} scale={0.58} />
-    <Pagoda x={17} z={27} scale={0.58} />
-    {[-1, 1].flatMap((side) => [12, 1, -15].map((z) => <Lantern key={`${side}-${z}`} x={side * 5.6} z={z} />))}
-    {boss && <BossModel boss={boss} />}
+    {sect && <>
+      {Array.from({ length: 12 }, (_, i) => <mesh key={i} castShadow receiveShadow
+        position={[0, 0.064, 21 - i * 2.6]} rotation={[0, Math.sin(i * 3.4) * 0.07, 0]}>
+        <boxGeometry args={[2.65 + i % 3 * 0.2, 0.11, 1.76]} />
+        <meshStandardMaterial color={i % 3 === 0 ? '#b7ae92' : '#a6aa96'} roughness={1} />
+      </mesh>)}
+      {[-1, 1].map((sign) => <group key={sign} rotation={[0, sign * 0.74, 0]}>
+        {Array.from({ length: 7 }, (_, i) => <mesh key={i} receiveShadow position={[0, 0.062, 10 + i * 1.9]}>
+          <boxGeometry args={[2.2, 0.1, 1.4]} /><meshStandardMaterial color="#a7ac96" roughness={1} />
+        </mesh>)}
+      </group>)}
+      <RuneCircle x={0} z={10} radius={4.35} />
+      {sectStones.map(({ x, z, size }, i) => <mesh key={i} castShadow position={[x, size * 0.32, z]} rotation={[0, i * 2.3, 0]}>
+        <dodecahedronGeometry args={[size, 0]} /><meshStandardMaterial color={i % 3 ? '#87988a' : '#a8ab99'} roughness={1} flatShading />
+      </mesh>)}
+      <BambooGrove />
+      <GroundFoliage />
+      {sectTrees.map(([x, z, scale], i) => <CherryTree key={i} x={x} z={z} scale={scale} />)}
+      {[-1, 1].flatMap((side) => [8, 12, 22].map((z) => <Lantern key={`${side}-${z}`} x={side * 5.6} z={z} />))}
+    </>}
+    {!sect && boss && <BossModel boss={boss} />}
     {formations.map((formation) => <FormationPillars key={formation.id} formation={formation} />)}
     {drops.map((drop) => <GroundDrop key={drop.id} drop={drop} onPickup={onPickup} />)}
-    <SpiritParticles />
+    <SpiritParticles storm={!sect} />
   </>;
 }
 

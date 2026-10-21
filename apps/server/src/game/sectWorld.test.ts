@@ -120,7 +120,7 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
     const store = new RoleStore();
     const identity: Identity = { uid: 'verified-admin-fixture', displayName: 'Chủ Tông Môn', provider: 'password', isAdmin: true };
     const c = newCharacter(identity.uid, { name: 'daniel965', gender: 'nam', appearance: DEFAULT_APPEARANCE });
-    c.position = { x: 0, y: 0, z: -8 }; c.rotation = Math.PI;
+    c.scene = 'wilderness'; c.position = { x: 0, y: 0, z: -29 }; c.rotation = Math.PI;
     await store.create(c);
     // This middleware simulates a successfully verified custom-claim+UID identity; the DB role is still separate.
     const host = await server(store, async (token) => {
@@ -146,7 +146,7 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       const kill = await ack(admin, 'basic-attack', { targetId: 'world-boss', damage: 1 });
       expect(kill.ok).toBe(true);
       const snapshot = await nextEvent<WorldSnapshot>(admin, 'world');
-      expect(snapshot.boss.hp).toBe(0); // server hitbox, one shot, no client damage trust
+      expect(snapshot.boss!.hp).toBe(0); // server hitbox, one shot, no client damage trust
       expect((await ack(admin, 'basic-attack')).ok).toBe(true); // no cooldown
       store.role = false;
       expect((await ack(admin, 'admin:action', { type: 'spawn-item', itemId: 'immortal_sword' })).ok).toBe(false);

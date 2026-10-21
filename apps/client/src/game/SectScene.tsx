@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { DEFAULT_APPEARANCE, NPCS, type Appearance, type Gender, type NpcId, type PublicPlayer, type Vector3 } from '@van-thuong/shared';
 import { Avatar } from './Avatar';
 import { BillboardLabel } from './Billboard';
+import { PortalGate } from './PortalGate';
+
 
 const roles: { id: NpcId; gender: Gender; appearance: Partial<Appearance>; glow: string }[] = [
   { id: 'master', gender: 'nam', appearance: { hair: 'long', hairColor: 'silver', robeColor: 'ivory', face: 'angular', height: 0.8 }, glow: '#ffe2a0' },
@@ -73,18 +75,14 @@ function Disciple({ index }: { index: number }) {
   </group>;
 }
 
-export function SectScene({ onInteract }: { onInteract: (id: NpcId) => void }) {
+export function SectScene({ playerPosition, onInteract, onTravel }: {
+  playerPosition: Vector3; onInteract: (id: NpcId) => void; onTravel: () => void;
+}) {
   return <>
-    {/* Safe courtyard: world and combat rules share the same authored boundary. */}
-    <mesh position={[0, 0.082, 21]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[40, 38]} /><meshBasicMaterial color="#b1cfb9" transparent opacity={0.085} side={THREE.DoubleSide} depthWrite={false} />
+    <mesh position={[0, 0.075, 20]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[60, 40]} /><meshBasicMaterial color="#b1cfb9" transparent opacity={0.06} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
-    {[-1, 1].map((sign) => <group key={sign} position={[sign * 6.3, 0, 2]}>
-      <mesh castShadow position={[0, 2.15, 0]}><cylinderGeometry args={[0.31, 0.43, 4.3, 8]} /><meshStandardMaterial color="#b6aa89" /></mesh>
-      <mesh position={[0, 4.42, 0]}><octahedronGeometry args={[0.37, 0]} /><meshStandardMaterial color="#eed49c" emissive="#b5914d" emissiveIntensity={0.8} /></mesh>
-    </group>)}
-    <mesh position={[0, 4.34, 2]} castShadow><boxGeometry args={[13.2, 0.5, 0.6]} /><meshStandardMaterial color="#5d554a" roughness={0.7} /></mesh>
-    <BillboardLabel text="TÔNG MÔN · KHU AN TOÀN" position={[0, 4.98, 2]} color="#f3d89f" width={5.3} />
+    <PortalGate zone="overworld" playerPosition={playerPosition} onTravel={onTravel} />
     {roles.map((role) => <SectNpc key={role.id} {...role} onInteract={onInteract} />)}
     {Array.from({ length: 4 }, (_, i) => <Disciple key={i} index={i} />)}
   </>;

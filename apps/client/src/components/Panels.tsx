@@ -53,7 +53,7 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
           {editorView === 'face' ? <UserRound size={15} /> : <ScanFace size={15} />}
           {editorView === 'face' ? 'Xem toàn thân' : 'Xem cận khuôn mặt'}
         </button>
-        <button className="btn btn-gold btn-full appearance-save" disabled={!connected || character.scene !== 'overworld'} onClick={onSaveAppearance}>
+        <button className="btn btn-gold btn-full appearance-save" disabled={!connected || character.scene === 'tribulation'} onClick={onSaveAppearance}>
           Lưu ngoại hình <ArrowRight size={16} />
         </button>
       </div>}
@@ -109,7 +109,7 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
           <h3>Tứ Tượng Trận</h3>
           <p>Bố trí bốn trụ pháp thuật trước mặt. Đạo hữu trong phạm vi 5m tăng 20% sát thương, giảm 20% sát thương nhận và hồi chân khí. Tồn tại 60 giây.</p>
           <div className="recipe-cost"><span>✧ 1 phù mực</span><span>◈ 3 linh thạch</span><span>25 giây hồi</span></div>
-          <button className="btn btn-gold btn-full" disabled={character.resources.ink < 1 || character.resources.stones < 3 || character.scene !== 'overworld'} onClick={() => onAction('place-array')}>Bố trí trận trước mặt <ArrowRight size={15} /></button>
+          <button className="btn btn-gold btn-full" disabled={character.resources.ink < 1 || character.resources.stones < 3 || character.scene === 'tribulation'} onClick={() => onAction('place-array')}>Bố trí trận trước mặt <ArrowRight size={15} /></button>
         </div>}
       </div>}
 
@@ -127,14 +127,15 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
           <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
           <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay góc nhìn · cuộn để thu phóng</span></div>
-          <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · chỉ ngoài Tông Môn</span></div>
+          <div className="help-row"><kbd>E</kbd><span>Đứng gần cổng Tông Môn / Hoang Vực để dịch chuyển qua lại</span></div>
+          <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · chỉ ở Hoang Vực</span></div>
           <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><span>Công pháp gán trên hotbar; cooldown do server quyết định</span></div>
           <div className="help-row"><kbd>I</kbd><kbd>Q</kbd><kbd>K</kbd><span>Túi đồ · Nhiệm vụ · Công pháp</span></div></div>
         <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> TÔNG MÔN & CON ĐƯỜNG TU TIÊN</div>
           <div className="help-tip"><strong>01 / Tĩnh tọa & thăng tầng</strong><p>Thu EXP tích lũy ngay cả lúc rời game (tối đa 8 giờ). Luyện Khí trở lên có 9 tầng, chi phí tăng ×5 mỗi tầng.</p></div>
-          <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đến Trưởng Lão Chấp Sự ở X −8, Z 14 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>
+          <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đi qua cửa Nhiệm Vụ Các tới Trưởng Lão Chấp Sự ở X −17, Z 18.5 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>
           <div className="help-tip"><strong>03 / Độ kiếp & đạo tu</strong><p>Đạt tầng 9 và đủ EXP để vượt 9 đạo lôi. Trúc Cơ Đan tăng 20% cơ hội thành công; đến Trúc Cơ được chọn Kiếm/Pháp/Thể Tu.</p></div>
-          <div className="help-tip"><strong>04 / Hoang Vực</strong><p>Ra phía nam cổng Tông Môn hái thảo, săn quái, đánh Boss. Nhấp chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
+          <div className="help-tip"><strong>04 / Hoang Vực</strong><p>Đến Cổng Hoang Vực (X 0, Z 2), nhấn E hoặc chạm cổng để dịch chuyển đến bãi quái. Cổng Hồi Tông (X 0, Z 34) đưa bạn về nhà. Nhấp chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
         </div>
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐI ĐẾN</div>
           <div className="help-links">

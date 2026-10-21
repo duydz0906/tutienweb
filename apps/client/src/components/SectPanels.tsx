@@ -14,7 +14,7 @@ export function QuestPanel({ character: c, connected, onAction }: { character: O
       <div className="flex items-center gap-2 text-jade"><ScrollText size={20} /><strong className="text-sm">Nhiệm Vụ Các · {c.dailyDay || 'Đang tải'}</strong></div>
       <p className="mt-2 text-xs leading-5 text-slate-300">Mỗi ngày ngẫu nhiên 5 nhiệm vụ, làm mới lúc 00:00 giờ Việt Nam. Gặp Trưởng Lão Chấp Sự để lĩnh thưởng.</p>
       <div className="mt-3 flex items-center gap-2 text-xs"><Gem size={15} className="text-amberlight" /> Cống hiến hiện có: <b className="text-amberlight">{format(c.contribution)}</b></div>
-      {!atElder && <p className="mt-2 text-[11px] text-amberlight"><MapPin size={12} className="inline" /> Đến Nhiệm Vụ Các tại X -8, Z 14 để nhận thưởng.</p>}
+      {!atElder && <p className="mt-2 text-[11px] text-amberlight"><MapPin size={12} className="inline" /> Đến Nhiệm Vụ Các tại X -17, Z 18.5 để nhận thưởng.</p>}
     </div>
     {c.dailyQuests.map((progress) => {
       const definition = DAILY_QUESTS[progress.id];
@@ -34,7 +34,7 @@ export function QuestPanel({ character: c, connected, onAction }: { character: O
           className="mt-3 rounded border border-jade/40 bg-jade/10 px-3 py-2 text-xs text-jade disabled:opacity-40"
           disabled={!connected || !near(c, progress.id === 'courier_master' ? 'master' : 'shop')}
           onClick={() => onAction('quest:deliver', { npcId: progress.id === 'courier_master' ? 'master' : 'shop' })}>
-          Chuyển thư cho {progress.id === 'courier_master' ? 'Chưởng Môn (X 0, Z 29)' : 'Trưởng Lão Hậu Cần (X 8, Z 14)'}
+          Chuyển thư cho {progress.id === 'courier_master' ? 'Chưởng Môn (X 0, Z 29)' : 'Trưởng Lão Hậu Cần (X 17, Z 18.5)'}
         </button>}
       </article>;
     })}
@@ -49,7 +49,7 @@ export function ShopPanel({ character: c, connected, onAction }: { character: Ow
       <div className="flex items-center gap-2 text-amberlight"><Package size={20} /><strong className="text-sm">Trưởng Lão Hậu Cần</strong></div>
       <p className="mt-2 text-xs leading-5 text-slate-300">Pháp y và vũ khí đổi vật liệu 3D khi trang bị. Mua sách công pháp để học và gán vào phím 1–4. Đan dược được lưu trong Túi đồ.</p>
       <div className="mt-3 flex gap-4 text-xs"><span>◈ {format(c.resources.stones)} Linh Thạch</span><span>✧ {format(c.contribution)} Cống hiến</span></div>
-      {!atShop && <p className="mt-2 text-[11px] text-amberlight"><MapPin size={12} className="inline" /> Đến Tàng Bảo Các tại X 8, Z 14 để giao dịch.</p>}
+      {!atShop && <p className="mt-2 text-[11px] text-amberlight"><MapPin size={12} className="inline" /> Đến Tàng Bảo Các tại X 17, Z 18.5 để giao dịch.</p>}
     </div>
     {SHOP_STOCK.map((offer) => {
       const equip = offer.itemId ? ITEMS[offer.itemId] : null;
@@ -75,7 +75,7 @@ export function ShopPanel({ character: c, connected, onAction }: { character: Ow
 export function SectPanel({ character: c, connected, onAction }: { character: OwnCharacter; connected: boolean; onAction: (event: string, payload?: object) => void }) {
   const atMaster = near(c, 'master');
   const promotion = c.sectRank === 'outer' ? { realm: 2, cost: 50, rank: 'Nội môn' } : c.sectRank === 'inner' ? { realm: 3, cost: 150, rank: 'Chân truyền' } : null;
-  const story = ['Gặp Chưởng Môn để nhận nhiệm vụ mở đầu.', `Hạ 3 yêu thú ngoài cổng (${Math.min(c.storyKills, 3)}/3).`,
+  const story = ['Gặp Chưởng Môn để nhận nhiệm vụ mở đầu.', `Hạ 3 yêu thú ở Hoang Vực qua cổng dịch chuyển (${Math.min(c.storyKills, 3)}/3).`,
     `Hợp sức hạ Huyền Thiên Cổ Long (${Math.min(c.bossKills, 1)}/1).`, 'Cốt truyện hiện tại đã hoàn thành.'][Math.min(3, c.storyStep)];
   return <div className="drawer-scroll sect-drawer space-y-4 p-1 text-parchment">
     <div className="rounded border border-amberlight/30 bg-amberlight/10 p-4">

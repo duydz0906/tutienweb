@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Backpack, BookOpen, ChevronRight, CircleHelp, Compass, Crown, Flame,
   FlaskConical, Gem, MapPin, MessageCircle, Radio, ScanFace, ScrollText, Send, Shield, Sparkles, Store, Swords, Trophy, Wifi, WifiOff, Zap } from 'lucide-react';
-import { ELEMENT_COLOR, ELEMENT_LABEL, expForStage, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, NPCS, REALMS, ROOT_LABEL, SECT_RANK_LABEL, SKILLS,
+import { ELEMENT_COLOR, ELEMENT_LABEL, expForStage, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, NPCS, PORTALS, REALMS, ROOT_LABEL, SECT_RANK_LABEL, SKILLS,
   type ChatMessage, type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import type { ActivePanel } from './Panels';
 
@@ -24,19 +24,27 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   const progress = cost ? Math.min(100, character.cultivation / cost * 100) : 100;
   const pending = Math.floor(Math.min(8 * 3600 * 1000, Math.max(0, now - character.lastCultivatedAt)) / 1000 * 2 * character.root.multiplier);
   const inTrial = character.scene === 'tribulation';
+  const inSect = character.scene === 'overworld';
+  const activeWorld = world?.scene === character.scene ? world : null;
+  const livePosition = activeWorld?.players.find((p) => p.id === character.id)?.position ?? character.position;
+  const gate = character.scene === 'tribulation' ? null : PORTALS[character.scene];
+  const nearPortal = gate && Math.hypot(livePosition.x - gate.position.x,
+    livePosition.z - gate.position.z) <= gate.radius;
   const hasFoundationPill = character.inventory.some((item) => item.itemId === 'foundation_pill');
-  const nearNpc = (Object.keys(NPCS) as NpcId[]).find((id) => Math.hypot(character.position.x - NPCS[id].position.x,
-    character.position.z - NPCS[id].position.z) <= 4.2);
+  const nearNpc = inSect && (Object.keys(NPCS) as NpcId[]).find((id) => Math.hypot(livePosition.x - NPCS[id].position.x,
+    livePosition.z - NPCS[id].position.z) <= 4.2);
   const npcPanel = nearNpc === 'master' ? 'sect' : nearNpc === 'quest' ? 'quests' : 'shop';
-  const boss = world?.boss;
-  const focusedMonster = world?.monsters.find((m) => m.hp > 0 && m.id === selectedTarget);
-  const nearestDrop = world?.drops.find((drop) => Math.hypot(drop.position.x - character.position.x, drop.position.z - character.position.z) < 3.5);
+  const boss = activeWorld?.boss;
+  const focusedMonster = activeWorld?.monsters.find((m) => m.hp > 0 && m.id === selectedTarget);
+  const nearestDrop = activeWorld?.drops.find((drop) => Math.hypot(drop.position.x - livePosition.x, drop.position.z - livePosition.z) < 3.5);
+  const mapX = (x: number) => `${50 + x / 90 * 100}%`;
+  const mapZ = (z: number) => `${50 - z / 90 * 100}%`;
 
   return <div className="hud" aria-label="Giao diện trò chơi">
     <header className="hud-top glass-panel">
       <div className="hud-brand"><div className="brand-seal small">雲</div><div><strong>VÂN THƯỢNG</strong><small>ONLINE · THIÊN ĐỊA VÔ TẬN</small></div></div>
       <div className="hud-divider" />
-      <div className="hud-location"><MapPin size={16} /><div><small>VỊ TRÍ HIỆN TẠI</small><strong>{inTrial ? 'Cửu Thiên Lôi Đài' : 'Vân Thượng Sơn'}</strong></div></div>
+      <div className="hud-location"><MapPin size={16} /><div><small>VỊ TRÍ HIỆN TẠI</small><strong>{inTrial ? 'Cửu Thiên Lôi Đài' : inSect ? 'Tông Môn Vân Thượng' : 'Hoang Vực · Bãi Quái'}</strong></div></div>
       <div className="hud-top-right">
         <div className="resource-chip"><Gem size={16} /><strong>{format(character.resources.stones)}</strong><span>Linh thạch</span></div>
         <div className="resource-chip herbs-chip"><span>✿</span><strong>{format(character.resources.herbs)}</strong><span>Dược thảo</span></div>
@@ -71,17 +79,32 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
 
     <div className="hud-right">
       <section className="minimap-card glass-panel">
-        <div className="map-top"><span><Compass size={15} /> BẢN ĐỒ NGOẠI GIỚI</span><span>{inTrial ? 'LÔI ĐÀI' : 'VÂN THƯỢNG'}</span></div>
-        <div className="minimap"><span className="map-compass">BẮC ↑</span><div className="map-path" /><div className="map-temple">⌂</div>
-          {!inTrial && (Object.keys(NPCS) as NpcId[]).map((id) => <span key={id} className="map-npc" title={`${NPCS[id].name} · ${NPCS[id].role}`} style={{ left: `${50 + NPCS[id].position.x / 90 * 100}%`, top: `${50 + NPCS[id].position.z / 90 * 100}%` }}>✶</span>)}
-          {!inTrial && boss && boss.hp > 0 && <span className="map-boss" title="Huyền Thiên Cổ Long" style={{ left: `${50 + boss.position.x / 90 * 100}%`, top: `${50 + boss.position.z / 90 * 100}%` }}>✦</span>}
-          {world?.players.filter((p) => p.id !== character.id).map((p) => <span key={p.id} className="map-ally" title={p.name} style={{ left: `${50 + p.position.x / 90 * 100}%`, top: `${50 + p.position.z / 90 * 100}%` }} />)}
-          <span className="map-me" title={character.name} style={{ left: `${50 + character.position.x / 90 * 100}%`, top: `${50 + character.position.z / 90 * 100}%` }} />
+        <div className="map-top"><span><Compass size={15} /> BẢN ĐỒ KHU VỰC</span><span>{inTrial ? 'LÔI ĐÀI' : inSect ? 'TÔNG MÔN' : 'HOANG VỰC'}</span></div>
+        <div className={`minimap ${inSect ? '' : 'wilderness'}`}>
+          <span className="map-compass">BẮC ↑</span><div className="map-path" />
+          {inSect && <div className="map-temple" title="Chính Điện">⌂</div>}
+          {inSect && (Object.keys(NPCS) as NpcId[]).map((id) => <span key={id} className="map-npc"
+            title={`${NPCS[id].name} · ${NPCS[id].role}`} style={{ left: mapX(NPCS[id].position.x), top: mapZ(NPCS[id].position.z) }}>✶</span>)}
+          {gate && <span className="map-portal" title={`${gate.name} · X ${gate.position.x}, Z ${gate.position.z}`}
+            style={{ left: mapX(gate.position.x), top: mapZ(gate.position.z) }}>◈</span>}
+          {!inSect && !inTrial && boss && boss.hp > 0 && <span className="map-boss" title="Huyền Thiên Cổ Long"
+            style={{ left: mapX(boss.position.x), top: mapZ(boss.position.z) }}>✦</span>}
+          {activeWorld?.players.filter((p) => p.id !== character.id).map((p) => <span key={p.id} className="map-ally" title={p.name}
+            style={{ left: mapX(p.position.x), top: mapZ(p.position.z) }} />)}
+          <span className="map-me" title={character.name} style={{ left: mapX(livePosition.x), top: mapZ(livePosition.z) }} />
         </div>
-        <div className="map-footer"><span><span className="legend-dot player" /> Bạn</span><span><span className="legend-dot boss" /> Thế giới Boss</span><span><span className="legend-dot ally" /> Đạo hữu</span></div>
+        <div className="map-footer"><span><span className="legend-dot player" /> Bạn</span>
+          <span className="portal-legend">◈ Cổng dịch chuyển</span>
+          {!inSect && !inTrial && <span><span className="legend-dot boss" /> Boss</span>}</div>
       </section>
-      {!inTrial ? <section className="boss-card glass-panel"><div className="boss-card-header"><div className="boss-emblem"><Flame size={22} /></div><div><small>{focusedMonster ? 'MỤC TIÊU · HOANG VỰC' : 'THẾ GIỚI BOSS · NGOẠI GIỚI'}</small><strong>{focusedMonster?.name ?? 'Huyền Thiên Cổ Long'}</strong></div><span className="boss-level">LV. {focusedMonster?.level ?? 88}</span></div>
-        {focusedMonster ? <><div className="boss-health-heading"><span>SINH LỰC YÊU THÚ</span><b>{format(focusedMonster.hp)} / {format(focusedMonster.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${focusedMonster.hp / focusedMonster.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Phím J / Space: chém thường · 1–4: công pháp</div></> : boss && boss.hp > 0 ? <><div className="boss-health-heading"><span>SINH LỰC CỔ LONG</span><b>{format(boss.hp)} / {format(boss.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${boss.hp / boss.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Ra ngoài Tông Môn, tiến gần và xuất chiêu</div></> : <div className="boss-defeated"><Sparkles size={15} /> Đã bị đánh bại · Hồi sinh sau {Math.max(0, Math.ceil(((boss?.respawnAt ?? now) - now) / 1000))}s</div>}
+      {inSect ? <section className="zone-card glass-panel">
+        <div className="zone-card-heading"><span className="zone-emblem">◈</span><div><small>ĐƯỜNG ĐẾN BÃI QUÁI</small><strong>Cổng Hoang Vực</strong></div></div>
+        <p>Tông Môn là khu an toàn. Đi đến <b>X 0, Z 2</b> rồi nhấn <kbd>E</kbd> hoặc chạm cổng để săn quái, hái thảo.</p>
+        <button className="zone-card-button" disabled={!connected || !nearPortal || character.hp <= 0} onClick={() => onAction('portal:travel')}>
+          {nearPortal ? 'Dịch chuyển đến Hoang Vực' : 'Hãy đến gần cổng · X 0, Z 2'} <ArrowRight size={14} />
+        </button>
+      </section> : !inTrial ? <section className="boss-card glass-panel"><div className="boss-card-header"><div className="boss-emblem"><Flame size={22} /></div><div><small>{focusedMonster ? 'MỤC TIÊU · HOANG VỰC' : 'THẾ GIỚI BOSS · NGOẠI GIỚI'}</small><strong>{focusedMonster?.name ?? 'Huyền Thiên Cổ Long'}</strong></div><span className="boss-level">LV. {focusedMonster?.level ?? 88}</span></div>
+        {focusedMonster ? <><div className="boss-health-heading"><span>SINH LỰC YÊU THÚ</span><b>{format(focusedMonster.hp)} / {format(focusedMonster.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${focusedMonster.hp / focusedMonster.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Phím J / Space: chém thường · 1–4: công pháp</div></> : boss && boss.hp > 0 ? <><div className="boss-health-heading"><span>SINH LỰC CỔ LONG</span><b>{format(boss.hp)} / {format(boss.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${boss.hp / boss.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Đi theo lối đá đến Long Vực và xuất chiêu</div></> : <div className="boss-defeated"><Sparkles size={15} /> Đã bị đánh bại · Hồi sinh sau {Math.max(0, Math.ceil(((boss?.respawnAt ?? now) - now) / 1000))}s</div>}
       </section> : <section className="trial-card glass-panel"><div className="trial-card-head"><Zap size={20} /> CỬU THIÊN LÔI KIẾP</div><div className="trial-wave">Đạo lôi <strong>{Math.min((trial?.wave ?? 0) + 1, 9)} / 9</strong></div><div className="trial-pips">{Array.from({ length: 9 }, (_, i) => <span key={i} className={i < (trial?.wave ?? 0) ? 'done' : i === (trial?.wave ?? 0) ? 'current' : ''} />)}</div><p>{trial?.phase === 'warning' ? '⚠ VÙNG ĐỎ! Di chuyển khỏi tâm lôi ngay!' : trial?.phase === 'strike' ? 'Thiên lôi vừa giáng xuống!' : 'Chuẩn bị... Quan sát mặt đất và né tránh.'}</p>
         <button className="btn btn-outline-gold btn-full guard-button" disabled={!connected || !character.equipment.artifact || character.mp < 18 || trial?.guarding || (cooldowns.trial_guard ?? 0) > now} onClick={() => onAction('guard')}>
           <Shield size={14} /> {trial?.guarding ? 'Pháp bảo đang hộ thể' : (cooldowns.trial_guard ?? 0) > now ? `Hồi pháp bảo ${Math.ceil((cooldowns.trial_guard - now) / 1000)}s` : 'Xuất Pháp Bảo · F'}
@@ -90,15 +113,22 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
       </section>}
       <section className="quest-card glass-panel"><div className="card-eyebrow"><BookOpen size={14} /> TÔNG MÔN <span>{SECT_RANK_LABEL[character.sectRank].toUpperCase()}</span></div>
         <div className="quest-title">{character.storyStep < 3 ? `Cốt truyện · Chương ${character.storyStep}/3` : 'Đạo tâm đã thành'}</div>
-        <p>{character.storyStep === 0 ? 'Gặp Chưởng Môn ở Chính Điện (X 0, Z 29) để bắt đầu hành trình.' : character.storyStep === 1 ? `Hạ ${Math.min(character.storyKills, 3)}/3 yêu thú ở Hoang Vực.` : character.storyStep === 2 ? 'Hợp sức đánh bại Huyền Thiên Cổ Long.' : 'Hoàn thành 5 nhiệm vụ hằng ngày để tích lũy cống hiến.'}</p>
+        <p>{character.storyStep === 0 ? 'Gặp Chưởng Môn trong Chính Điện (X 0, Z 29) để bắt đầu hành trình.' : character.storyStep === 1 ? `Qua Cổng Hoang Vực · Hạ ${Math.min(character.storyKills, 3)}/3 yêu thú.` : character.storyStep === 2 ? 'Đến Long Vực ở Hoang Vực để đánh bại Huyền Thiên Cổ Long.' : 'Hoàn thành 5 nhiệm vụ hằng ngày để tích lũy cống hiến.'}</p>
+        {!inSect && !inTrial && <div className="quest-route">◈ Trở về: Cổng Hồi Tông ở X 0, Z 34</div>}
         <div className="quest-status"><span className="quest-status-circle">✓</span>{character.dailyQuests.filter((q) => q.claimed).length}/5 nhiệm vụ đã lĩnh thưởng <ChevronRight size={15} /></div>
         <div className="sect-menu"><button onClick={() => onPanel('sect')}>Chính Điện</button><button onClick={() => onPanel('quests')}>Nhiệm vụ</button><button onClick={() => onPanel('shop')}>Cửa hàng</button></div>
       </section>
     </div>
 
-    {nearNpc && !inTrial && <div className="nearby-interaction glass-panel">
+    {nearNpc && <div className="nearby-interaction glass-panel">
       <span className="text-[9px] font-bold tracking-widest text-jade">NPC GẦN BẠN · {NPCS[nearNpc].name}</span>
       <button onClick={() => onPanel(npcPanel)}>{NPCS[nearNpc].role} <ArrowRight size={13} /></button>
+    </div>}
+    {nearPortal && gate && <div className="nearby-interaction portal-interaction glass-panel">
+      <span className="portal-overline">◈ {gate.name.toUpperCase()} · X {gate.position.x}, Z {gate.position.z}</span>
+      <button disabled={!connected || character.hp <= 0} onClick={() => onAction('portal:travel')}>
+        {inSect ? 'Đến bãi quái Hoang Vực' : 'Trở về Tông Môn'} <kbd>E</kbd> <ArrowRight size={13} />
+      </button>
     </div>}
 
     <div className="hud-bottom">
@@ -108,14 +138,14 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
       </section>
 
       <section className="hotbar"><div className="hotbar-caption"><span /> PHÁP QUYẾT & THẦN THÔNG <span /></div><div className="hotbar-slots">
-        <button className="skill-slot basic-slot" disabled={!connected || inTrial || character.hp <= 0} onClick={onAttack} title="Đòn đánh thường (J / Space) · rời Tông Môn để tấn công">
+        <button className="skill-slot basic-slot" disabled={!connected || character.scene !== 'wilderness' || character.hp <= 0} onClick={onAttack} title="Đòn đánh thường (J / Space) · chỉ dùng ở Hoang Vực">
           <kbd>J</kbd><span className="skill-symbol"><Swords size={26} /></span><span className="skill-name">Chém thường</span><span className="skill-mana">0 MP</span>
         </button>
         {[0, 1, 2, 3].map((index) => {
           const id = character.hotbar[index];
           const skill = id && Object.hasOwn(SKILLS, id) ? SKILLS[id] : null;
           const remaining = skill && !character.devMode ? Math.max(0, Math.ceil(((cooldowns[skill.id] ?? 0) - now) / 1000)) : 0;
-          return <button key={index} className={`skill-slot ${!skill ? 'locked' : ''} ${skill?.ultimate ? 'ultimate' : ''}`} disabled={!skill || !connected || inTrial || character.hp <= 0 || Boolean(remaining)} onClick={() => skill && onSkill(skill.id)} title={skill ? `${skill.name} — ${skill.description} (${skill.mana} MP)` : 'Mở Công Pháp để gán phím'}>
+          return <button key={index} className={`skill-slot ${!skill ? 'locked' : ''} ${skill?.ultimate ? 'ultimate' : ''}`} disabled={!skill || !connected || inTrial || (inSect && skill.id !== 'healing_bloom') || character.hp <= 0 || Boolean(remaining)} onClick={() => skill && onSkill(skill.id)} title={skill ? `${skill.name} — ${skill.description} (${skill.mana} MP)` : 'Mở Công Pháp để gán phím'}>
             <kbd>{index + 1}</kbd><span className="skill-symbol" style={{ color: skill?.color }}>{skill?.icon ?? '⊘'}</span><span className="skill-name">{skill?.name ?? 'Chưa gán'}</span>
             {Boolean(remaining) && <span className="skill-cooldown">{remaining}</span>}{skill && <span className="skill-mana">{skill.mana} MP</span>}
           </button>;

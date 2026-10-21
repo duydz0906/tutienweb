@@ -1,8 +1,9 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { HerbState, MonsterState } from '@van-thuong/shared';
+import type { HerbState, MonsterState, Vector3 } from '@van-thuong/shared';
 import { BillboardLabel } from './Billboard';
+import { PortalGate } from './PortalGate';
 
 function Monster({ monster, selected, onSelect }: { monster: MonsterState; selected: boolean; onSelect: (id: string) => void }) {
   const group = useRef<THREE.Group>(null);
@@ -76,18 +77,60 @@ function Herb({ patch, onGather }: { patch: HerbState; onGather: (id: string) =>
   </group>;
 }
 
-export function Wilderness({ monsters, herbs, selectedTarget, onSelect, onGather }: {
-  monsters: MonsterState[]; herbs: HerbState[]; selectedTarget: string | null;
-  onSelect: (id: string) => void; onGather: (id: string) => void;
+function HuntingGround({ x, z, radius, color, name }: { x: number; z: number; radius: number; color: string; name: string }) {
+  return <group position={[x, 0, z]}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.094, 0]}>
+      <circleGeometry args={[radius, 48]} /><meshBasicMaterial color={color} transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
+    </mesh>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.10, 0]}>
+      <ringGeometry args={[radius - 0.1, radius, 48]} /><meshBasicMaterial color={color} transparent opacity={0.58} depthWrite={false} side={THREE.DoubleSide} />
+    </mesh>
+    <group position={[0, 0, radius + 1]}>
+      <mesh castShadow position={[0, 1.15, 0]}><cylinderGeometry args={[0.16, 0.27, 2.3, 7]} /><meshStandardMaterial color="#484a4d" /></mesh>
+      <mesh position={[0, 2.32, 0]}><octahedronGeometry args={[0.3, 0]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.25} /></mesh>
+      <BillboardLabel text={name} position={[0, 3.25, 0]} color={color} width={4.5} />
+    </group>
+  </group>;
+}
+
+export function Wilderness({ monsters, herbs, playerPosition, selectedTarget, onSelect, onGather, onTravel }: {
+  monsters: MonsterState[]; herbs: HerbState[]; playerPosition: Vector3; selectedTarget: string | null;
+  onSelect: (id: string) => void; onGather: (id: string) => void; onTravel: () => void;
 }) {
   return <>
-    {/* Darker soil and jagged rocks make the farm region legible beyond the sect gate. */}
-    <mesh receiveShadow position={[0, 0.075, -24]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[93, 45]} /><meshStandardMaterial color="#4e6760" roughness={1} />
+    {/* A separate instance from the sect: landing pad, path and distinct hunting clearings. */}
+    <mesh receiveShadow position={[0, 0.082, -22]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[84, 48]} /><meshStandardMaterial color="#454e4f" roughness={1} />
     </mesh>
-    {Array.from({ length: 19 }, (_, i) => <mesh key={i} position={[Math.sin(i * 8.23) * 31, 0.24, -13 - (i * 7.3) % 31]} rotation={[0, i, 0]}>
-      <dodecahedronGeometry args={[0.4 + i % 3 * 0.2, 0]} /><meshStandardMaterial color={i % 2 ? '#647073' : '#777b6e'} roughness={1} flatShading />
+    <mesh receiveShadow position={[0, 0.086, 29]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[18, 20]} /><meshStandardMaterial color="#777a75" roughness={0.96} />
+    </mesh>
+    {Array.from({ length: 22 }, (_, i) => <mesh key={`path-${i}`} receiveShadow
+      position={[Math.sin(i * 2.2) * 0.34, 0.105, 23.5 - i * 2.37]} rotation={[0, i * 0.33, 0]}>
+      <boxGeometry args={[2.5 + i % 3 * 0.2, 0.055, 1.45]} />
+      <meshStandardMaterial color={i % 3 ? '#84817d' : '#9b8d7f'} roughness={1} />
     </mesh>)}
+    <HuntingGround x={0} z={-9} radius={12} color="#b6d5cd" name="BÃI LINH LANG · CẤP 1–2" />
+    <HuntingGround x={-23} z={-25} radius={8} color="#e6b292" name="THIẾT GIÁP TRƯ · CẤP 3" />
+    <HuntingGround x={23} z={-25} radius={8} color="#bda6e8" name="U ẢNH · CẤP 5" />
+    <HuntingGround x={0} z={-33} radius={7} color="#dcab9c" name="LONG VỰC · CỔ LONG" />
+    {Array.from({ length: 30 }, (_, i) => {
+      const angle = i * 2.3999;
+      const distance = 17 + i % 5 * 5;
+      return <mesh key={i} castShadow position={[Math.sin(angle) * distance, 0.34, Math.cos(angle) * distance - 5]}
+        rotation={[0.16 * i, i * 1.31, 0]}>
+        <dodecahedronGeometry args={[0.46 + i % 3 * 0.21, 0]} />
+        <meshStandardMaterial color={i % 3 ? '#656b70' : '#858280'} roughness={1} flatShading />
+      </mesh>;
+    })}
+    {[-1, 1].map((side) => Array.from({ length: 5 }, (_, i) => <group key={`${side}-${i}`}
+      position={[side * (32 + i * 1.2), 0, 18 - i * 10]}>
+      <mesh castShadow position={[0, 1.1, 0]} rotation={[0, i, 0]}>
+        <coneGeometry args={[0.56, 2.2 + i % 2, 5]} /><meshStandardMaterial color="#4c5665" roughness={0.75} flatShading /></mesh>
+      <mesh position={[0, 2.1 + i % 2, 0]}><octahedronGeometry args={[0.19, 0]} />
+        <meshStandardMaterial color="#ab92c4" emissive="#7554aa" emissiveIntensity={1} /></mesh>
+    </group>))}
+    <PortalGate zone="wilderness" playerPosition={playerPosition} onTravel={onTravel} />
     {monsters.map((monster) => <Monster key={monster.id} monster={monster} selected={selectedTarget === monster.id} onSelect={onSelect} />)}
     {herbs.map((patch) => <Herb key={patch.id} patch={patch} onGather={onGather} />)}
   </>;

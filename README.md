@@ -1,8 +1,8 @@
 # Vân Thượng Online · Web game tu tiên 3D
 
-Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nhân vật nam/nữ và rút Linh Căn một lần; khám phá **Tông Môn** (Chính Điện, Nhiệm Vụ Các, Quảng Trường), **Hoang Vực** với quái/thảo dược hồi sinh, 5 nhiệm vụ ngẫu nhiên mỗi ngày, NPC bán đồ/công pháp/đan dược, trang bị đổi mesh, combat server hitbox, tu luyện tầng 1–9 và đột phá đại cảnh giới, lôi kiếp, chat cùng nhiều người chơi và `/devmode` chỉ cho admin đã xác thực cả token lẫn role trong database.
+Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nhân vật nam/nữ và rút Linh Căn một lần; khám phá **Tông Môn** (nhà rộng có cửa đi vào Chính Điện, Nhiệm Vụ Các, Tàng Bảo Các), qua **cổng dịch chuyển hai chiều** tới bản đồ **Hoang Vực** riêng với các bãi quái/thảo dược hồi sinh, 5 nhiệm vụ ngẫu nhiên mỗi ngày, NPC bán đồ/công pháp/đan dược, trang bị đổi mesh, combat server hitbox, tu luyện tầng 1–9 và đột phá đại cảnh giới, lôi kiếp, chat cùng nhiều người chơi và `/devmode` chỉ cho admin đã xác thực cả token lẫn role trong database.
 
-> Đây là nền tảng **một world process**, chưa phải dịch vụ MMO production nhiều shard. Boss/quái/thảo/đồ rơi/instance đang ở bộ nhớ của world server; nhân vật, trang bị, quest và trạng thái `/devmode` ở MongoDB, tọa độ/scene, cooldown và xếp hạng ở Redis trong cấu hình triển khai. Các giới hạn mở rộng nằm ở cuối tài liệu.
+> Đây là nền tảng **một world process**, chưa phải dịch vụ MMO production nhiều shard. Boss/quái/thảo/đồ rơi/instance thuộc từng vùng và đang ở bộ nhớ của world server; nhân vật, trang bị, quest và trạng thái `/devmode` ở MongoDB, tọa độ/scene, cooldown và xếp hạng ở Redis trong cấu hình triển khai. Các giới hạn mở rộng nằm ở cuối tài liệu.
 
 ## 1. Cấu trúc thư mục — bắt đầu từ Scene 3D
 
@@ -16,9 +16,11 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 │   │       │   ├── SceneEngine.ts       # Scene, GLTFLoader, ánh sáng/bóng, WASD Vector3, camera bám
 │   │       │   ├── Avatar.tsx           # HumanForge Mixamo rig riêng/người, trang bị và hiệu ứng
 │   │       │   ├── humanAppearance.ts   # Male/female mesh, tóc, khuôn mặt, body morph
-│   │       │   ├── WorldDecor.tsx       # Núi, kiến trúc, boss, ấn trận, thiên lôi
-│   │       │   ├── SectScene.tsx        # NPC/đệ tử HumanForge, Chính Điện, quảng trường an toàn
-│   │       │   ├── Wilderness.tsx       # Quái theo cấp, linh thảo, target 3D
+│   │       │   ├── WorldDecor.tsx       # Địa hình hai vùng, boss, ấn trận, thiên lôi
+│   │       │   ├── SectArchitecture.tsx # Nhà lớn: cửa mở, phòng NPC, mái ẩn khi vào trong
+│   │       │   ├── PortalGate.tsx       # Cổng dịch chuyển tương tác ở cả hai vùng
+│   │       │   ├── SectScene.tsx        # NPC/đệ tử HumanForge và quảng trường an toàn
+│   │       │   ├── Wilderness.tsx       # Bản đồ riêng: bãi quái theo cấp, thảo, cổng về
 │   │       │   ├── CombatEffects.tsx    # Kiếm trail, vòng thi triển, particle, damage billboard
 │   │       │   ├── Billboard.tsx        # Tên NPC/quái & text nổi trên thế giới
 │   │       │   ├── sound.ts             # Web Audio chém kiếm trên user gesture
@@ -38,14 +40,16 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 │           ├── game/
 │           │   ├── rules.ts            # RNG, EXP ×5, chỉ số, hitbox, inventory
 │           │   ├── sect.ts             # Rút 5 nhiệm vụ/ngày (UTC+7), điểm và NPC proximity
+│           │   ├── sectGeometry.ts     # Hitbox tường server, lối vào ba điện đi được
 │           │   ├── devMode.ts          # Bật/tắt và backup trạng thái Tiên Đế 9
 │           │   ├── World.ts            # Tick server, quest, shop, quái, lôi kiếp, admin
 │           │   └── *.test.ts           # Unit + Socket.IO integration tests
 │           └── index.ts                # REST, websocket, static build
-├── packages/shared/src/index.ts        # Wire types, 10 slot, item, NPC, quest, skill, shop
+├── packages/shared/src/index.ts        # Wire types, cổng/nhà/chuyển vùng, NPC, quest, skill, shop
 ├── packages/shared/src/level_config.json # 12 cảnh giới, 9 tầng, EXP ×5, thưởng HP/MP
 ├── scripts/sync-human-assets.mjs       # Đồng bộ subset CC0 từ HumanForge nếu muốn tái tạo asset
-├── scripts/grant-admin.mjs             # Gán claim qua Firebase Admin SDK
+├── scripts/prepare-dev.mjs             # Kiểm tra/cài lại dependency dev bị thiếu sau khi pull
+├── scripts/grant-admin.mjs             # Gán claim Firebase + role MongoDB
 ├── compose.yaml                        # MongoDB/Redis chỉ bind localhost
 └── .env.example                        # Mẫu biến môi trường, KHÔNG có bí mật
 ```
@@ -61,21 +65,30 @@ npm install
 npm run dev
 ```
 
+Sau khi `git pull`/đổi nhánh, thư mục `node_modules` cũ có thể **chưa có `tailwindcss`/`postcss`**, dù chúng đã được khai báo trong `apps/client/package.json` và `package-lock.json`. `npm run dev` nay kiểm tra và tự chạy `npm install --include=dev` **trước khi khởi động Vite** nếu thiếu dependency; bạn cũng có thể cài lại thủ công (Windows CMD/PowerShell đều chạy được):
+
+```bash
+npm ci --include=dev
+npm run dev
+```
+
+Nếu npm không có Internet hoặc quá trình cài thất bại, sửa lỗi npm được in ở bước cài rồi chạy lại hai lệnh trên. Không cần cài Tailwind global, không cần sửa PostCSS config, và không xóa source hoặc `.git`.
+
 Mở **http://localhost:5173** (trong Arena dùng live preview cổng **5173**). Vite proxy `/api` và `/socket.io` về Express cổng **3001**, trình duyệt chỉ dùng đường dẫn tương đối, không gọi `localhost` để tới backend. Khi không có `.env` và không phải `NODE_ENV=production`, server tự mở demo; hoặc `cp .env.example .env` và giữ `DEMO_MODE=true`. Bấm **Bước vào chơi thử**, chọn nam/nữ, 7 kiểu tóc, 8 màu tóc, 4 khuôn mặt, sắc da, chiều cao/vóc dáng rồi rút Linh Căn. Nút **Xem cận khuôn mặt** cho phép xem thay đổi trực tiếp. Nhấn **Bước vào Vân Thượng** và đợi kết nối world; có nút thử lại khi mất kết nối. Dữ liệu demo nằm trong RAM và **mất khi restart**; phiên demo **không bao giờ có quyền admin**. Trong demo có thể đặt tên `Daniel965` để chơi, nhưng đó chỉ là tên hiển thị, hoàn toàn không cấp quyền admin; ở production tên này chỉ dành cho UID đã được xác thực.
 
 ```bash
-npm test           # 18 test: RNG, 12 cảnh giới, quests UTC+7, shop, hotbar, anti-spoof, /devmode
+npm test           # 24 test: RNG, progression, cổng, tường, cách ly vùng, shop, admin
 npm run typecheck  # TypeScript cho client và server
 npm run build      # Kiểm tra kiểu + đóng gói client
 ```
 
 ### Hướng dẫn nhanh trong game
 
-- **WASD / phím mũi tên**: di chuyển; **kéo chuột**: xoay camera; **cuộn**: zoom. **J/Space** chém thường, **1–4** dùng công pháp trong hotbar, **I** túi đồ, **Q** nhiệm vụ, **K** công pháp. Có thể nhấp quái để chọn mục tiêu, nhấp thảo dược để hái. Nút **Đổi dung mạo** vẫn chỉnh trực tiếp nam/nữ, tóc/mặt/vóc dáng; trong lôi kiếp không đổi được. Mobile có cần điều khiển ảo và nút chạm đánh/skill.
-- **Tông Môn** là khu an toàn: từ cổng (Z 2) đi tới **Chính Điện** (Chưởng Môn X 0, Z 29) để nhận truyện diệt quái/Boss và xin thăng **Ngoại môn → Nội môn → Chân truyền**; **Nhiệm Vụ Các** (Trưởng Lão Chấp Sự X −8, Z 14) lĩnh thưởng; **Tàng Bảo Các** (Trưởng Lão Hậu Cần X 8, Z 14) mua đồ, sách, đan. Quảng Trường có đệ tử đi tuần/tọa thiền và vòng linh khí. NPC phải ở trong bán kính 4,2m mới cho thao tác; mở bảng từ HUD ở xa chỉ để xem.
+- **WASD / phím mũi tên**: di chuyển; **kéo chuột**: xoay camera; **cuộn**: zoom. **E** dùng cổng ở gần (hoặc nhấp/chạm cổng), **J/Space** chém thường ở Hoang Vực, **1–4** dùng công pháp trong hotbar, **I** túi đồ, **Q** nhiệm vụ, **K** công pháp. Có thể nhấp quái để chọn mục tiêu, nhấp thảo dược để hái. Nút **Đổi dung mạo** vẫn chỉnh trực tiếp nam/nữ, tóc/mặt/vóc dáng; trong lôi kiếp không đổi được. Mobile có cần điều khiển ảo và nút chạm đánh/skill.
+- **Tông Môn** là bản đồ an toàn: từ quảng trường (X 0, Z 10), đi thẳng vào **Chính Điện** qua cửa rộng phía trước (Chưởng Môn X 0, Z 29) để nhận truyện và xin thăng **Ngoại môn → Nội môn → Chân truyền**. Đi vào **Nhiệm Vụ Các** (Trưởng Lão Chấp Sự X −17, Z 18,5) để lĩnh thưởng, **Tàng Bảo Các** (Trưởng Lão Hậu Cần X 17, Z 18,5) để mua đồ. Tường có hitbox thật, lối cửa không bị chặn; mái điện ẩn khi bạn ở trong để nhìn thấy NPC. NPC phải ở trong bán kính 4,2 m và **cùng vùng** mới cho thao tác; mở bảng từ HUD ở xa chỉ để xem.
 - **Nhiệm vụ ngày**: máy chủ rút đúng **5 nhiệm vụ không trùng** mỗi ngày, reset **00:00 Việt Nam (UTC+7)**, ví dụ hái 10 thảo, giết 20 Linh Lang, chuyển thư tới NPC; lĩnh tại Nhiệm Vụ Các để nhận EXP, linh thạch và **điểm cống hiến**. Điểm mua đồ hiếm hoặc thăng bậc đệ tử. Shop có pháp y thay màu/material trên nhân vật, kiếm, sách công pháp học/gán hotbar, đan hồi HP/MP, **Trúc Cơ Đan** dùng lúc bắt đầu độ kiếp để tăng 20 điểm phần trăm thành công.
 - **Tiến cấp**: Phàm Nhân cần 35 EXP để nhập Luyện Khí tầng 1. Mỗi đại cảnh giới từ Luyện Khí tới Tiên Đế có **9 tầng**; tầng 1→2 cần 100 EXP, rồi **500 → 2.500 → 12.500 → 62.500 → 312.500 → 1.562.500 → 7.812.500**, tầng 9 đột phá đại cảnh giới cần **39.062.500 EXP**. Chuỗi 100×5^(tầng−1) bắt đầu lại ở cảnh giới mới. Thăng tiểu tầng nhận +10 Max HP/+20 Max MP; qua đại cảnh giới sau **9 đạo lôi** và roll thành công (75%, có Trúc Cơ Đan tối đa 95%) nhận **vĩnh viễn +100 Max HP/+200 Max MP**. Thu linh khí AFK tối đa 8 giờ. Trang bị **Bản Mệnh Châu**, nhấn **F** để chắn một tia sét.
-- **Hoang Vực** ở phía nam cổng (Z < 2): bãi Linh Lang/Thiết Giáp Trư/U Ảnh theo cấp, linh thảo và quái tự hồi sinh; hitbox, vị trí/HP quái, crit và chiến lợi phẩm tính trên server. Kiếm trail + âm thanh chém, vòng thi triển/pháp trận, sét/particle và text damage nổi là hiệu ứng 3D. Boss đánh trả theo chu kỳ; chiến thắng nhận EXP/nguyên liệu/trang bị rơi. **Chế tạo** Luyện Đan, Luyện Khí, Trận Pháp; Tứ Tượng Trận buff đồng đội 60 giây.
+- **Hoang Vực** là **bản đồ khác**, không phải cứ đi bộ qua ranh giới: tại Tông Môn đến **Cổng Hoang Vực X 0, Z 2** (đứng trong 4,2 m), nhấn **E**/nút HUD/chạm cổng để tới bãi quái (X 0, Z 27). Đi theo lối đá về phía nam qua bãi **Linh Lang** (giữa), **Thiết Giáp Trư** (tây), **U Ảnh** (đông), **Long Vực** (Boss phía nam), hái linh thảo và săn quái tự hồi sinh. Đến **Cổng Hồi Tông X 0, Z 34** để trở về quảng trường (X 0, Z 10). Server quyết định vùng và điểm xuất hiện, không nhận tọa độ/đích từ client; chỉ thấy người chơi, đồ rơi, trận pháp/quái trong cùng vùng. Tấn công/hái thảo chỉ ở Hoang Vực; đánh qua vùng hoặc nhặt đồ ở cùng tọa độ nhưng khác vùng đều bị từ chối. Boss đánh trả theo chu kỳ; chiến thắng nhận EXP/nguyên liệu/trang bị rơi. **Chế tạo** Luyện Đan, Luyện Khí, Trận Pháp; Tứ Tượng Trận buff đồng đội cùng vùng 60 giây.
 - Mở hai tab trình duyệt, tạo hai phiên chơi thử để thấy nhân vật, máu quái, đòn đánh và chat đồng bộ qua Socket.IO.
 
 ## 3. Kiến trúc và dữ liệu
@@ -84,16 +97,18 @@ npm run build      # Kiểm tra kiểu + đóng gói client
 |---|---|
 | Client Three.js / R3F + React/Tailwind | HumanForge/MakeHuman CC0 rigged mesh cho người chơi **và NPC/đệ tử**, nam/nữ có hình thể/da/pháp y riêng, morph khuôn mặt và vóc dáng; Tông Môn/Hoang Vực, bóng đổ, bloom, kiếm trail, magic circle, damage billboard/crit. React HUD/panels dùng Tailwind utilities (không reset CSS game). DPR giới hạn `1..1.65`. |
 | Express REST | `/api/health`, `/api/demo/session` (chỉ dev), `/api/me`, `POST /api/characters` (idempotent), **`GET /api/quests/daily`** (token bắt buộc, chỉ nhân vật của UID đã xác thực), `/api/leaderboard`. JSON tối đa 16 KB. |
-| Socket.IO world | Tick 20 Hz, snapshot 10 Hz (vị trí/HP **quái** và thảo, người chơi, Boss); server hitbox line/sphere/cone, safe zone, quest/shop/NPC, hotbar, mana/cooldown Redis, AFK, 9 sóng lôi kiếp, đồ rơi, `/devmode` và hành động admin. |
-| MongoDB/Mongoose | `User` (Firebase UID unique, provider, **role cấp riêng bằng script sau khi xác minh Firebase**, đăng nhập lại không tái cấp role bị thu hồi); `Character` (UID unique, giới tính, ngoại hình, Linh Căn, **realm + minorStage**, HP/MP/Max HP/Max MP, `position:{x,y,z}`, scene, EXP, điểm cống hiến, cấp đệ tử, cốt truyện, ngày + tiến trình 5 quest, skills/hotbar, inventory/equipment và bản sao trạng thái trước dev mode); `Equipment` là view được index cho trang bị thuộc sở hữu. |
+| Socket.IO world | Tick 20 Hz, snapshot 10 Hz **riêng theo scene** (Tông Môn, Hoang Vực, lôi kiếp); cổng xác minh bán kính và đổi scene server-side, tường nhà có hitbox quét qua đoạn di chuyển; chỉ gửi player/quái/đồ rơi/trận pháp thuộc cùng vùng. Server hitbox line/sphere/cone, quest/shop/NPC, hotbar, mana/cooldown Redis, AFK, 9 sóng lôi kiếp, `/devmode` và hành động admin. |
+| MongoDB/Mongoose | `User` (Firebase UID unique, provider, **role cấp riêng bằng script sau khi xác minh Firebase**, đăng nhập lại không tái cấp role bị thu hồi); `Character` (UID unique, giới tính, ngoại hình, Linh Căn, **realm + minorStage**, HP/MP/Max HP/Max MP, `position:{x,y,z}`, scene + `worldVersion` (migrate save cũ một lần), EXP, điểm cống hiến, cấp đệ tử, cốt truyện, ngày + tiến trình 5 quest, skills/hotbar, inventory/equipment và bản sao trạng thái trước dev mode); `Equipment` là view được index cho trang bị thuộc sở hữu. |
 | Redis | Sorted set `rank:cultivation`, hash tên/cảnh giới, tọa độ + scene TTL 30s ở `scene:<characterId>`, cooldown skill atomic `SET NX PX` để reconnect không reset thời gian hồi. |
 | Firebase Auth | Đăng nhập Google OAuth hoặc Email/Password cùng một giao diện; Admin SDK **xác minh ID token, kiểm tra revoked**, mới suy ra quyền từ custom claim + UID pinned. Mật khẩu không qua game server. |
 
 **Linh Căn** dùng `crypto.randomInt(10_000)` bên server: `[0,5999]` Tạp (60%); `[6000,8999]` Chân (30%); `[9000,9899]` Thiên (9%); `[9900,9999]` Biến Dị (1%, Băng/Phong/Lôi/Ám/Quang). Unique index một nhân vật/Firebase UID và POST lặp trả nhân vật cũ, không cho rút lại. `claim` dùng timestamp server, giữ phần dư sub-second, giới hạn offline 8 giờ.
 
-**Combat**: Client chỉ gửi `input:{x,z,rotation}`, `basic-attack` hoặc `cast:{skillId,targetId}`. Client gửi `position`, `damage`, `role`, `isAdmin`, `success` đều bị bỏ qua; server xác định tâm AoE từ tọa độ thật/quái, kiểm tra hitbox trên mặt phẳng `x,z`, safe zone, phòng thủ, chí mạng và HP Boss/quái. Cooldown áp dụng atomic ở Redis. Vượt đại cảnh giới **chỉ ghi sau khi server giải quyết đủ 9 tia sét và roll thành công**; ngắt kết nối hủy instance chứ không cấp cảnh giới. `packages/shared/src/level_config.json` là nguồn cấu hình EXP/chỉ số; mã server và UI dùng cùng quy tắc.
+**Combat**: Client chỉ gửi `input:{x,z,rotation}`, `basic-attack` hoặc `cast:{skillId,targetId}`. Client gửi `position`, `damage`, `role`, `isAdmin`, `success` đều bị bỏ qua; server xác định tâm AoE từ tọa độ thật/quái, kiểm tra hitbox trên mặt phẳng `x,z`, scene an toàn của Tông Môn, phòng thủ, chí mạng và HP Boss/quái. Cooldown áp dụng atomic ở Redis. Vượt đại cảnh giới **chỉ ghi sau khi server giải quyết đủ 9 tia sét và roll thành công**; ngắt kết nối hủy instance chứ không cấp cảnh giới. `packages/shared/src/level_config.json` là nguồn cấu hình EXP/chỉ số; mã server và UI dùng cùng quy tắc.
 
-Socket events client: `input`, `basic-attack`, `cast`, `cultivate`, `advance-stage`, `breakthrough:{usePill}`, `guard`, `choose-path`, `gather:{nodeId}`, `quest:deliver`, `quest:claim`, `sect:story`, `sect:promote`, `shop:buy`, `use-item`, `assign-hotbar`, `craft`, `place-array`, `equip`, `appearance:update`, `pickup`, `chat`, `admin:action`. Server phát `world` (bao gồm `monsters`, `herbs`, `boss`, `players`), `character`, `tribulation`, `combat`, `cooldowns`, `notice`, `chat`; riêng admin còn nhận `admin:players`. Admin actions hỗ trợ `teleport-to`, `summon`, `lightning`, `spawn-item` (ID whitelist), `spawn-boss` (ID `world-boss`).
+**Nâng cấp save cũ:** bản đồ một đảo trước đây dùng `scene=overworld, Z < 2` cho Hoang Vực. Khi nhân vật `worldVersion < 2` vào game, server đổi sang scene `wilderness` và giữ nguyên tọa độ/trang bị/tiến trình; lưu version 2 ngay. Những nhân vật version 2 đang đứng phía nam cổng trong Tông Môn không bao giờ bị tự động chuyển vùng khi đăng nhập lại. Nhân vật ngắt kết nối giữa lôi kiếp được trả về quảng trường, không nhận thưởng miễn phí.
+
+Socket events client: `input`, `portal:travel` (không có đích/tọa độ do client chọn), `basic-attack`, `cast`, `cultivate`, `advance-stage`, `breakthrough:{usePill}`, `guard`, `choose-path`, `gather:{nodeId}`, `quest:deliver`, `quest:claim`, `sect:story`, `sect:promote`, `shop:buy`, `use-item`, `assign-hotbar`, `craft`, `place-array`, `equip`, `appearance:update`, `pickup`, `chat`, `admin:action`. Server phát `world` kèm `scene` (chỉ có `monsters`, `herbs`, `boss`, `players` của vùng tương ứng; Boss null ở Tông Môn), `character`, `tribulation`, `combat`, `cooldowns`, `notice`, `chat`; riêng admin còn nhận `admin:players`. Admin actions hỗ trợ `teleport-to`, `summon`, `lightning`, `spawn-item` (ID whitelist), `spawn-boss` (ID `world-boss`).
 
 ## 4. Firebase + MongoDB + Redis, tài khoản quản trị
 

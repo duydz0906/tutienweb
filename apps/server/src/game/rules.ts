@@ -72,7 +72,7 @@ export function newCharacter(ownerUid: string, data: ReturnType<typeof parseCrea
     root: rollSpiritRoot(), path: null, realm: 0, minorStage: 0,
     cultivation: 12, totalCultivation: 12, lastCultivatedAt: now,
     hp: 120, mp: 100, maxHp: 120, maxMp: 100,
-    position: { x: 0, y: 0, z: 10 }, rotation: Math.PI, scene: 'overworld',
+    position: { x: 0, y: 0, z: 10 }, rotation: Math.PI, scene: 'overworld', worldVersion: 2,
     equipment: { weapon, robe },
     inventory: [
       { instanceId: weapon, itemId: 'wooden_sword', acquiredAt: now },
@@ -130,11 +130,6 @@ export function completeMajorBreakthrough(c: CharacterState): number {
   c.hp = c.maxHp;
   c.mp = c.maxMp;
   return cost;
-}
-
-/** Temple and plaza, including all NPCs. Wilderness attacks cannot start across the border. */
-export function inSectSafeZone(position: Vector3): boolean {
-  return position.z >= 2 && position.z <= 40 && Math.abs(position.x) <= 20;
 }
 
 export function equippedStats(character: CharacterState): { attack: number; defense: number } {

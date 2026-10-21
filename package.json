@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "workspaces": ["apps/client", "apps/server", "packages/shared"],
   "scripts": {
+    "predev": "node scripts/prepare-dev.mjs",
     "dev": "concurrently -k -n SERVER,CLIENT -c yellow,cyan \"npm run dev -w @van-thuong/server\" \"npm run dev -w @van-thuong/client\"",
     "build": "npm run typecheck && npm run build -w @van-thuong/client",
     "typecheck": "npm run typecheck -w @van-thuong/server && npm run typecheck -w @van-thuong/client",

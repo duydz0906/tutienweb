@@ -32,12 +32,12 @@ describe('authoritative multiplayer world', () => {
     const second = makeDemoSession();
     const charA = newCharacter(first.identity.uid, { name: 'Kiếm Khách', gender: 'nam', appearance: { ...DEFAULT_APPEARANCE, hair: 'tied', robeColor: 'jade' } });
     const charB = newCharacter(second.identity.uid, { name: 'Dược Sư', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE, hairColor: 'silver' } });
-    charA.position = { x: 0, y: 0, z: -8 };
+    charA.scene = 'wilderness'; charA.position = { x: 0, y: 0, z: -29 };
     charA.rotation = Math.PI;
     charA.cultivation = 150;
     charA.resources.stones = 60;
     charA.resources.ink = 8;
-    charB.position = { x: 5, y: 0, z: 10 };
+    charB.scene = 'wilderness'; charB.position = { x: 5, y: 0, z: -26 };
     await store.create(charA);
     await store.create(charB);
     io.use(async (socket, next) => {
@@ -84,8 +84,8 @@ describe('authoritative multiplayer world', () => {
       const firstHit = await ack(a, 'cast', { skillId: 'spirit_cut', targetId: 'world-boss', damage: 999999999 });
       expect(firstHit.ok).toBe(true);
       const afterHit = await nextEvent<WorldSnapshot>(a, 'world');
-      expect(afterHit.boss.hp).toBeLessThan(afterHit.boss.maxHp);
-      expect(afterHit.boss.hp).toBeGreaterThan(0);
+      expect(afterHit.boss!.hp).toBeLessThan(afterHit.boss!.maxHp);
+      expect(afterHit.boss!.hp).toBeGreaterThan(0);
       const spam = await ack(a, 'cast', { skillId: 'spirit_cut', targetId: 'world-boss', damage: 999999999 });
       expect(spam.ok).toBe(false);
       if (spam.ok === false) expect(spam.error).toContain('đang hồi');
@@ -128,7 +128,7 @@ describe('authoritative multiplayer world', () => {
       expect(thunder.guarding).toBe(false);
       a.disconnect();
       await sleep(130);
-      expect((await store.get(first.identity.uid))?.scene).toBe('overworld');
+      expect((await store.get(first.identity.uid))?.scene).toBe('wilderness');
       expect((await store.get(first.identity.uid))?.realm).toBe(0); // no free advancement by disconnecting
     } finally {
       a?.disconnect(); b?.disconnect();
