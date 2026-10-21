@@ -13,10 +13,11 @@ import { World } from './game/World.js';
 import { GOD_STAT, newCharacter, parseCreation } from './game/rules.js';
 
 function ownCharacter(c: CharacterState, identity: Identity): OwnCharacter {
-  const { ownerUid: _uid, ...data } = c;
+  const { ownerUid: _uid, devModeBackup: _backup, ...data } = c;
+  const god = identity.isAdmin && c.devMode;
   return { ...data,
-    hp: identity.isAdmin ? GOD_STAT : c.hp, mp: identity.isAdmin ? GOD_STAT : c.mp,
-    maxHp: identity.isAdmin ? GOD_STAT : c.maxHp, maxMp: identity.isAdmin ? GOD_STAT : c.maxMp,
+    hp: god ? GOD_STAT : c.hp, mp: god ? GOD_STAT : c.mp,
+    maxHp: god ? GOD_STAT : c.maxHp, maxMp: god ? GOD_STAT : c.maxMp,
     isAdmin: identity.isAdmin };
 }
 
@@ -77,20 +78,32 @@ async function main(): Promise<void> {
 
   app.get('/api/me', withAuth(async (_req, res, identity) => {
     await store.syncUser(identity);
+    const authorized = identity.isAdmin && await store.hasAdminRole(identity.uid);
     const character = await store.get(identity.uid);
-    res.json({ identity: { displayName: identity.displayName, isAdmin: identity.isAdmin }, character: character ? ownCharacter(character, identity) : null });
+    res.json({ identity: { displayName: identity.displayName, isAdmin: authorized },
+      character: character ? ownCharacter(character, { ...identity, isAdmin: authorized }) : null });
   }));
 
   app.post('/api/characters', withAuth(async (req, res, identity) => {
     await store.syncUser(identity);
     const existing = await store.get(identity.uid);
-    if (existing) { res.json({ character: ownCharacter(existing, identity), existing: true }); return; }
+    if (existing) {
+      const authorized = identity.isAdmin && await store.hasAdminRole(identity.uid);
+      res.json({ character: ownCharacter(existing, { ...identity, isAdmin: authorized }), existing: true }); return;
+    }
+    const authorized = identity.isAdmin && await store.hasAdminRole(identity.uid);
     let parsed: ReturnType<typeof parseCreation>;
-    try { parsed = parseCreation(req.body, identity.isAdmin, demoMode); }
+    try { parsed = parseCreation(req.body, authorized, demoMode); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Thông tin không hợp lệ.' }); return; }
     const created = await store.create(newCharacter(identity.uid, parsed));
-    await cache.update(created, identity.isAdmin);
-    res.status(201).json({ character: ownCharacter(created, identity), existing: false });
+    await cache.update(created, authorized);
+    res.status(201).json({ character: ownCharacter(created, { ...identity, isAdmin: authorized }), existing: false });
+  }));
+
+  app.get('/api/quests/daily', withAuth(async (_req, res, identity) => {
+    const daily = await world.dailyQuests(identity.uid);
+    if (!daily) { res.status(404).json({ error: 'Hãy tạo nhân vật trước khi nhận nhiệm vụ.' }); return; }
+    res.json(daily);
   }));
 
   app.get('/api/leaderboard', async (_req, res) => {

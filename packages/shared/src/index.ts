@@ -1,11 +1,23 @@
 /* Wire contracts and public game data. Never put secrets or admin credentials here. */
+import levelConfig from './level_config.json' with { type: 'json' };
 export type Vector3 = { x: number; y: number; z: number };
-export const REALMS = ['Phàm Nhân', 'Luyện Khí', 'Trúc Cơ', 'Kim Đan', 'Nguyên Anh'] as const;
-/** Tu vi needed to enter the NEXT realm; the nine-strike trial consumes it. */
-export const BREAKTHROUGH_COSTS = [35, 100, 250, 550] as const;
+export const LEVEL_CONFIG = levelConfig;
+export const REALMS = levelConfig.realms;
+export const MAX_REALM = REALMS.length - 1;
+/** EXP for advancing FROM stage N. Resets at each new major realm; 100, 500, 2,500… */
+export function expForStage(stage: number): number {
+  if (!Number.isInteger(stage) || stage < 1 || stage > levelConfig.minorStages) throw new Error('Tầng cảnh giới không hợp lệ.');
+  return levelConfig.exp.base * levelConfig.exp.multiplier ** (stage - 1);
+}
+/** Phàm Nhân has a short entry trial; a new major realm requires the ninth stage. */
+export function majorBreakthroughCost(realm: number, stage: number): number | null {
+  if (!Number.isInteger(realm) || realm < 0 || realm >= MAX_REALM) return null;
+  if (realm === 0) return levelConfig.exp.entryCost;
+  return stage === levelConfig.minorStages ? expForStage(stage) : null;
+}
 export type Gender = 'nam' | 'nu';
 export type Path = 'kiem' | 'phap' | 'the';
-export type RootTier = 'tap' | 'chan' | 'thien' | 'bien_di';
+export type RootTier = 'tap' | 'chan' | 'thien' | 'bien_di' | 'hon_don';
 export type Element = 'kim' | 'moc' | 'thuy' | 'hoa' | 'tho' | 'bang' | 'phong' | 'loi' | 'am' | 'quang';
 export const ELEMENT_LABEL: Record<Element, string> = {
   kim: 'Kim', moc: 'Mộc', thuy: 'Thủy', hoa: 'Hỏa', tho: 'Thổ',
@@ -16,9 +28,9 @@ export const ELEMENT_COLOR: Record<Element, string> = {
   bang: '#a9e9fb', phong: '#b6e8be', loi: '#d6adff', am: '#a194de', quang: '#ffe7a5',
 };
 export const ROOT_LABEL: Record<RootTier, string> = {
-  tap: 'Tạp Linh Căn', chan: 'Chân Linh Căn', thien: 'Thiên Linh Căn', bien_di: 'Biến Dị Linh Căn',
+  tap: 'Tạp Linh Căn', chan: 'Chân Linh Căn', thien: 'Thiên Linh Căn', bien_di: 'Biến Dị Linh Căn', hon_don: 'Hỗn Độn Linh Căn',
 };
-export const ROOT_MULTIPLIER: Record<RootTier, number> = { tap: 0.7, chan: 1, thien: 1.8, bien_di: 2.6 };
+export const ROOT_MULTIPLIER: Record<RootTier, number> = { tap: 0.7, chan: 1, thien: 1.8, bien_di: 2.6, hon_don: 10 };
 export type SpiritRoot = { tier: RootTier; elements: Element[]; multiplier: number };
 export const HAIR_STYLES = ['long', 'tied', 'bob', 'braid', 'bun', 'short', 'cropped'] as const;
 export const HAIR_COLORS = ['ink', 'silver', 'chestnut', 'auburn', 'gold', 'ash', 'plum', 'jade'] as const;
@@ -65,6 +77,7 @@ export type ItemDefinition = {
 export const ITEMS: Record<string, ItemDefinition> = {
   wooden_sword: { id: 'wooden_sword', name: 'Thanh Trúc Kiếm', slot: 'weapon', rarity: 'common', description: 'Thanh kiếm đồng hành từ ngày đầu tu luyện.', attack: 4, defense: 0, icon: '⚔' },
   novice_robe: { id: 'novice_robe', name: 'Vân Bào', slot: 'robe', rarity: 'common', description: 'Lễ phục của đệ tử Vân Thượng.', attack: 0, defense: 3, icon: '◈' },
+  moon_robe: { id: 'moon_robe', name: 'Nguyệt Ảnh Pháp Y', slot: 'robe', rarity: 'rare', description: 'Pháp y ánh bạc, thay đổi màu và chất liệu khi khoác lên người.', attack: 0, defense: 12, icon: '✥' },
   jade_blade: { id: 'jade_blade', name: 'Thanh Liên Kiếm', slot: 'weapon', rarity: 'epic', description: 'Kiếm khí xanh như nước hồ thu.', attack: 18, defense: 0, icon: '⚔' },
   immortal_sword: { id: 'immortal_sword', name: 'Xích Tiêu Tiên Kiếm', slot: 'weapon', rarity: 'immortal', description: 'Tiên khí lưu quang đỏ rực.', attack: 56, defense: 5, icon: '⚔' },
   cloud_crown: { id: 'cloud_crown', name: 'Lưu Vân Quan', slot: 'head', rarity: 'rare', description: 'Ngưng sương trời trên tóc.', attack: 0, defense: 6, icon: '♛' },
@@ -76,30 +89,91 @@ export const ITEMS: Record<string, ItemDefinition> = {
   spirit_fox: { id: 'spirit_fox', name: 'Linh Hồ', slot: 'pet', rarity: 'epic', description: 'Tiểu hồ ly theo bước tu tiên.', attack: 5, defense: 5, icon: '✿' },
   lotus_talisman: { id: 'lotus_talisman', name: 'Liên Hoa Phù', slot: 'talisman', rarity: 'rare', description: 'Phù văn bảo vệ thần hồn.', attack: 2, defense: 7, icon: '✦' },
 };
+export const CONSUMABLES = {
+  heal_pill: { id: 'heal_pill', name: 'Hồi Huyết Đan', icon: '♥', description: 'Hồi 70 sinh lực. Chỉ dùng khi bị thương.' },
+  mana_pill: { id: 'mana_pill', name: 'Hồi Linh Đan', icon: '✧', description: 'Hồi 90 chân khí. Chỉ dùng khi chưa đầy.' },
+  foundation_pill: { id: 'foundation_pill', name: 'Trúc Cơ Đan', icon: '✺', description: 'Dùng lúc bắt đầu độ kiếp: +20% cơ hội thành công (tối đa 95%).' },
+} as const;
+export type ConsumableId = keyof typeof CONSUMABLES;
 export type OwnedItem = { instanceId: string; itemId: string; acquiredAt: number };
+
+export type SectRank = 'outer' | 'inner' | 'true';
+export const SECT_RANK_LABEL: Record<SectRank, string> = { outer: 'Ngoại môn', inner: 'Nội môn', true: 'Chân truyền' };
+export const NPCS = {
+  master: { id: 'master', name: 'Chưởng Môn Vân Thượng', role: 'Chính Điện · Cốt truyện và thăng cấp', position: { x: 0, y: 0, z: 29 } },
+  quest: { id: 'quest', name: 'Trưởng Lão Chấp Sự', role: 'Nhiệm Vụ Các · Nhiệm vụ hằng ngày', position: { x: -8, y: 0, z: 14 } },
+  shop: { id: 'shop', name: 'Trưởng Lão Hậu Cần', role: 'Tàng Bảo Các · Cửa hàng tông môn', position: { x: 8, y: 0, z: 14 } },
+} as const;
+export type NpcId = keyof typeof NPCS;
+/** Herbs in the wilderness: positions are public, availability and rewards are server-owned. */
+export const HERB_NODES = [
+  { id: 'herb-1', position: { x: -10, y: 0, z: -8 } }, { id: 'herb-2', position: { x: 12, y: 0, z: -9 } },
+  { id: 'herb-3', position: { x: -21, y: 0, z: -17 } }, { id: 'herb-4', position: { x: 22, y: 0, z: -18 } },
+  { id: 'herb-5', position: { x: -12, y: 0, z: -29 } }, { id: 'herb-6', position: { x: 14, y: 0, z: -31 } },
+] as const;
+export type HerbState = { id: string; position: Vector3; availableAt: number };
+export const DAILY_QUESTS = {
+  gather_herbs: { id: 'gather_herbs', title: 'Hái 10 Linh thảo', description: 'Thu thập linh thảo ngoài Tông Môn.', kind: 'gather', target: 10, reward: { contribution: 25, exp: 100, stones: 12 } },
+  gather_more: { id: 'gather_more', title: 'Vườn thuốc tiên', description: 'Tìm thêm 6 bụi linh thảo.', kind: 'gather', target: 6, reward: { contribution: 15, exp: 65, stones: 8 } },
+  kill_wolves: { id: 'kill_wolves', title: 'Trừ 20 Linh Lang', description: 'Hạ Linh Lang ngoài cổng.', kind: 'wolf', target: 20, reward: { contribution: 40, exp: 500, stones: 30 } },
+  kill_boars: { id: 'kill_boars', title: 'Trừ 5 Thiết Giáp Trư', description: 'Quét sạch bãi quái phía tây.', kind: 'boar', target: 5, reward: { contribution: 30, exp: 300, stones: 18 } },
+  kill_monsters: { id: 'kill_monsters', title: 'Bảo vệ Tông Môn', description: 'Hạ 8 yêu thú bất kỳ.', kind: 'kill', target: 8, reward: { contribution: 22, exp: 175, stones: 12 } },
+  courier_master: { id: 'courier_master', title: 'Chuyển thư Chính Điện', description: 'Gặp Chưởng Môn để chuyển thư.', kind: 'master', target: 1, reward: { contribution: 16, exp: 100, stones: 8 } },
+  courier_shop: { id: 'courier_shop', title: 'Chuyển thư Hậu Cần', description: 'Gặp Trưởng Lão Hậu Cần để chuyển thư.', kind: 'shop', target: 1, reward: { contribution: 16, exp: 100, stones: 8 } },
+  meditation: { id: 'meditation', title: 'Tĩnh tọa hấp thu', description: 'Thu 200 tu vi từ linh khí.', kind: 'cultivate', target: 200, reward: { contribution: 20, exp: 100, stones: 9 } },
+} as const;
+export type DailyQuestId = keyof typeof DAILY_QUESTS;
+export type DailyQuestProgress = { id: DailyQuestId; progress: number; claimed: boolean };
+export type ShopOffer = { id: string; itemId?: string; skillId?: string; stones: number; contribution: number };
+export const SHOP_STOCK: ShopOffer[] = [
+  { id: 'moon_robe', itemId: 'moon_robe', stones: 16, contribution: 0 },
+  { id: 'jade_blade', itemId: 'jade_blade', stones: 30, contribution: 10 },
+  { id: 'cloud_crown', itemId: 'cloud_crown', stones: 15, contribution: 0 },
+  { id: 'fate_orb', itemId: 'fate_orb', stones: 36, contribution: 10 },
+  { id: 'heal_pill', itemId: 'heal_pill', stones: 6, contribution: 0 },
+  { id: 'mana_pill', itemId: 'mana_pill', stones: 6, contribution: 0 },
+  { id: 'foundation_pill', itemId: 'foundation_pill', stones: 22, contribution: 12 },
+  { id: 'healing_book', skillId: 'healing_bloom', stones: 18, contribution: 6 },
+  { id: 'sword_book', skillId: 'sword_domain', stones: 28, contribution: 35 },
+  { id: 'meteor_book', skillId: 'void_meteor', stones: 28, contribution: 35 },
+  { id: 'diamond_book', skillId: 'diamond_body', stones: 28, contribution: 35 },
+];
+export type DevModeBackup = {
+  root: SpiritRoot; realm: number; minorStage: number; cultivation: number; totalCultivation: number;
+  hp: number; mp: number; maxHp: number; maxMp: number;
+};
 export type CharacterState = {
   id: string; ownerUid: string; name: string; gender: Gender; appearance: Appearance;
-  root: SpiritRoot; path: Path | null; realm: number; cultivation: number; totalCultivation: number;
-  lastCultivatedAt: number; hp: number; mp: number; maxHp: number; maxMp: number;
+  root: SpiritRoot; path: Path | null; realm: number; minorStage: number;
+  cultivation: number; totalCultivation: number; lastCultivatedAt: number;
+  hp: number; mp: number; maxHp: number; maxMp: number;
   position: Vector3; rotation: number; scene: 'overworld' | 'tribulation';
   equipment: Partial<Record<EquipmentSlot, string>>; inventory: OwnedItem[]; resources: Resources;
+  contribution: number; sectRank: SectRank; storyStep: number; storyKills: number; bossKills: number;
+  dailyDay: string; dailyQuests: DailyQuestProgress[];
+  learnedSkills: string[]; hotbar: (string | null)[];
+  devMode: boolean; devModeBackup?: DevModeBackup;
   createdAt: number;
 };
-export type OwnCharacter = Omit<CharacterState, 'ownerUid'> & { isAdmin: boolean; shieldUntil?: number };
+export type OwnCharacter = Omit<CharacterState, 'ownerUid' | 'devModeBackup'> & { isAdmin: boolean; shieldUntil?: number };
 export type PublicPlayer = {
   id: string; name: string; position: Vector3; rotation: number;
-  hp: number; maxHp: number; realm: number; path: Path | null;
+  hp: number; maxHp: number; realm: number; minorStage: number; path: Path | null;
   root: SpiritRoot; gender: Gender; appearance: Appearance;
-  equipment: Partial<Record<EquipmentSlot, string>>; isAdmin: boolean; shieldUntil?: number;
+  equipment: Partial<Record<EquipmentSlot, string>>; isAdmin: boolean; devMode: boolean; shieldUntil?: number;
 };
+export type MonsterKind = 'wolf' | 'boar' | 'shade';
+export type MonsterState = { id: string; kind: MonsterKind; name: string; level: number;
+  position: Vector3; hp: number; maxHp: number; radius: number; respawnAt: number | null };
 export type BossState = { id: string; name: string; position: Vector3; hp: number; maxHp: number; respawnAt: number | null };
 export type WorldDrop = { id: string; itemId: string; position: Vector3; expiresAt: number };
 export type FormationState = { id: string; ownerId: string; position: Vector3; radius: number; expiresAt: number };
-export type WorldSnapshot = { players: PublicPlayer[]; boss: BossState; drops: WorldDrop[]; formations: FormationState[]; at: number };
-export type TribulationState = { active: boolean; wave: number; phase: 'waiting' | 'warning' | 'strike'; target: Vector3 | null; nextAt: number; hits: number; guarding: boolean };
+export type WorldSnapshot = { players: PublicPlayer[]; boss: BossState; monsters: MonsterState[]; herbs: HerbState[];
+  drops: WorldDrop[]; formations: FormationState[]; at: number };
+export type TribulationState = { active: boolean; wave: number; phase: 'waiting' | 'warning' | 'strike'; target: Vector3 | null; nextAt: number; hits: number; guarding: boolean; pillUsed: boolean };
 export type CombatEvent = {
-  type: 'cast' | 'hit' | 'boss-hit' | 'lightning' | 'heal';
-  skillId?: string; sourceId?: string; targetId?: string; position: Vector3;
+  type: 'cast' | 'swing' | 'hit' | 'monster-hit' | 'monster-attack' | 'boss-hit' | 'lightning' | 'heal';
+  skillId?: string; sourceId?: string; targetId?: string; position: Vector3; origin?: Vector3;
   damage?: number; critical?: boolean; at: number;
 };
 export type ChatMessage = { id: string; name: string; text: string; at: number; system?: boolean };
@@ -113,6 +187,7 @@ export type SkillDefinition = {
 };
 export const SKILLS: Record<string, SkillDefinition> = {
   spirit_cut: { id: 'spirit_cut', name: 'Linh Khí Trảm', description: 'Kiếm khí thẳng phía trước.', path: null, shape: 'line', range: 9, radius: 1.15, damage: 19, mana: 5, cooldown: 1.6, icon: '✦', color: '#f3d8a3' },
+  healing_bloom: { id: 'healing_bloom', name: 'Thanh Liên Dưỡng Khí', description: 'Hồi 80 sinh lực cho bản thân.', path: null, shape: 'sphere', range: 1, radius: 0, damage: 0, mana: 22, cooldown: 12, icon: '✿', color: '#88ead3' },
   flying_swords: { id: 'flying_swords', name: 'Vạn Kiếm Quy Tông', description: 'Phi kiếm xuyên qua hitbox hẹp.', path: 'kiem', shape: 'line', range: 16, radius: 1.4, damage: 54, mana: 19, cooldown: 6, icon: '⚔', color: '#9de9d6' },
   sword_domain: { id: 'sword_domain', name: 'Kiếm Vực', description: 'Mở kiếm trận quét quanh thân.', path: 'kiem', shape: 'cone', range: 12, radius: 0, damage: 135, mana: 62, cooldown: 34, ultimate: true, icon: '✧', color: '#b0f7ec' },
   falling_star: { id: 'falling_star', name: 'Thiên Thạch Thuật', description: 'Thiên thạch giáng xuống vùng mục tiêu.', path: 'phap', shape: 'sphere', range: 17, radius: 4.5, damage: 49, mana: 25, cooldown: 7, icon: '☄', color: '#ffa56b' },

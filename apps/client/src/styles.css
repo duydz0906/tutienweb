@@ -1,3 +1,5 @@
+@tailwind utilities;
+
 :root {
   font-family: 'Be Vietnam Pro', 'Segoe UI', sans-serif;
   color: #eae9df;
@@ -446,4 +448,48 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .mobile-preview-actions > span { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--cream); font-size: 10px; }
   .mobile-preview-actions > div { display: flex; gap: 7px; }
   .mobile-preview-actions button { flex: 1; min-height: 37px; padding: 5px; font-size: 10px; justify-content: center; }
+}
+
+/* Sect journey: NPC interactions, daily quests, skill slots and ascension. */
+.foundation-option { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--gold-bright); font-size: 9px; line-height: 1.5; cursor: pointer; }
+.foundation-option input { width: 13px; height: 13px; accent-color: #d8b582; cursor: pointer; }
+.foundation-option:has(input:disabled) { color: var(--faint); cursor: default; }
+.map-npc { position: absolute; z-index: 2; transform: translate(-50%,-50%); color: #fcf2ba; font-size: 15px; text-shadow: 0 0 9px #f4bf6e; }
+.sect-menu { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; margin-top: 12px; }
+.sect-menu button { min-height: 29px; border: 1px solid rgba(221,193,137,.3); border-radius: 3px; background: rgba(226,199,144,.08); color: var(--gold-bright); font-size: 8px; font-weight: 700; }
+.sect-menu button:hover { border-color: var(--gold); background: rgba(227,194,135,.19); }
+.nearby-interaction { position: absolute; bottom: 196px; left: 50%; transform: translateX(-50%); width: min(270px,90vw); padding: 10px 13px; border-radius: 5px; text-align: center; box-shadow: 0 6px 25px rgba(0,0,0,.3); }
+.nearby-interaction button { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 5px; border: 0; background: transparent; color: var(--cream); font-size: 12px; font-weight: 750; }
+.nearby-interaction button:hover { color: var(--gold-bright); }
+.sect-drawer { padding: 13px 3px 5px; }
+.basic-slot { border-color: rgba(164,220,196,.52); background: radial-gradient(circle at 50% 30%,rgba(119,210,164,.2),rgba(18,35,38,.7) 70%); }
+.basic-slot .skill-symbol { display: grid; place-items: center; color: var(--jade); }
+@media (max-width: 1600px) {
+  .auxiliary-slot { display: none; }
+  .hotbar-slots { gap: 5px; padding: 8px; }
+  .skill-slot { width: 73px; }
+  .utility-slot { width: 54px; }
+}
+@media (max-width: 1250px) {
+  .skill-slot { width: 68px; }.utility-slot { width: 49px; }
+  .contribution-chip { display: none; }
+  .minimap { width: 148px; height: 148px; margin: 9px auto 6px; }
+}
+@media (max-width: 980px) and (min-width: 721px) {
+  .hud-bottom { grid-template-columns: 200px minmax(0,1fr); }
+  .skill-slot { width: 52px; }.utility-slot { width: 42px; }
+}
+@media (max-width: 720px) {
+  .hud-bottom { bottom: 7px; }
+  .hotbar-slots { gap: 2px; padding: 5px 4px; }
+  .skill-slot, .utility-slot { flex: 1 1 0; min-width: 0; width: auto; max-width: none; }
+  .skill-slot { height: 60px; }.utility-slot { min-height: 60px; }
+  .skill-symbol { display: grid; place-items: center; }.basic-slot .skill-symbol svg { width: 20px; }
+  .utility-slot { gap: 4px; font-size: 6px; }
+  .utility-slot svg { width: 16px; height: 16px; }
+  .hotbar-divider { margin: 3px 0; }
+  .foundation-option { font-size: 8px; }
+  .cultivate-title { flex-wrap: wrap; gap: 4px; }
+  .nearby-interaction { bottom: 211px; width: min(200px,48vw); padding: 7px; }
+  .nearby-interaction button { font-size: 9px; }
 }

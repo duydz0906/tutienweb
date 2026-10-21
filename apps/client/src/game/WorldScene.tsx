@@ -1,11 +1,14 @@
 import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SKILLS, type Appearance, type Gender, type OwnCharacter, type PublicPlayer, type SpiritRoot,
+import { SKILLS, type Appearance, type Gender, type NpcId, type OwnCharacter, type PublicPlayer, type SpiritRoot,
   type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { AdminFireTrail, Avatar } from './Avatar';
 import { SceneEngine } from './SceneEngine';
 import { Overworld, SkillVfx, TrialArena, type VisualEffect } from './WorldDecor';
+import { SectScene } from './SectScene';
+import { Wilderness } from './Wilderness';
+import { CombatFeedback } from './CombatEffects';
 
 const BloomEffects = lazy(() => import('./BloomEffects'));
 
@@ -15,20 +18,22 @@ type Props = {
   preview: PreviewOptions; appearanceDraft?: Appearance | null; editorView?: 'body' | 'face' | null; effects: VisualEffect[];
   touch: React.RefObject<{ right: number; forward: number }>;
   onInput: (input: { x: number; z: number; rotation: number }) => void;
-  onPickup: (id: string) => void;
+  onPickup: (id: string) => void; onGather: (id: string) => void;
+  onNpc: (id: NpcId) => void; onTarget: (id: string) => void; selectedTarget: string | null;
 };
 
 function publicFromOwn(c: OwnCharacter): PublicPlayer {
   return {
     id: c.id, name: c.name, gender: c.gender, appearance: c.appearance, root: c.root,
-    realm: c.realm, path: c.path, hp: c.hp, maxHp: c.maxHp,
-    position: c.position, rotation: c.rotation, isAdmin: c.isAdmin, shieldUntil: c.shieldUntil,
+    realm: c.realm, minorStage: c.minorStage, path: c.path, hp: c.hp, maxHp: c.maxHp,
+    position: c.position, rotation: c.rotation, isAdmin: c.isAdmin, devMode: c.devMode, shieldUntil: c.shieldUntil,
     equipment: Object.fromEntries(Object.entries(c.equipment).map(([slot, instanceId]) => [slot,
       c.inventory.find((item) => item.instanceId === instanceId)?.itemId]).filter(([, item]) => item)) as PublicPlayer['equipment'],
   };
 }
 
-function SceneContent({ character, world, trial, preview, appearanceDraft, editorView, effects, touch, onInput, onPickup }: Props) {
+function SceneContent({ character, world, trial, preview, appearanceDraft, editorView, effects, touch, onInput, onPickup,
+  onGather, onNpc, onTarget, selectedTarget }: Props) {
   const { scene, camera, gl } = useThree();
   const engine = useRef<SceneEngine | null>(null);
   const avatar = useRef<THREE.Group>(null);
@@ -60,9 +65,9 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
     appearance: appearanceDraft ?? character.appearance,
   } : {
     id: 'preview', name: preview.name || 'Tân đệ tử', position: { x: 0, y: 0, z: 10 },
-    rotation: 0, hp: 120, maxHp: 120, realm: 0, path: null, gender: preview.gender,
+    rotation: 0, hp: 120, maxHp: 120, realm: 0, minorStage: 0, path: null, gender: preview.gender,
     appearance: preview.appearance, root: preview.root ?? { tier: 'chan', elements: ['moc', 'thuy'], multiplier: 1 },
-    equipment: { robe: 'novice_robe' }, isAdmin: false,
+    equipment: { robe: 'novice_robe' }, isAdmin: false, devMode: false,
   }, [character, preview, appearanceDraft]);
   const others = useMemo(() => (world?.players ?? []).filter((player) => player.id !== character?.id), [world?.players, character?.id]);
   const serverPosition = character && world?.players.find((player) => player.id === character.id)?.position || local.position;
@@ -80,13 +85,21 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
   });
 
   return <>
-    {inTrial ? <TrialArena trial={trial} playerPosition={serverPosition} /> : <Overworld boss={world?.boss ?? null} drops={world?.drops ?? []} formations={world?.formations ?? []} onPickup={onPickup} />}
-    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar} />
-    {local.isAdmin && <AdminFireTrail player={local} avatarRef={avatar} />}
-    {!inTrial && others.map((player) => <Avatar key={player.id} player={player} />)}
-    {!inTrial && others.filter((player) => player.isAdmin).map((player) => <AdminFireTrail key={`trail-${player.id}`} player={player} />)}
-    {effects.filter((effect) => Date.now() - effect.at < 1800).map((effect) =>
-      <SkillVfx key={effect.visualId} event={effect} />)}
+    {inTrial ? <TrialArena trial={trial} playerPosition={serverPosition} /> : <>
+      <Overworld boss={world?.boss ?? null} drops={world?.drops ?? []} formations={world?.formations ?? []} onPickup={onPickup} />
+      {character && <SectScene onInteract={onNpc} />}
+      <Wilderness monsters={world?.monsters ?? []} herbs={world?.herbs ?? []} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} />
+    </>}
+    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}
+      attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at} />
+    {local.devMode && <AdminFireTrail player={local} avatarRef={avatar} />}
+    {!inTrial && others.map((player) => <Avatar key={player.id} player={player}
+      attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === player.id).at(-1)?.at} />)}
+    {!inTrial && others.filter((player) => player.devMode).map((player) => <AdminFireTrail key={`trail-${player.id}`} player={player} />)}
+    {effects.filter((effect) => Date.now() - effect.at < 1800).map((effect) => <group key={effect.visualId}>
+      <SkillVfx event={effect} />
+      <CombatFeedback event={effect} facing={world?.players.find((p) => p.id === effect.sourceId)?.rotation ?? local.rotation} />
+    </group>)}
     {!window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches &&
       <Suspense fallback={null}><BloomEffects /></Suspense>}
   </>;

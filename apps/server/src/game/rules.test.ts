@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APPEARANCE, normalizeAppearance } from '@van-thuong/shared';
+import { DEFAULT_APPEARANCE, expForStage, LEVEL_CONFIG, MAX_REALM, normalizeAppearance, REALMS } from '@van-thuong/shared';
 import { MemoryStore } from '../db/store.js';
-import { addItem, breakthroughCost, clampToWorld, distanceXZ, equipItem,
+import { addItem, advanceMinorStage, breakthroughCost, clampToWorld, completeMajorBreakthrough, distanceXZ, equipItem,
   gainCultivation, hitsTarget, newCharacter, OFFLINE_CAP_MS, parseAppearance, parseCreation, rollSpiritRoot } from './rules.js';
 
 const data = { name: 'Tiểu Vân', gender: 'nu' as const, appearance: { ...DEFAULT_APPEARANCE, robeColor: 'jade' as const } };
@@ -70,9 +70,38 @@ describe('characters, AFK and equipment', () => {
     expect(c.equipment.artifact).toBe(instance);
     expect(() => addItem(c, 'not-in-whitelist')).toThrow();
   });
-  it('respects configured realm costs', () => {
-    expect(breakthroughCost(0)).toBe(35);
-    expect(breakthroughCost(4)).toBeNull();
+  it('resets ×5 EXP at every great realm and grants exactly +100 HP / +200 MP per major crossing', () => {
+    expect(REALMS).toHaveLength(12);
+    expect(MAX_REALM).toBe(11);
+    expect(breakthroughCost(0, 0)).toBe(LEVEL_CONFIG.exp.entryCost);
+    expect(breakthroughCost(4, 8)).toBeNull();
+    expect(breakthroughCost(4, 9)).toBe(39_062_500);
+    expect(Array.from({ length: 9 }, (_, i) => expForStage(i + 1))).toEqual(
+      [100, 500, 2500, 12500, 62500, 312500, 1562500, 7812500, 39062500]);
+    expect(() => expForStage(10)).toThrow();
+    const c = newCharacter('progression', data);
+    c.cultivation = 35;
+    completeMajorBreakthrough(c);
+    expect([c.realm, c.minorStage, c.maxHp, c.maxMp, c.hp, c.mp]).toEqual([1, 1, 220, 300, 220, 300]);
+    for (let realm = 1; realm < MAX_REALM; realm++) {
+      for (let stage = 1; stage < 9; stage++) {
+        const previousHp = c.maxHp, previousMp = c.maxMp;
+        c.cultivation = expForStage(stage);
+        expect(advanceMinorStage(c)).toBe(expForStage(stage));
+        expect(c.minorStage).toBe(stage + 1);
+        expect(c.cultivation).toBe(0);
+        expect([c.maxHp - previousHp, c.maxMp - previousMp]).toEqual([10, 20]);
+      }
+      expect(() => advanceMinorStage(c)).toThrow('tầng 9');
+      const hp = c.maxHp, mp = c.maxMp;
+      c.cultivation = expForStage(9);
+      expect(completeMajorBreakthrough(c)).toBe(39_062_500);
+      expect([c.realm, c.minorStage, c.cultivation]).toEqual([realm + 1, 1, 0]);
+      expect([c.maxHp - hp, c.maxMp - mp, c.hp, c.mp]).toEqual([100, 200, hp + 100, mp + 200]);
+      expect(completeMajorBreakthrough.bind(null, c)).toThrow();
+    }
+    expect(c.realm).toBe(MAX_REALM);
+    expect(breakthroughCost(MAX_REALM, 9)).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  BREAKTHROUGH_COSTS, DEFAULT_APPEARANCE, EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS,
-  HAIR_STYLES, ITEMS, ROBE_COLORS, ROOT_MULTIPLIER, SKIN_TONES,
+  CONSUMABLES, DEFAULT_APPEARANCE, EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS,
+  HAIR_STYLES, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, ROBE_COLORS, ROOT_MULTIPLIER, SKIN_TONES, expForStage,
   type Appearance, type CharacterState, type Element, type EquipmentSlot,
   type Gender, type SpiritRoot, type Vector3,
 } from '@van-thuong/shared';
@@ -69,15 +69,19 @@ export function newCharacter(ownerUid: string, data: ReturnType<typeof parseCrea
   const robe = randomUUID();
   return {
     id: randomUUID(), ownerUid, name: data.name, gender: data.gender, appearance: data.appearance,
-    root: rollSpiritRoot(), path: null, realm: 0, cultivation: 12, totalCultivation: 12,
-    lastCultivatedAt: now, hp: 120, mp: 100, maxHp: 120, maxMp: 100,
+    root: rollSpiritRoot(), path: null, realm: 0, minorStage: 0,
+    cultivation: 12, totalCultivation: 12, lastCultivatedAt: now,
+    hp: 120, mp: 100, maxHp: 120, maxMp: 100,
     position: { x: 0, y: 0, z: 10 }, rotation: Math.PI, scene: 'overworld',
     equipment: { weapon, robe },
     inventory: [
       { instanceId: weapon, itemId: 'wooden_sword', acquiredAt: now },
       { instanceId: robe, itemId: 'novice_robe', acquiredAt: now },
     ],
-    resources: { stones: 24, herbs: 6, ore: 4, ink: 3 }, createdAt: now,
+    resources: { stones: 24, herbs: 6, ore: 4, ink: 3 },
+    contribution: 0, sectRank: 'outer', storyStep: 0, storyKills: 0, bossKills: 0,
+    dailyDay: '', dailyQuests: [], learnedSkills: ['spirit_cut'],
+    hotbar: ['spirit_cut', null, null, null], devMode: false, createdAt: now,
   };
 }
 
@@ -95,8 +99,42 @@ export function gainCultivation(character: CharacterState, now = Date.now()): nu
   return gain;
 }
 
-export function breakthroughCost(realm: number): number | null {
-  return BREAKTHROUGH_COSTS[realm] ?? null;
+export function breakthroughCost(realm: number, minorStage = LEVEL_CONFIG.minorStages): number | null {
+  return majorBreakthroughCost(realm, minorStage);
+}
+
+/** A minor advancement consumes the listed EXP exactly once and grants permanent base stats. */
+export function advanceMinorStage(c: CharacterState): number {
+  if (c.realm < 1 || c.realm > MAX_REALM || c.minorStage >= LEVEL_CONFIG.minorStages)
+    throw new Error('Cần ở Luyện Khí trở lên và chưa đạt tầng 9.');
+  const cost = expForStage(c.minorStage);
+  if (c.cultivation < cost) throw new Error(`Cần ${cost.toLocaleString('vi-VN')} tu vi để lên tầng ${c.minorStage + 1}.`);
+  c.cultivation -= cost;
+  c.minorStage++;
+  c.maxHp += LEVEL_CONFIG.minorReward.maxHp;
+  c.maxMp += LEVEL_CONFIG.minorReward.maxMp;
+  c.hp = Math.min(c.maxHp, c.hp + LEVEL_CONFIG.minorReward.maxHp);
+  c.mp = Math.min(c.maxMp, c.mp + LEVEL_CONFIG.minorReward.maxMp);
+  return cost;
+}
+
+/** Called only after the server resolves all nine tribulation waves and the success roll. */
+export function completeMajorBreakthrough(c: CharacterState): number {
+  const cost = majorBreakthroughCost(c.realm, c.minorStage);
+  if (cost === null || c.cultivation < cost) throw new Error('Chưa đủ điều kiện đột phá Đại cảnh giới.');
+  c.cultivation -= cost;
+  c.realm++;
+  c.minorStage = 1;
+  c.maxHp += LEVEL_CONFIG.majorReward.maxHp;
+  c.maxMp += LEVEL_CONFIG.majorReward.maxMp;
+  c.hp = c.maxHp;
+  c.mp = c.maxMp;
+  return cost;
+}
+
+/** Temple and plaza, including all NPCs. Wilderness attacks cannot start across the border. */
+export function inSectSafeZone(position: Vector3): boolean {
+  return position.z >= 2 && position.z <= 40 && Math.abs(position.x) <= 20;
 }
 
 export function equippedStats(character: CharacterState): { attack: number; defense: number } {
@@ -104,7 +142,7 @@ export function equippedStats(character: CharacterState): { attack: number; defe
   let defense = 0;
   for (const slot of EQUIPMENT_SLOTS) {
     const instance = character.inventory.find((item) => item.instanceId === character.equipment[slot]);
-    const item = instance && ITEMS[instance.itemId];
+    const item = instance && Object.hasOwn(ITEMS, instance.itemId) ? ITEMS[instance.itemId] : undefined;
     if (item) { attack += item.attack; defense += item.defense; }
   }
   return { attack, defense };
@@ -113,14 +151,14 @@ export function equippedStats(character: CharacterState): { attack: number; defe
 export function equipItem(character: CharacterState, instanceId: string): EquipmentSlot {
   const owned = character.inventory.find((item) => item.instanceId === instanceId);
   if (!owned) throw new Error('Vật phẩm không thuộc về nhân vật này.');
-  const item = ITEMS[owned.itemId];
-  if (!item) throw new Error('Vật phẩm không tồn tại.');
+  const item = Object.hasOwn(ITEMS, owned.itemId) ? ITEMS[owned.itemId] : undefined;
+  if (!item) throw new Error('Vật phẩm này không thể trang bị.');
   character.equipment[item.slot] = instanceId;
   return item.slot;
 }
 
 export function addItem(character: CharacterState, itemId: string): string {
-  if (!ITEMS[itemId]) throw new Error('ID vật phẩm không nằm trong danh mục.');
+  if (!Object.hasOwn(ITEMS, itemId) && !Object.hasOwn(CONSUMABLES, itemId)) throw new Error('ID vật phẩm không nằm trong danh mục.');
   if (character.inventory.length >= 80) throw new Error('Túi đồ đã đầy (80/80).');
   const instanceId = randomUUID();
   character.inventory.push({ instanceId, itemId, acquiredAt: Date.now() });

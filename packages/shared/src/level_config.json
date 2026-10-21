@@ -1,0 +1,12 @@
+{
+  "realms": [
+    "Phàm Nhân", "Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh",
+    "Hóa Thần", "Luyện Hư", "Hợp Thể", "Đại Thừa", "Độ Kiếp",
+    "Chân Tiên", "Tiên Đế"
+  ],
+  "minorStages": 9,
+  "exp": { "base": 100, "multiplier": 5, "entryCost": 35 },
+  "minorReward": { "maxHp": 10, "maxMp": 20 },
+  "majorReward": { "maxHp": 100, "maxMp": 200 },
+  "tribulation": { "baseSuccessPercent": 75, "pillBonusPercent": 20, "maxSuccessPercent": 95 }
+}

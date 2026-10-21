@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Flame, FlaskConical,
   Gem, Hammer, MapPin, ScanFace, Shield, Sparkles, Swords, Target, Trophy, UserRound, Users, WandSparkles, X, Zap } from 'lucide-react';
-import { EQUIPMENT_SLOTS, ITEMS, REALMS, RECIPES, SLOT_LABEL,
-  type Appearance, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
+import { CONSUMABLES, EQUIPMENT_SLOTS, ITEMS, REALMS, RECIPES, SLOT_LABEL,
+  type Appearance, type ConsumableId, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
 import { AppearanceControls } from './AppearanceControls';
+import { QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
 
-export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'appearance' | 'admin' | null;
+export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'appearance' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 
@@ -31,14 +32,20 @@ export function Panels({ panel, onClose, character, leaderboard, roster, onActio
   };
   const selection = character.inventory.find((item) => item.instanceId === selectedItem);
   const selectionDefinition = selection && ITEMS[selection.itemId];
+  const selectedPill = selection && Object.hasOwn(CONSUMABLES, selection.itemId) ? CONSUMABLES[selection.itemId as ConsumableId] : null;
   const selectedPlayer = roster.find((player) => player.id === targetId);
   const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', leaderboard: 'Thiên Kiêu Bảng',
-    help: 'Thiên Đạo Chỉ Dẫn', appearance: 'Dung Mạo Tiên Gia', admin: 'Thiên Đạo · God Mode' }[panel];
+    help: 'Thiên Đạo Chỉ Dẫn', appearance: 'Dung Mạo Tiên Gia', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
+    shop: 'Cửa Hàng Tông Môn', skills: 'Công Pháp & Hotbar', admin: 'Thiên Đạo · God Mode' }[panel];
 
   return <div className={`panel-scrim ${panel === 'appearance' ? 'appearance-scrim' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
       <div className="drawer-head"><div><span className="eyebrow">VÂN THƯỢNG · {panel === 'admin' ? 'ADMIN' : 'HÀNH TRANG'}</span><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={19} /></button></div>
 
+      {panel === 'quests' && <QuestPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'sect' && <SectPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'shop' && <ShopPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'skills' && <SkillsPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'appearance' && <div className="drawer-scroll appearance-drawer">
         <p className="drawer-description">Đổi tóc, màu sắc, khuôn mặt và vóc dáng ngay trong thế giới. Bên ngoài cửa sổ này, nhân vật đang hiển thị bản xem trước; chỉ lưu khi bạn xác nhận.</p>
         <AppearanceControls value={appearanceDraft ?? character.appearance} onChange={onAppearanceChange} />
@@ -64,17 +71,21 @@ export function Panels({ panel, onClose, character, leaderboard, roster, onActio
         <div className="drawer-section-heading section-separator"><Backpack size={15} /> VẬT PHẨM SỞ HỮU <span>{character.inventory.length}/80</span></div>
         <div className="item-list">{character.inventory.map((owned) => {
           const item = ITEMS[owned.itemId];
-          if (!item) return null;
-          const inUse = character.equipment[item.slot] === owned.instanceId;
-          return <button className={`item-row rarity-${item.rarity} ${selectedItem === owned.instanceId ? 'item-selected' : ''}`} key={owned.instanceId} onClick={() => setSelectedItem(owned.instanceId)}>
-            <span className="item-visual">{item.icon}</span><span className="item-text"><strong>{item.name}</strong><small>{rarityLabel[item.rarity]} · {SLOT_LABEL[item.slot]}</small></span>{inUse ? <span className="item-worn">ĐANG MẶC</span> : <ChevronRight size={15} />}
+          const pill = Object.hasOwn(CONSUMABLES, owned.itemId) ? CONSUMABLES[owned.itemId as ConsumableId] : null;
+          if (!item && !pill) return null;
+          const inUse = Boolean(item && character.equipment[item.slot] === owned.instanceId);
+          return <button className={`item-row rarity-${item?.rarity ?? 'common'} ${selectedItem === owned.instanceId ? 'item-selected' : ''}`} key={owned.instanceId} onClick={() => setSelectedItem(owned.instanceId)}>
+            <span className="item-visual">{item?.icon ?? pill?.icon}</span><span className="item-text"><strong>{item?.name ?? pill?.name}</strong><small>{item ? `${rarityLabel[item.rarity]} · ${SLOT_LABEL[item.slot]}` : 'Đan dược · Tiêu hao'}</small></span>{inUse ? <span className="item-worn">ĐANG MẶC</span> : <ChevronRight size={15} />}
           </button>;
         })}</div>
-        {selectionDefinition && <div className="item-detail">
-          <div className="item-detail-name">{selectionDefinition.icon} {selectionDefinition.name} <span>{rarityLabel[selectionDefinition.rarity]}</span></div>
-          <p>{selectionDefinition.description}</p>
-          <div className="item-stats">{selectionDefinition.attack > 0 && <span><Swords size={14} /> Công +{selectionDefinition.attack}</span>}{selectionDefinition.defense > 0 && <span><Shield size={14} /> Thủ +{selectionDefinition.defense}</span>}</div>
-          {character.equipment[selectionDefinition.slot] !== selectedItem && <button className="btn btn-gold btn-full" onClick={() => onAction('equip', { instanceId: selectedItem })}>Trang bị vào {SLOT_LABEL[selectionDefinition.slot]} <ArrowRight size={15} /></button>}
+        {(selectionDefinition || selectedPill) && <div className="item-detail">
+          <div className="item-detail-name">{selectionDefinition?.icon ?? selectedPill?.icon} {selectionDefinition?.name ?? selectedPill?.name} <span>{selectionDefinition ? rarityLabel[selectionDefinition.rarity] : 'Đan dược'}</span></div>
+          <p>{selectionDefinition?.description ?? selectedPill?.description}</p>
+          {selectionDefinition && <><div className="item-stats">{selectionDefinition.attack > 0 && <span><Swords size={14} /> Công +{selectionDefinition.attack}</span>}{selectionDefinition.defense > 0 && <span><Shield size={14} /> Thủ +{selectionDefinition.defense}</span>}</div>
+            {character.equipment[selectionDefinition.slot] !== selectedItem && <button className="btn btn-gold btn-full" onClick={() => onAction('equip', { instanceId: selectedItem })}>Trang bị vào {SLOT_LABEL[selectionDefinition.slot]} <ArrowRight size={15} /></button>}
+          </>}
+          {selectedPill && selection?.itemId !== 'foundation_pill' && <button className="btn btn-gold btn-full" disabled={!connected} onClick={() => onAction('use-item', { instanceId: selectedItem })}>Sử dụng đan dược <ArrowRight size={15} /></button>}
+          {selection?.itemId === 'foundation_pill' && <p>Đan sẽ được dùng khi bạn chọn “Dùng Trúc Cơ Đan” lúc bắt đầu Độ kiếp tầng 9.</p>}
         </div>}
       </div>}
 

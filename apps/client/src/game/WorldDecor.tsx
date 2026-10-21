@@ -215,9 +215,9 @@ export function Overworld({ boss, drops, formations, onPickup }: { boss: BossSta
     <BambooGrove />
     <GroundFoliage />
     {treePositions.map(([x, z, scale], i) => <CherryTree key={i} x={x} z={z} scale={scale} />)}
-    <Pagoda x={0} z={-35} scale={1.18} />
-    <Pagoda x={-30} z={-29} scale={0.58} />
-    <Pagoda x={30} z={-28} scale={0.58} />
+    <Pagoda x={0} z={32} scale={1.18} />
+    <Pagoda x={-17} z={27} scale={0.58} />
+    <Pagoda x={17} z={27} scale={0.58} />
     {[-1, 1].flatMap((side) => [12, 1, -15].map((z) => <Lantern key={`${side}-${z}`} x={side * 5.6} z={z} />))}
     {boss && <BossModel boss={boss} />}
     {formations.map((formation) => <FormationPillars key={formation.id} formation={formation} />)}
