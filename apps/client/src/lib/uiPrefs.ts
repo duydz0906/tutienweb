@@ -5,18 +5,24 @@
 export type HudPrefs = {
   chatOpen: boolean;
   cultivateOpen: boolean;
+  heroOpen: boolean;
   questCard: boolean;
   minimap: boolean;
   skillLabels: boolean;
+  /** Y locks the camera behind the character: always third person, no manual orbit. */
+  cameraLock: boolean;
 };
 
 export const DEFAULT_HUD_PREFS: HudPrefs = {
   chatOpen: true,
   cultivateOpen: true,
+  // The hero card keeps level, HP and chân khí visible even when collapsed.
+  heroOpen: true,
   // The old "Tông Môn" quest card duplicated the Menu; it starts hidden and can be re-enabled.
   questCard: false,
   minimap: true,
   skillLabels: true,
+  cameraLock: false,
 };
 
 const KEY = 'van-thuong:hud-prefs';
@@ -28,8 +34,9 @@ export function loadHudPrefs(): HudPrefs {
     const data = JSON.parse(raw) as Partial<Record<keyof HudPrefs, unknown>>;
     const bool = (key: keyof HudPrefs) => typeof data[key] === 'boolean' ? data[key] as boolean : DEFAULT_HUD_PREFS[key];
     return {
-      chatOpen: bool('chatOpen'), cultivateOpen: bool('cultivateOpen'), questCard: bool('questCard'),
-      minimap: bool('minimap'), skillLabels: bool('skillLabels'),
+      chatOpen: bool('chatOpen'), cultivateOpen: bool('cultivateOpen'), heroOpen: bool('heroOpen'),
+      questCard: bool('questCard'), minimap: bool('minimap'), skillLabels: bool('skillLabels'),
+      cameraLock: bool('cameraLock'),
     };
   } catch { return { ...DEFAULT_HUD_PREFS }; }
 }

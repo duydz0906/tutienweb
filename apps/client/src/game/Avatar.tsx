@@ -216,9 +216,10 @@ function FlightMount({ itemId }: { itemId: string }) {
   </group>;
 }
 
-function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering = false, meditating = false }: {
+function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering = false, meditating = false, jumpAt = 0 }: {
   player: PublicPlayer; local: boolean; preview: boolean; attackAt?: number;
   wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
+  jumpAt?: number;
 }) {
   const [human, setHuman] = useState<HumanAvatar | null>(null);
   const [ready, setReady] = useState(false);
@@ -312,12 +313,21 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
   const flying = Boolean(player.flying) && !preview;
   const mountId = player.equipment.mount;
   const altitude = mountId ? ITEMS[mountId]?.flight?.altitude ?? 1.9 : 1.9;
+  const jumpStart = useRef(0);
+  // Space is a visual hop only: the server keeps the ground-plane position for collision.
+  const JUMP_MS = 560;
+  const JUMP_HEIGHT = 1.15;
+  useEffect(() => { if (jumpAt) jumpStart.current = performance.now(); }, [jumpAt]);
   useFrame(({ clock }, dt) => {
     const time = clock.elapsedTime;
     const outer = groupRef?.current ?? internalRef.current;
     if (!outer) return;
+    const jumpLeft = jumpStart.current ? performance.now() - jumpStart.current : JUMP_MS;
+    const jumpProgress = jumpLeft < JUMP_MS ? jumpLeft / JUMP_MS : 1;
+    const jumpHeight = !flying && !meditating && !preview && jumpProgress < 1
+      ? Math.sin(jumpProgress * Math.PI) * JUMP_HEIGHT : 0;
     // Altitude is visual only: the server position stays on the ground plane for collision.
-    if (bodyRef.current) bodyRef.current.position.y = flying ? altitude + Math.sin(time * 2.1) * 0.09 : 0;
+    if (bodyRef.current) bodyRef.current.position.y = flying ? altitude + Math.sin(time * 2.1) * 0.09 : jumpHeight;
     if (!local && !preview) {
       outer.position.lerp(new THREE.Vector3(player.position.x, player.position.y, player.position.z), Math.min(1, dt * 9));
       outer.rotation.y += Math.atan2(Math.sin(player.rotation - outer.rotation.y), Math.cos(player.rotation - outer.rotation.y)) * Math.min(1, dt * 8);
@@ -428,7 +438,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
 }
 
 export function Avatar(props: { player: PublicPlayer; local?: boolean; preview?: boolean; attackAt?: number;
-  wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null> }) {
+  wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>; jumpAt?: number }) {
   return <InnerAvatar {...props} local={props.local ?? false} preview={props.preview ?? false} />;
 }
 

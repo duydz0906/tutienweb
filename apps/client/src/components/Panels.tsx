@@ -55,6 +55,8 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
   const togglePrefs: { key: keyof HudPrefs; label: string; hint: string; icon: React.ReactNode }[] = [
     { key: 'chatOpen', label: 'Khung chat', hint: 'Bật / ẩn chat thế giới (phím C)', icon: <MessageCircle size={16} /> },
     { key: 'cultivateOpen', label: 'Bảng tu luyện', hint: 'Hiện đầy đủ hoặc rút gọn bảng tu luyện (phím T)', icon: <Sparkles size={16} /> },
+    { key: 'heroOpen', label: 'Bảng nhân vật', hint: 'Mở rộng / thu gọn thẻ nhân vật bên trái; cấp, máu và chân khí luôn hiện', icon: <Users size={16} /> },
+    { key: 'cameraLock', label: 'Khóa góc nhìn TPP', hint: 'Camera luôn bám sau lưng, không xoay tay (phím Y)', icon: <Compass size={16} /> },
     { key: 'questCard', label: 'Bảng Tông Môn cũ', hint: 'Bảng nhiệm vụ bên phải (mặc định ẩn)', icon: <BookOpen size={16} /> },
     { key: 'minimap', label: 'Bản đồ nhỏ', hint: 'Hiện / ẩn bản đồ khu vực', icon: <Compass size={16} /> },
     { key: 'skillLabels', label: 'Tên kỹ năng', hint: 'Hiện tên dưới ô công pháp trong hotbar', icon: <Swords size={16} /> },
@@ -245,13 +247,16 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
         <p className="drawer-description">Từ một phàm nhân đến con đường đắc đạo. Thiên địa rộng lớn, hãy bắt đầu từ đây.</p>
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
           <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
-          <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay / ngước lên nhìn bầu trời · cuộn để thu phóng</span></div>
+          <div className="help-row"><kbd>L</kbd><span>Chuột trái (LMB): chém thường · kéo chuột (hoặc chuột phải) để xoay / ngước nhìn bầu trời · cuộn để thu phóng</span></div>
+          <div className="help-row"><kbd>Y</kbd><span>Khóa góc nhìn thứ 3: camera tự bám sau lưng, nhấn Y lần nữa để xoay tự do</span></div>
+          <div className="help-row"><kbd>Space</kbd><span>Nhảy tại chỗ (chỉ hiển thị, không đổi va chạm hay máu)</span></div>
           <div className="help-row"><kbd>E</kbd><span>Đứng gần cổng Tông Môn / Hoang Vực / sơn đạo / làng để dịch chuyển</span></div>
-          <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · Hoang Vực và Thượng Giới</span></div>
+          <div className="help-row"><kbd>J</kbd><span>Chém thường dự phòng · Hoang Vực và Thượng Giới (chuột trái là chính)</span></div>
           <div className="help-row"><kbd>1</kbd><kbd>…</kbd><kbd>9</kbd><span>Công pháp gán trên chín ô hotbar; cooldown hiện số ngay trong ô</span></div>
           <div className="help-row"><kbd>R</kbd><span>Phi hành bằng vật phẩm / linh thú đang trang bị ở ô Phi hành</span></div>
           <div className="help-row"><kbd>C</kbd><kbd>T</kbd><kbd>M</kbd><span>Ẩn chat · rút gọn bảng tu luyện · mở Menu</span></div>
-          <div className="help-row"><kbd>I</kbd><kbd>Q</kbd><kbd>K</kbd><span>Túi đồ · Nhiệm vụ · Công pháp</span></div></div>
+          <div className="help-row"><kbd>I</kbd><kbd>Q</kbd><kbd>K</kbd><span>Túi đồ · Nhiệm vụ · Công pháp</span></div>
+          <div className="help-row"><kbd>⌃</kbd><span>Nút thu gọn trên thẻ nhân vật: ẩn linh căn và các nút, vẫn giữ tên, cảnh giới, sinh lực và chân khí. Bật/tắt lại trong Menu → Giao diện</span></div></div>
         <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> TÔNG MÔN & CON ĐƯỜNG TU TIÊN</div>
           <div className="help-tip"><strong>01 / Tĩnh tọa & thăng tầng</strong><p>Thu EXP tích lũy ngay cả lúc rời game (tối đa 8 giờ). Luyện Khí trở lên có 9 tầng, chi phí tăng ×5 mỗi tầng.</p></div>
           <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đi qua cửa Nhiệm Vụ Các tới Trưởng Lão Chấp Sự ở X −17, Z 18.5 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>

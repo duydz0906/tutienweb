@@ -108,7 +108,7 @@ export function SkillsPanel({ character: c, connected, onAction }: { character: 
     .filter((skill) => (!skill.path || skill.path === c.path) && c.realm >= skillRealm(skill));
   return <div className="drawer-scroll sect-drawer space-y-4 p-1 text-parchment">
     <div className="rounded border border-jade/30 bg-jade/10 p-4"><div className="flex items-center gap-2 text-jade"><BookOpen size={20} /><strong>Công Pháp đã lĩnh ngộ</strong></div>
-      <p className="mt-2 text-xs leading-5 text-slate-300">Mua sách kỹ năng tại Tàng Bảo Các, rồi gán vào một trong {HOTBAR_SLOTS} ô Hotbar (phím 1–{HOTBAR_SLOTS}). Đòn đánh thường dùng phím J hoặc Space.</p></div>
+      <p className="mt-2 text-xs leading-5 text-slate-300">Mua sách kỹ năng tại Tàng Bảo Các, rồi gán vào một trong {HOTBAR_SLOTS} ô Hotbar (phím 1–{HOTBAR_SLOTS}). Đòn đánh thường dùng chuột trái trên bản đồ hoặc phím J; Space để nhảy.</p></div>
     <div className="grid grid-cols-3 gap-2 rounded border border-white/10 bg-white/5 p-3">
       {Array.from({ length: HOTBAR_SLOTS }, (_, slot) => <div key={slot} className="rounded border border-amberlight/20 p-2 text-center text-[10px]">
         <b className="text-amberlight">PHÍM {slot + 1}</b><div className="mt-1 min-h-[25px] text-parchment">{c.hotbar[slot] && Object.hasOwn(SKILLS, c.hotbar[slot]!) ? SKILLS[c.hotbar[slot]!].name : 'Trống'}</div>

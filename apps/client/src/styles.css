@@ -702,3 +702,21 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .flight-text small { font-size: 7px; }
   .card-collapse { width: 21px; height: 20px; }
 }
+
+/* ===== Compact character card + camera lock (Y) ===== */
+.hero-card { position: relative; }
+.hero-collapse { position: absolute; z-index: 2; top: 9px; right: 9px; display: grid; place-items: center; width: 24px; height: 22px;
+  border: 1px solid var(--line); border-radius: 3px; color: var(--gold); background: rgba(240, 224, 185, .07); }
+.hero-collapse:hover { border-color: var(--gold); background: rgba(240, 224, 185, .17); }
+.hero-card.collapsed { padding-bottom: 11px; }
+.hero-card.collapsed .hero-card-top { margin-bottom: 9px; padding-right: 26px; }
+.hero-card.collapsed .hero-portrait { width: 38px; height: 38px; font-size: 19px; }
+.hero-card.collapsed .hero-name-block h2 { font-size: 17px; }
+.hero-card.collapsed .vital-row { margin-bottom: 7px; }
+.hero-preview { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 2px;
+  padding: 6px 8px; border: 1px dashed rgba(236, 213, 160, .34); border-radius: 3px; color: var(--gold-bright);
+  background: rgba(226, 199, 144, .07); font-size: 9px; font-weight: 700; letter-spacing: .06em; }
+.hero-preview:hover { border-color: var(--gold); background: rgba(226, 199, 144, .16); }
+.hero-preview kbd { border: 1px solid var(--line); border-radius: 2px; padding: 0 4px; color: var(--cream); font-size: 8px; }
+.hud-bottom .utility-slot.camera-slot svg { color: #a9c8f4; }
+.hud-bottom .utility-slot.camera-slot.selected { border-color: #bcd8ff; color: #dcebff; background: rgba(96, 132, 196, .22); }
