@@ -99,7 +99,7 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
     const controller = engine.current;
     if (!controller) return;
     controller.setTouchInput(touch.current.right, touch.current.forward);
-    controller.update(delta, avatar.current, serverPosition, character?.isAdmin ? 30 : 6, Boolean(character) && !editorView);
+    controller.update(delta, avatar.current, serverPosition, character?.devMode ? 30 : 6, Boolean(character) && !editorView);
   });
 
   return <>

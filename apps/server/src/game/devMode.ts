@@ -1,5 +1,22 @@
-import { expForStage, MAX_REALM, ROOT_MULTIPLIER, type CharacterState, type DevModeBackup } from '@van-thuong/shared';
+import { expForStage, MAX_REALM, ROOT_MULTIPLIER, type CharacterState, type DevModeBackup, type OwnCharacter } from '@van-thuong/shared';
+import type { Identity } from '../auth.js';
+import { isLocalDevIdentity } from '../localDev.js';
 import { GOD_STAT } from './rules.js';
+
+export function hasDevPower(c: CharacterState, identity: Identity): boolean {
+  return c.devMode && (identity.isAdmin || isLocalDevIdentity(identity));
+}
+
+/** Client-visible infinity is a projection, NOT a balance written to MongoDB or JSON saves. */
+export function ownCharacter(c: CharacterState, identity: Identity): OwnCharacter {
+  const { ownerUid: _uid, devModeBackup: _backup, ...data } = c;
+  const god = hasDevPower(c, identity);
+  return { ...data, devMode: god,
+    hp: god ? GOD_STAT : c.hp, mp: god ? GOD_STAT : c.mp,
+    maxHp: god ? GOD_STAT : c.maxHp, maxMp: god ? GOD_STAT : c.maxMp,
+    resources: god ? { stones: GOD_STAT, herbs: GOD_STAT, ore: GOD_STAT, ink: GOD_STAT } : c.resources,
+    contribution: god ? GOD_STAT : c.contribution, isAdmin: identity.isAdmin };
+}
 
 /** The World checks both a verified Firebase admin identity AND MongoDB role before calling this. */
 export function activateDevMode(c: CharacterState): boolean {
@@ -8,6 +25,7 @@ export function activateDevMode(c: CharacterState): boolean {
     root: structuredClone(c.root), realm: c.realm, minorStage: c.minorStage,
     cultivation: c.cultivation, totalCultivation: c.totalCultivation,
     hp: c.hp, mp: c.mp, maxHp: c.maxHp, maxMp: c.maxMp,
+    resources: structuredClone(c.resources), contribution: c.contribution,
   };
   c.devModeBackup = backup;
   c.devMode = true;
@@ -38,6 +56,8 @@ export function revokeDevMode(c: CharacterState): void {
   c.maxMp = b.maxMp;
   c.hp = b.hp;
   c.mp = b.mp;
+  if (b.resources) c.resources = { ...b.resources };
+  if (typeof b.contribution === 'number') c.contribution = b.contribution;
   c.devMode = false;
   delete c.devModeBackup;
 }

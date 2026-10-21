@@ -33,11 +33,14 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 │   └── server/                          # Express + Socket.IO + Firebase Admin
 │       └── src/
 │           ├── auth.ts                  # verifyIdToken + custom claim + UID pin
+│           ├── localDev.ts              # Phiên demo dev có chữ ký, không cấp role Firebase
 │           ├── db/
 │           │   ├── models.ts           # Mongoose User, Character, Equipment
 │           │   ├── store.ts            # MongoStore / MemoryStore chơi thử
+│           │   ├── fileStore.ts        # Lưu JSON nguyên tử theo từng UID trong local dev
 │           │   └── cache.ts            # Redis / cache chơi thử
 │           ├── game/
+│           │   ├── localDevCharacter.ts # Tìm hoặc tạo Daniel965 một lần; giữ nguyên save
 │           │   ├── rules.ts            # RNG, EXP ×5, chỉ số, hitbox, inventory
 │           │   ├── sect.ts             # Rút 5 nhiệm vụ/ngày (UTC+7), điểm và NPC proximity
 │           │   ├── sectGeometry.ts     # Hitbox tường server, lối vào ba điện đi được
@@ -51,6 +54,7 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 ├── scripts/prepare-dev.mjs             # Kiểm tra/cài lại dependency dev bị thiếu sau khi pull
 ├── scripts/grant-admin.mjs             # Gán claim Firebase + role MongoDB
 ├── compose.yaml                        # MongoDB/Redis chỉ bind localhost
+├── .local-data/                        # Bị Git ignore: session key và players/<tài khoản>/character.json
 └── .env.example                        # Mẫu biến môi trường, KHÔNG có bí mật
 ```
 
@@ -61,23 +65,30 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 Yêu cầu **Node.js >= 20**, npm. Từ thư mục gốc:
 
 ```bash
-npm install
 npm run dev
 ```
 
-Sau khi `git pull`/đổi nhánh, thư mục `node_modules` cũ có thể **chưa có `tailwindcss`/`postcss`**, dù chúng đã được khai báo trong `apps/client/package.json` và `package-lock.json`. `npm run dev` nay kiểm tra và tự chạy `npm install --include=dev` **trước khi khởi động Vite** nếu thiếu dependency; bạn cũng có thể cài lại thủ công (Windows CMD/PowerShell đều chạy được):
+Sau khi `git pull`/đổi nhánh, thư mục `node_modules` cũ có thể **chưa có `tailwindcss`/`postcss`**, dù chúng đã được khai báo trong `apps/client/package.json`. `npm run dev` kiểm tra và tự chạy `npm install --include=dev --package-lock=false` **trước khi khởi động Vite** nếu thiếu dependency; bạn cũng có thể cài lại thủ công (Windows CMD/PowerShell đều chạy được):
 
 ```bash
-npm ci --include=dev
+npm install --include=dev --package-lock=false
 npm run dev
 ```
 
 Nếu npm không có Internet hoặc quá trình cài thất bại, sửa lỗi npm được in ở bước cài rồi chạy lại hai lệnh trên. Không cần cài Tailwind global, không cần sửa PostCSS config, và không xóa source hoặc `.git`.
 
-Mở **http://localhost:5173** (trong Arena dùng live preview cổng **5173**). Vite proxy `/api` và `/socket.io` về Express cổng **3001**, trình duyệt chỉ dùng đường dẫn tương đối, không gọi `localhost` để tới backend. Khi không có `.env` và không phải `NODE_ENV=production`, server tự mở demo; hoặc `cp .env.example .env` và giữ `DEMO_MODE=true`. Bấm **Bước vào chơi thử**, chọn nam/nữ, 7 kiểu tóc, 8 màu tóc, 4 khuôn mặt, sắc da, chiều cao/vóc dáng rồi rút Linh Căn. Nút **Xem cận khuôn mặt** cho phép xem thay đổi trực tiếp. Nhấn **Bước vào Vân Thượng** và đợi kết nối world; có nút thử lại khi mất kết nối. Dữ liệu demo nằm trong RAM và **mất khi restart**; phiên demo **không bao giờ có quyền admin**. Trong demo có thể đặt tên `Daniel965` để chơi, nhưng đó chỉ là tên hiển thị, hoàn toàn không cấp quyền admin; ở production tên này chỉ dành cho UID đã được xác thực.
+Mở **http://localhost:5173** (trong Arena dùng live preview cổng **5173**). Vite proxy `/api` và `/socket.io` về Express cổng **3001**, trình duyệt chỉ dùng đường dẫn tương đối, không gọi `localhost` để tới backend. Khi không có `.env` và không phải `NODE_ENV=production`, server tự bật demo; hoặc `cp .env.example .env` và giữ `DEMO_MODE=true`.
+
+**Riêng `npm run dev` ở chế độ demo:** trình duyệt tự vào **Daniel965**, không phải đăng nhập hay tạo/rút Linh Căn lại. Server dùng UID sandbox cố định, tìm nhân vật đã lưu trước, chỉ tạo nếu chưa có; ID, Linh Căn gốc, trang bị, ngoại hình, nhiệm vụ và vị trí được giữ lại. Dev mode tự bật: Tiên Đế tầng 9, HP/MP bất tử, không cooldown; linh thạch, thảo, quặng, phù mực và điểm cống hiến hiển thị **∞**, chế tạo/mua/thăng đệ tử không trừ số dư. Tất cả đều được kiểm tra trên server; nhân vật sandbox không chiếm bảng xếp hạng, **không ghi số dư ảo 999.999.999 vào save**. Nhân vật lưu trong **`.local-data/players/Daniel965/character.json`**; mỗi khách demo khác có thư mục riêng `players/user-<hash UID>/character.json`. Lưu sau hành động, khi rời game và định kỳ; dữ liệu còn sau khi dừng/chạy lại `npm run dev`. Tệp ký phiên nằm trong `.local-data/.session-key`; **toàn bộ `.local-data/` bị Git ignore và Vite từ chối đọc qua `/@fs/`**. Đừng xóa thư mục này nếu muốn giữ nhân vật. Bản demo RAM từ các phiên cũ trước thay đổi này đã mất khi tiến trình cũ tắt thì không thể khôi phục.
+
+Sau khi chọn **Rời khỏi thế giới**, nút **Bước vào chơi thử** cho phép dùng nhân vật khách riêng (nếu đã có trong trình duyệt) hoặc tạo mới: chọn nam/nữ, 7 kiểu tóc, 8 màu tóc, 4 khuôn mặt, sắc da, chiều cao/vóc dáng rồi rút Linh Căn một lần. Phiên khách được ký và nhớ trên thiết bị tối đa 30 ngày để vào lại sau khi khởi động server; làm mới trang trong `npm run dev` sẽ mặc định quay về Daniel965, muốn vào khách hãy rời thế giới và bấm nút chơi thử. Một khách đặt tên `Daniel965` vẫn **không** có quyền dev/admin: quyền dựa trên UID/phiên đã xác thực, không dựa trên tên.
+
+**Không dùng bản dev cho người lạ hoặc dữ liệu production:** auto-login là sandbox demo riêng biệt, ai truy cập được dev server có thể dùng cùng nhân vật dev. Không đọc/ghi Firebase UID thật hay MongoDB, không cấp dashboard/admin commands hoặc quyền `/devmode` cho khách. Khi cấu hình `DEMO_MODE=false` và Firebase/MongoDB/Redis, kể cả chạy `npm run dev`, vẫn đăng nhập tài khoản admin qua màn hình thông thường và phải có claim + UID pin + role database; `/api/dev/session` trả 404. `npm run start -w @van-thuong/server` với `DEMO_MODE=true` vẫn dùng demo RAM tạm thời như trước. Production cấm `DEMO_MODE=true` và không có auto-login.
+
+Khi chơi thử với tài khoản khách, nhấn **Bước vào Vân Thượng** sau khi rút Linh Căn và đợi kết nối world; có nút thử lại khi mất kết nối.
 
 ```bash
-npm test           # 24 test: RNG, progression, cổng, tường, cách ly vùng, shop, admin
+npm test           # 29 test: lưu nhân vật dev, phiên có chữ ký, RNG, cổng, combat, admin
 npm run typecheck  # TypeScript cho client và server
 npm run build      # Kiểm tra kiểu + đóng gói client
 ```
@@ -96,9 +107,10 @@ npm run build      # Kiểm tra kiểu + đóng gói client
 | Thành phần | Trách nhiệm |
 |---|---|
 | Client Three.js / R3F + React/Tailwind | HumanForge/MakeHuman CC0 rigged mesh cho người chơi **và NPC/đệ tử**, nam/nữ có hình thể/da/pháp y riêng, morph khuôn mặt và vóc dáng; Tông Môn/Hoang Vực, bóng đổ, bloom, kiếm trail, magic circle, damage billboard/crit. React HUD/panels dùng Tailwind utilities (không reset CSS game). DPR giới hạn `1..1.65`. |
-| Express REST | `/api/health`, `/api/demo/session` (chỉ dev), `/api/me`, `POST /api/characters` (idempotent), **`GET /api/quests/daily`** (token bắt buộc, chỉ nhân vật của UID đã xác thực), `/api/leaderboard`. JSON tối đa 16 KB. |
+| Express REST | `/api/health`, `/api/demo/session` (demo), **`/api/dev/session` chỉ `npm run dev` + demo** (tự lấy/tạo Daniel965 trong kho local), `/api/me`, `POST /api/characters` (idempotent), **`GET /api/quests/daily`** (token bắt buộc, chỉ nhân vật của UID đã xác thực), `/api/leaderboard`. JSON tối đa 16 KB. |
 | Socket.IO world | Tick 20 Hz, snapshot 10 Hz **riêng theo scene** (Tông Môn, Hoang Vực, lôi kiếp); cổng xác minh bán kính và đổi scene server-side, tường nhà có hitbox quét qua đoạn di chuyển; chỉ gửi player/quái/đồ rơi/trận pháp thuộc cùng vùng. Server hitbox line/sphere/cone, quest/shop/NPC, hotbar, mana/cooldown Redis, AFK, 9 sóng lôi kiếp, `/devmode` và hành động admin. |
-| MongoDB/Mongoose | `User` (Firebase UID unique, provider, **role cấp riêng bằng script sau khi xác minh Firebase**, đăng nhập lại không tái cấp role bị thu hồi); `Character` (UID unique, giới tính, ngoại hình, Linh Căn, **realm + minorStage**, HP/MP/Max HP/Max MP, `position:{x,y,z}`, scene + `worldVersion` (migrate save cũ một lần), EXP, điểm cống hiến, cấp đệ tử, cốt truyện, ngày + tiến trình 5 quest, skills/hotbar, inventory/equipment và bản sao trạng thái trước dev mode); `Equipment` là view được index cho trang bị thuộc sở hữu. |
+| MongoDB/Mongoose | Chỉ tài khoản Firebase thật: `User` (UID unique, provider, **role cấp riêng bằng script sau khi xác minh Firebase**, đăng nhập lại không tái cấp role bị thu hồi); `Character` (UID unique, giới tính, ngoại hình, Linh Căn, **realm + minorStage**, HP/MP/Max HP/Max MP, `position:{x,y,z}`, scene + `worldVersion` (migrate save cũ một lần), EXP, điểm cống hiến, cấp đệ tử, cốt truyện, ngày + tiến trình 5 quest, skills/hotbar, inventory/equipment và bản sao trạng thái trước dev mode); `Equipment` là view được index cho trang bị thuộc sở hữu. |
+| Local dev `FileStore` | Thay MongoDB **chỉ khi** chạy `npm run dev` + demo. Một JSON nhân vật/tài khoản trong `.local-data/players`, ghi file tạm rồi đổi tên nguyên tử; key ký phiên được lưu cục bộ để người chơi demo còn phiên hợp lệ có thể kết nối lại sau restart. ID và tiến trình không bị reset. |
 | Redis | Sorted set `rank:cultivation`, hash tên/cảnh giới, tọa độ + scene TTL 30s ở `scene:<characterId>`, cooldown skill atomic `SET NX PX` để reconnect không reset thời gian hồi. |
 | Firebase Auth | Đăng nhập Google OAuth hoặc Email/Password cùng một giao diện; Admin SDK **xác minh ID token, kiểm tra revoked**, mới suy ra quyền từ custom claim + UID pinned. Mật khẩu không qua game server. |
 
@@ -122,14 +134,14 @@ Socket events client: `input`, `portal:travel` (không có đích/tọa độ do
    CONFIRM_ADMIN_GRANT=daniel965 node scripts/grant-admin.mjs
    ```
 
-   Script từ chối UID chưa xác minh email/bị vô hiệu, gán `admin:true` cho **UID đã pin** và cấp `User.role='admin'` trong MongoDB. Đăng xuất/đăng nhập lại để refresh ID token. Backend chỉ nhận diện admin nếu **claim + UID khớp + email đã xác minh + role database**; đăng nhập không tự phục hồi role đã bị thu hồi. Không dùng tên hiển thị hay dữ liệu client để cấp quyền; tên `Daniel965` trong demo chỉ là tên nhân vật thường.
-4. Admin đăng nhập qua **màn hình bình thường**, ban đầu vẫn có chỉ số thường. Gõ **`/devmode` trong chat**: server kiểm tra **cả danh tính admin đã xác thực và `User.role === 'admin'` từ database**, rồi lưu tức thì nhân vật thành **Tiên Đế tầng 9, Hỗn Độn Linh Căn, HP/MP 999.999.999, bất tử, không cooldown**, one-hit Boss **khi hitbox thực sự trúng**, aura 3D. Trạng thái gốc được backup trong Character; khi role bị thu hồi, server khôi phục ở thao tác tiếp theo hoặc tối đa ~3 giây / reconnect (không thể lợi dụng dev flag trong DB làm vé admin). Dashboard mở bằng **Ctrl + Shift + F12**/nút Thiên Đạo: dịch chuyển/triệu hồi/Thiên Phạt, spawn item/Boss; mỗi lệnh đều kiểm tra role database và ghi audit, không tin frontend.
+   Script từ chối UID chưa xác minh email/bị vô hiệu, gán `admin:true` cho **UID đã pin** và cấp `User.role='admin'` trong MongoDB. Đăng xuất/đăng nhập lại để refresh ID token. Backend chỉ nhận diện admin nếu **claim + UID khớp + email đã xác minh + role database**; đăng nhập không tự phục hồi role đã bị thu hồi. Không dùng tên hiển thị hay dữ liệu client để cấp quyền; khách demo đặt tên `Daniel965` vẫn chỉ là người chơi thường, khác UID sandbox dev do server cấp khi chạy `npm run dev`.
+4. Admin đăng nhập qua **màn hình bình thường**, ban đầu vẫn có chỉ số thường. Gõ **`/devmode` trong chat**: server kiểm tra **cả danh tính admin đã xác thực và `User.role === 'admin'` từ database**, rồi lưu tức thì nhân vật thành **Tiên Đế tầng 9, Hỗn Độn Linh Căn, HP/MP bất tử, tài nguyên + cống hiến không trừ, không cooldown**, one-hit Boss **khi hitbox thực sự trúng**, aura 3D. Chỉ số gốc và số dư tài nguyên được backup trong Character; khi role bị thu hồi, server khôi phục ở thao tác tiếp theo hoặc tối đa ~3 giây / reconnect (không thể lợi dụng dev flag trong DB làm vé admin). Dashboard mở bằng **Ctrl + Shift + F12**/nút Thiên Đạo: dịch chuyển/triệu hồi/Thiên Phạt, spawn item/Boss; mỗi lệnh đều kiểm tra role database và ghi audit, không tin frontend.
 
 Chạy MongoDB/Redis cục bộ tùy chọn: `docker compose up -d`. `compose.yaml` chỉ bind `127.0.0.1`; production nên dùng dịch vụ có authentication/TLS. Để chạy bản build: `npm run build && NODE_ENV=production npm run start -w @van-thuong/server` (trước đó **phải** cấu hình các biến thật và `DEMO_MODE=false`). Express tự phục vụ `apps/client/dist` khi đã build. `DEMO_MODE=true` trong production làm server **dừng khởi động**.
 
 ## 5. An toàn & phạm vi triển khai
 
-- Không có credential mặc định, API tạo nhân vật và Socket.IO đều cần token; demo token là chuỗi random 256-bit do server cấp, hết hạn sau 8 giờ và chỉ tồn tại trong RAM. Firebase Admin ID token bị revoke được từ chối. Các ID item/boss/skill/path được whitelist, tên và chat có giới hạn, inventory giới hạn 80 món, one-person/one-socket, world movement do server quyết định.
+- Không có credential Firebase mặc định, API tạo nhân vật và Socket.IO đều cần token. Demo tạm (`npm run start` + `DEMO_MODE=true`) dùng token random 256-bit, 8 giờ và chỉ RAM. **Local dev** (`npm run dev` + demo) dùng token ký HMAC SHA-256 bằng key cục bộ bị Git ignore, tối đa 30 ngày, tách hẳn tài khoản thật; endpoint cấp Daniel965 chỉ mở trong chế độ này. Không nhúng sẵn token, key hay thông tin tài khoản Firebase thật vào mã frontend/source. Firebase Admin ID token bị revoke được từ chối. Các ID item/boss/skill/path được whitelist, tên và chat có giới hạn, inventory giới hạn 80 món, one-person/one-socket, world movement do server quyết định.
 - Asset người thật lấy từ **[HumanForge](https://github.com/abdulrehman043/humanforge/tree/43b06f4de92d075e0861aa2f363a3e710b2eea2e)** (mesh MakeHuman/MPFB2, tóc/áo CC0-1.0) cùng npm `humanforge@0.8.0` (MIT). Giấy phép asset [tại đây](apps/client/public/human/LICENSE.ASSETS.md), MIT [tại đây](apps/client/public/human/LICENSE.HUMANFORGE.md). `apps/client/public/human` chứa khoảng 5,8 MB subset 7 tóc + 2 pháp y + body/morph; chỉ file cần cho ngoại hình hiện tại được tải sau core. **Trình duyệt không tải từ CDN**; Vite/Express tự phục vụ toàn bộ tài nguyên. Muốn tái tạo asset, dùng sparse checkout từ revision đã ghim (chạy từ thư mục gốc dự án):
 
   ```bash

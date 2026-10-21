@@ -27,10 +27,10 @@ const missing = required.filter(([name, resolveFrom]) => {
 if (missing.length) {
   console.log(`[setup] Missing local dependencies: ${missing.join(', ')}. Installing workspace dev dependencies...`);
   const install = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    ['install', '--include=dev', '--no-audit', '--no-fund'],
+    ['install', '--include=dev', '--package-lock=false', '--no-audit', '--no-fund'],
     { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
   if (install.error || install.status !== 0) {
-    console.error('[setup] Automatic install failed. Run "npm ci --include=dev" in the repository root, then "npm run dev".');
+    console.error('[setup] Automatic install failed. Run "npm install --include=dev --package-lock=false" in the repository root, then "npm run dev".');
     if (install.error) console.error(install.error.message);
     process.exit(install.status || 1);
   }
@@ -38,7 +38,7 @@ if (missing.length) {
     try { resolveFrom.resolve(name); return false; } catch { return true; }
   }).map(([name]) => name);
   if (unresolved.length) {
-    console.error(`[setup] Still missing ${unresolved.join(', ')}. Run "npm ci --include=dev" in the repository root.`);
+    console.error(`[setup] Still missing ${unresolved.join(', ')}. Run "npm install --include=dev --package-lock=false" in the repository root.`);
     process.exit(1);
   }
   console.log('[setup] Workspace dependencies are ready.');

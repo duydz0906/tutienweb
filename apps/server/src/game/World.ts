@@ -7,6 +7,7 @@ import {
   type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot, type WorldZone,
 } from '@van-thuong/shared';
 import type { Identity } from '../auth.js';
+import { isLocalDevIdentity } from '../localDev.js';
 import type { CharacterStore } from '../db/store.js';
 import type { GameCache } from '../db/cache.js';
 import {
@@ -14,7 +15,7 @@ import {
   equippedStats, gainCultivation, GOD_STAT, hitsTarget, parseAppearance, TRIAL_RADIUS, WORLD_RADIUS,
 } from './rules.js';
 import { canWalkInSect } from './sectGeometry.js';
-import { activateDevMode, revokeDevMode } from './devMode.js';
+import { activateDevMode, hasDevPower, ownCharacter, revokeDevMode } from './devMode.js';
 import { advanceDaily, claimDaily, ensureDaily, requireNpc } from './sect.js';
 
 type Trial = { state: TribulationState; returnPosition: Vector3; returnScene: WorldZone };
@@ -29,23 +30,20 @@ type Ack = (result: ActionResult) => void;
 
 function message(error: unknown): string { return error instanceof Error ? error.message : 'Thao tác thất bại.'; }
 function own(s: LivePlayer): OwnCharacter {
-  const { ownerUid: _privateUid, devModeBackup: _backup, ...data } = s.character;
-  const god = s.identity.isAdmin && data.devMode;
-  return { ...data, hp: god ? GOD_STAT : data.hp, mp: god ? GOD_STAT : data.mp,
-    maxHp: god ? GOD_STAT : data.maxHp, maxMp: god ? GOD_STAT : data.maxMp,
-    isAdmin: s.identity.isAdmin, shieldUntil: s.shieldUntil };
+  return { ...ownCharacter(s.character, s.identity), shieldUntil: s.shieldUntil };
 }
 function publicPlayer(s: LivePlayer): PublicPlayer {
   const c = s.character;
+  const god = hasDevPower(c, s.identity);
   return {
     id: c.id, name: c.name, position: c.position, rotation: c.rotation,
-    hp: s.identity.isAdmin && c.devMode ? GOD_STAT : c.hp, maxHp: s.identity.isAdmin && c.devMode ? GOD_STAT : c.maxHp,
+    hp: god ? GOD_STAT : c.hp, maxHp: god ? GOD_STAT : c.maxHp,
     realm: c.realm, minorStage: c.minorStage, path: c.path, root: c.root, gender: c.gender, appearance: c.appearance,
     equipment: Object.fromEntries(Object.entries(c.equipment).map(([slot, instanceId]) => {
       const item = c.inventory.find((ownedItem) => ownedItem.instanceId === instanceId);
       return [slot, item?.itemId];
     }).filter(([, id]) => id)) as PublicPlayer['equipment'],
-    isAdmin: s.identity.isAdmin, devMode: s.identity.isAdmin && c.devMode, shieldUntil: s.shieldUntil,
+    isAdmin: s.identity.isAdmin, devMode: god, shieldUntil: s.shieldUntil,
   };
 }
 
@@ -125,7 +123,7 @@ export class World {
       character = structuredClone(previous.character);
     }
     // A stored dev flag is NOT an authorization token. Restore normal stats on demotion.
-    if (character.devMode && !authorized) {
+    if (character.devMode && !authorized && !isLocalDevIdentity(identity)) {
       revokeDevMode(character);
       await this.store.save(character);
     }
@@ -154,7 +152,7 @@ export class World {
     socket.emit('character', own(s));
     socket.emit('cooldowns', retainedCooldowns);
     socket.emit('notice', `Chào mừng ${character.name} trở lại Vân Thượng!`);
-    await this.cache.update(character, effectiveIdentity.isAdmin);
+    await this.cache.update(character, effectiveIdentity.isAdmin || isLocalDevIdentity(effectiveIdentity));
     this.registerEvents(s);
     socket.on('disconnect', () => { void this.leave(s); });
     this.sendSnapshots();
@@ -268,7 +266,7 @@ export class World {
 
   private async sync(s: LivePlayer): Promise<void> {
     await this.store.save(s.character);
-    await this.cache.update(s.character, s.identity.isAdmin);
+    await this.cache.update(s.character, s.identity.isAdmin || isLocalDevIdentity(s.identity));
     s.socket.emit('character', own(s));
   }
 
@@ -282,7 +280,7 @@ export class World {
     this.sendSnapshots();
   }
 
-  private god(s: LivePlayer): boolean { return s.identity.isAdmin && s.character.devMode; }
+  private god(s: LivePlayer): boolean { return hasDevPower(s.character, s.identity); }
 
   /** The request contains no destination or position. Only the server's current scene and gate decide travel. */
   private async travel(s: LivePlayer): Promise<string> {
@@ -458,10 +456,12 @@ export class World {
     const recipe = typeof recipeId === 'string' && Object.hasOwn(RECIPES, recipeId) ? RECIPES[recipeId] : undefined;
     if (!recipe || s.character.scene === 'tribulation') throw new Error('Công thức không hợp lệ.');
     if (recipe.itemId && s.character.inventory.length >= 80) throw new Error('Túi đồ đã đầy.');
-    for (const [key, amount] of Object.entries(recipe.cost)) {
-      if (s.character.resources[key as keyof typeof s.character.resources] < amount) throw new Error('Không đủ nguyên liệu để chế tạo.');
+    if (!this.god(s)) {
+      for (const [key, amount] of Object.entries(recipe.cost)) {
+        if (s.character.resources[key as keyof typeof s.character.resources] < amount) throw new Error('Không đủ nguyên liệu để chế tạo.');
+      }
+      for (const [key, amount] of Object.entries(recipe.cost)) s.character.resources[key as keyof typeof s.character.resources] -= amount;
     }
-    for (const [key, amount] of Object.entries(recipe.cost)) s.character.resources[key as keyof typeof s.character.resources] -= amount;
     if (recipe.itemId) addItem(s.character, recipe.itemId);
     if (recipe.reward) for (const [key, amount] of Object.entries(recipe.reward)) s.character.resources[key as keyof typeof s.character.resources] += amount;
     await this.sync(s);
@@ -538,9 +538,9 @@ export class World {
     if (!inner && c.sectRank !== 'inner') throw new Error('Bạn đã là đệ tử Chân truyền.');
     const realmNeeded = inner ? 2 : 3;
     const contribution = inner ? 50 : 150;
-    if (c.realm < realmNeeded || c.contribution < contribution)
+    if (c.realm < realmNeeded || (!this.god(s) && c.contribution < contribution))
       throw new Error(`Cần đạt ${REALMS[realmNeeded]} và có ${contribution} điểm cống hiến.`);
-    c.contribution -= contribution;
+    if (!this.god(s)) c.contribution -= contribution;
     c.sectRank = inner ? 'inner' : 'true';
     await this.sync(s);
     return `Được Chưởng Môn sắc phong đệ tử ${inner ? 'Nội môn' : 'Chân truyền'}!`;
@@ -552,15 +552,18 @@ export class World {
     const offerId = (payload as Record<string, unknown> | null)?.offerId;
     const offer = SHOP_STOCK.find((entry) => entry.id === offerId);
     if (!offer) throw new Error('Cửa hàng không bán vật phẩm này.');
-    if (c.resources.stones < offer.stones || c.contribution < offer.contribution) throw new Error('Không đủ linh thạch hoặc điểm cống hiến.');
+    if (!this.god(s) && (c.resources.stones < offer.stones || c.contribution < offer.contribution))
+      throw new Error('Không đủ linh thạch hoặc điểm cống hiến.');
     if (offer.itemId && c.inventory.length >= 80) throw new Error('Túi đồ đã đầy (80/80).');
     if (offer.skillId) {
       const skill = SKILLS[offer.skillId];
       if (!skill || c.learnedSkills.includes(skill.id)) throw new Error('Công pháp đã học hoặc không hợp lệ.');
       if (skill.path && (c.path !== skill.path || c.realm < 2)) throw new Error('Sách chỉ dành cho đạo tu tương ứng từ Trúc Cơ.');
     }
-    c.resources.stones -= offer.stones;
-    c.contribution -= offer.contribution;
+    if (!this.god(s)) {
+      c.resources.stones -= offer.stones;
+      c.contribution -= offer.contribution;
+    }
     if (offer.itemId) addItem(c, offer.itemId);
     if (offer.skillId) c.learnedSkills.push(offer.skillId);
     await this.sync(s);
@@ -614,12 +617,14 @@ export class World {
   private async placeArray(s: LivePlayer): Promise<string> {
     const c = s.character;
     if (c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể lập trận lúc này.');
-    if (c.resources.ink < 1 || c.resources.stones < 3) throw new Error('Cần 1 phù mực và 3 linh thạch.');
+    if (!this.god(s) && (c.resources.ink < 1 || c.resources.stones < 3)) throw new Error('Cần 1 phù mực và 3 linh thạch.');
     if ([...this.formations.values()].filter((formation) => formation.ownerId === c.id).length >= 2) throw new Error('Mỗi đạo hữu chỉ được duy trì tối đa hai pháp trận.');
     const ticket = this.god(s) ? { allowed: true, readyAt: Date.now() } : await this.cache.reserveCooldown(c.id, 'formation_pillar', 25_000);
     if (!ticket.allowed) throw new Error(`Trận pháp cần hồi ${Math.ceil((ticket.readyAt - Date.now()) / 1000)} giây.`);
-    c.resources.ink--;
-    c.resources.stones -= 3;
+    if (!this.god(s)) {
+      c.resources.ink--;
+      c.resources.stones -= 3;
+    }
     const position = clampToWorld({ x: c.position.x + Math.sin(c.rotation) * 3, y: 0, z: c.position.z + Math.cos(c.rotation) * 3 }, WORLD_RADIUS - 5);
     const id = randomUUID();
     this.formations.set(id, { id, ownerId: c.id, scene: c.scene, position, radius: 5, expiresAt: Date.now() + 60_000 });
@@ -966,7 +971,7 @@ export class World {
     try {
       await Promise.all([...this.players.values()].map(async (s) => {
         await this.store.save(s.character);
-        await this.cache.update(s.character, s.identity.isAdmin);
+        await this.cache.update(s.character, s.identity.isAdmin || isLocalDevIdentity(s.identity));
       }));
     } catch (error) { console.error('[world] Periodic persistence failed:', error); }
     finally { this.saving = false; }

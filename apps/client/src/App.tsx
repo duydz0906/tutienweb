@@ -11,7 +11,7 @@ import { CharacterCreation } from './components/CharacterCreation';
 import { GameHUD } from './components/GameHUD';
 import { TouchJoystick } from './components/TouchJoystick';
 import { Panels, PathModal, type ActivePanel, type AdminPlayer } from './components/Panels';
-import { api } from './lib/api';
+import { ApiError, api } from './lib/api';
 import { firebaseEnabled, loginGoogle, loginPassword, logoutFirebase, observeFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
 
@@ -19,11 +19,13 @@ type Phase = 'loading' | 'login' | 'create' | 'reveal' | 'entering' | 'game';
 type Session = { kind: 'demo'; token: string } | { kind: 'firebase'; token: string; user: User };
 type Toast = { id: string; text: string; kind: 'good' | 'bad' | 'info' };
 const DEMO_KEY = 'van-thuong:demo-session';
+const GUEST_KEY = 'van-thuong:local-guest'; // opt-in guest identity survives a local dev restart
 const initialPreview: PreviewOptions = { name: '', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE }, view: 'body' };
 
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [demoAvailable, setDemoAvailable] = useState(false);
+  const [localDevAvailable, setLocalDevAvailable] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [character, setCharacter] = useState<OwnCharacter | null>(null);
   const [preview, setPreview] = useState<PreviewOptions>(initialPreview);
@@ -71,7 +73,11 @@ export function App() {
       previousRealm.current = response.character?.realm ?? 0;
       setPanel(null);
     } catch (e) {
-      if (nextSession.kind === 'demo') sessionStorage.removeItem(DEMO_KEY);
+      // Never discard a saved guest identity because of a temporary network/server error.
+      if (nextSession.kind === 'demo' && e instanceof ApiError && e.status === 401) {
+        sessionStorage.removeItem(DEMO_KEY);
+        if (localStorage.getItem(GUEST_KEY) === nextSession.token) localStorage.removeItem(GUEST_KEY);
+      }
       setPhase('login');
       setError(e instanceof Error ? e.message : 'Không thể kết nối tài khoản.');
     } finally { setBusy(false); }
@@ -82,9 +88,17 @@ export function App() {
     let unsubscribe = () => {};
     void (async () => {
       try {
-        const health = await api<{ ok: boolean; mode: 'demo' | 'production' }>('/api/health');
+        const health = await api<{ ok: boolean; mode: 'demo' | 'production'; devAutoLogin?: boolean }>('/api/health');
         if (cancelled) return;
         setDemoAvailable(health.mode === 'demo');
+        setLocalDevAvailable(health.mode === 'demo' && health.devAutoLogin === true);
+        if (health.mode === 'demo' && health.devAutoLogin) {
+          const { token } = await api<{ token: string }>('/api/dev/session', undefined, { method: 'POST' });
+          if (cancelled) return;
+          sessionStorage.setItem(DEMO_KEY, token);
+          await attach({ kind: 'demo', token });
+          return;
+        }
         const restoreDemo = () => {
           const token = sessionStorage.getItem(DEMO_KEY);
           if (token && health.mode === 'demo') void attach({ kind: 'demo', token });
@@ -180,7 +194,21 @@ export function App() {
     setBusy(true);
     setError(null);
     try {
+      // A guest is separate from Daniel965, and can return to the same local save after a restart.
+      const guest = localDevAvailable ? localStorage.getItem(GUEST_KEY) : null;
+      if (guest) {
+        try {
+          await api('/api/me', guest);
+          sessionStorage.setItem(DEMO_KEY, guest);
+          await attach({ kind: 'demo', token: guest });
+          return;
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 401) localStorage.removeItem(GUEST_KEY);
+          else throw e;
+        }
+      }
       const result = await api<{ token: string }>('/api/demo/session', undefined, { method: 'POST' });
+      if (localDevAvailable) localStorage.setItem(GUEST_KEY, result.token);
       sessionStorage.setItem(DEMO_KEY, result.token);
       await attach({ kind: 'demo', token: result.token });
     } catch (e) { setError(e instanceof Error ? e.message : 'Không thể vào bản chơi thử.'); }

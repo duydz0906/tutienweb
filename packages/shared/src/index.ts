@@ -157,6 +157,8 @@ export const SHOP_STOCK: ShopOffer[] = [
 export type DevModeBackup = {
   root: SpiritRoot; realm: number; minorStage: number; cultivation: number; totalCultivation: number;
   hp: number; mp: number; maxHp: number; maxMp: number;
+  /** Optional for characters whose dev mode was saved before resource backup was added. */
+  resources?: Resources; contribution?: number;
 };
 export type CharacterState = {
   id: string; ownerUid: string; name: string; gender: Gender; appearance: Appearance;

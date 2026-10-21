@@ -25,6 +25,7 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
   const [itemId, setItemId] = useState('immortal_sword');
   const [bossId, setBossId] = useState('world-boss');
   if (!panel || (panel === 'admin' && !character.isAdmin)) return null;
+  const available = (amount: number) => character.devMode ? '∞' : amount.toLocaleString('vi-VN');
 
   const equipped = (slot: string) => {
     const instanceId = character.equipment[slot as keyof typeof character.equipment];
@@ -91,7 +92,7 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
 
       {panel === 'craft' && <div className="drawer-scroll">
         <p className="drawer-description">Dùng nguyên liệu từ hành trình và chiến lợi phẩm đánh boss để khai mở bách nghệ.</p>
-        <div className="materials-bar"><span><Gem size={15} /> {character.resources.stones} linh thạch</span><span>✿ {character.resources.herbs} dược thảo</span><span>⬡ {character.resources.ore} linh thiết</span><span>✧ {character.resources.ink} phù mực</span></div>
+        <div className="materials-bar"><span><Gem size={15} /> {available(character.resources.stones)} linh thạch</span><span>✿ {available(character.resources.herbs)} dược thảo</span><span>⬡ {available(character.resources.ore)} linh thiết</span><span>✧ {available(character.resources.ink)} phù mực</span></div>
         <div className="craft-tabs"><button className={profession === 'dan' ? 'active' : ''} onClick={() => setProfession('dan')}><FlaskConical size={16} /> Luyện Đan</button><button className={profession === 'khi' ? 'active' : ''} onClick={() => setProfession('khi')}><Hammer size={16} /> Luyện Khí</button><button className={profession === 'tran' ? 'active' : ''} onClick={() => setProfession('tran')}><WandSparkles size={16} /> Trận Pháp</button></div>
         {Object.values(RECIPES).filter((recipe) => recipe.profession === profession).map((recipe) => {
           const canMake = Object.entries(recipe.cost).every(([key, amount]) => character.resources[key as keyof typeof character.resources] >= amount);

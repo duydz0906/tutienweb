@@ -121,6 +121,7 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
     const identity: Identity = { uid: 'verified-admin-fixture', displayName: 'Chủ Tông Môn', provider: 'password', isAdmin: true };
     const c = newCharacter(identity.uid, { name: 'daniel965', gender: 'nam', appearance: DEFAULT_APPEARANCE });
     c.scene = 'wilderness'; c.position = { x: 0, y: 0, z: -29 }; c.rotation = Math.PI;
+    c.resources = { stones: 0, herbs: 0, ore: 0, ink: 0 };
     await store.create(c);
     // This middleware simulates a successfully verified custom-claim+UID identity; the DB role is still separate.
     const host = await server(store, async (token) => {
@@ -143,6 +144,9 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       if (enabled.ok) expect([enabled.character?.realm, enabled.character?.minorStage, enabled.character?.root.tier,
         enabled.character?.hp, enabled.character?.maxMp]).toEqual([MAX_REALM, 9, 'hon_don', 999_999_999, 999_999_999]);
       expect((await store.get(identity.uid))?.devModeBackup?.realm).toBe(0);
+      expect(enabled.ok && enabled.character?.resources.stones).toBe(999_999_999);
+      expect((await ack(admin, 'craft', { recipeId: 'fate_orb' })).ok).toBe(true);
+      expect((await store.get(identity.uid))?.resources.stones).toBe(0);
       const kill = await ack(admin, 'basic-attack', { targetId: 'world-boss', damage: 1 });
       expect(kill.ok).toBe(true);
       const snapshot = await nextEvent<WorldSnapshot>(admin, 'world');
@@ -155,6 +159,7 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       const demoted = await nextEvent<OwnCharacter>(admin, 'character');
       expect([demoted.devMode, demoted.realm, demoted.root.tier, demoted.maxHp]).toEqual([false, 0, c.root.tier, 120]);
       expect((await store.get(identity.uid))?.devMode).toBe(false);
+      expect((await store.get(identity.uid))?.resources).toEqual({ stones: 0, herbs: 0, ore: 0, ink: 0 });
       expect((await store.get(identity.uid))?.devModeBackup).toBeUndefined();
     } finally { admin.disconnect(); await host.close(); }
   }, 12_000);

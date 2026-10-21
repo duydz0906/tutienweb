@@ -39,6 +39,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   const nearestDrop = activeWorld?.drops.find((drop) => Math.hypot(drop.position.x - livePosition.x, drop.position.z - livePosition.z) < 3.5);
   const mapX = (x: number) => `${50 + x / 90 * 100}%`;
   const mapZ = (z: number) => `${50 - z / 90 * 100}%`;
+  const available = (amount: number) => character.devMode ? '∞' : format(amount);
 
   return <div className="hud" aria-label="Giao diện trò chơi">
     <header className="hud-top glass-panel">
@@ -46,9 +47,9 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
       <div className="hud-divider" />
       <div className="hud-location"><MapPin size={16} /><div><small>VỊ TRÍ HIỆN TẠI</small><strong>{inTrial ? 'Cửu Thiên Lôi Đài' : inSect ? 'Tông Môn Vân Thượng' : 'Hoang Vực · Bãi Quái'}</strong></div></div>
       <div className="hud-top-right">
-        <div className="resource-chip"><Gem size={16} /><strong>{format(character.resources.stones)}</strong><span>Linh thạch</span></div>
-        <div className="resource-chip herbs-chip"><span>✿</span><strong>{format(character.resources.herbs)}</strong><span>Dược thảo</span></div>
-        <div className="resource-chip contribution-chip"><ScrollText size={14} /><strong>{format(character.contribution)}</strong><span>Cống hiến</span></div>
+        <div className="resource-chip"><Gem size={16} /><strong>{available(character.resources.stones)}</strong><span>Linh thạch</span></div>
+        <div className="resource-chip herbs-chip"><span>✿</span><strong>{available(character.resources.herbs)}</strong><span>Dược thảo</span></div>
+        <div className="resource-chip contribution-chip"><ScrollText size={14} /><strong>{available(character.contribution)}</strong><span>Cống hiến</span></div>
         <span className={`connection-chip ${connected ? '' : 'offline'}`}>{connected ? <Wifi size={14} /> : <WifiOff size={14} />}{connected ? 'Đã kết nối' : 'Đang kết nối'}</span>
         <button className="top-help icon-button" title="Hướng dẫn" aria-label="Hướng dẫn" onClick={() => onPanel(panel === 'help' ? null : 'help')}><CircleHelp size={19} /></button>
       </div>
@@ -56,9 +57,9 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
 
     <div className="hud-left">
       <section className="hero-card glass-panel">
-        <div className="hero-card-top"><div className="hero-portrait"><span>{character.name.charAt(0).toUpperCase()}</span><div className="portrait-ring" /></div><div className="hero-name-block"><div className="hero-eyebrow">{character.isAdmin ? '✦ THIÊN ĐẠO CHỦ' : 'ĐỆ TỬ VÂN THƯỢNG'}</div><h2>{character.name}</h2><div className="hero-realm"><span className="realm-diamond" />{REALMS[character.realm]}{character.realm ? ` · Tầng ${character.minorStage}` : ''} <span>·</span> {SECT_RANK_LABEL[character.sectRank]}</div></div></div>
-        <div className="vital-row"><div className="vital-label"><span><Activity size={14} /> Sinh lực</span><b>{format(character.hp)} / {format(character.maxHp)}</b></div><div className="vital-track"><span className="vital-fill health" style={{ width: `${Math.max(0, character.hp / character.maxHp * 100)}%` }} /></div></div>
-        <div className="vital-row"><div className="vital-label"><span><Sparkles size={14} /> Chân khí</span><b>{format(character.mp)} / {format(character.maxMp)}</b></div><div className="vital-track"><span className="vital-fill mana" style={{ width: `${Math.max(0, character.mp / character.maxMp * 100)}%` }} /></div></div>
+        <div className="hero-card-top"><div className="hero-portrait"><span>{character.name.charAt(0).toUpperCase()}</span><div className="portrait-ring" /></div><div className="hero-name-block"><div className="hero-eyebrow">{character.isAdmin ? '✦ THIÊN ĐẠO CHỦ' : character.devMode ? '✦ DEV SANDBOX' : 'ĐỆ TỬ VÂN THƯỢNG'}</div><h2>{character.name}</h2><div className="hero-realm"><span className="realm-diamond" />{REALMS[character.realm]}{character.realm ? ` · Tầng ${character.minorStage}` : ''} <span>·</span> {SECT_RANK_LABEL[character.sectRank]}</div></div></div>
+        <div className="vital-row"><div className="vital-label"><span><Activity size={14} /> Sinh lực</span><b>{available(character.hp)} / {available(character.maxHp)}</b></div><div className="vital-track"><span className="vital-fill health" style={{ width: `${Math.max(0, character.hp / character.maxHp * 100)}%` }} /></div></div>
+        <div className="vital-row"><div className="vital-label"><span><Sparkles size={14} /> Chân khí</span><b>{available(character.mp)} / {available(character.maxMp)}</b></div><div className="vital-track"><span className="vital-fill mana" style={{ width: `${Math.max(0, character.mp / character.maxMp * 100)}%` }} /></div></div>
         <div className="root-banner" style={{ '--root-accent': rootColor } as React.CSSProperties}><span className="root-glyph">✥</span><div><small>BẢN MỆNH LINH CĂN</small><strong>{ROOT_LABEL[character.root.tier]}</strong><span>{character.root.elements.map((element) => ELEMENT_LABEL[element]).join(' · ')} · ×{character.root.multiplier.toFixed(1)} hấp thu</span></div></div>
         <button className="appearance-open" disabled={inTrial} onClick={() => onPanel('appearance')}><ScanFace size={14} /> Đổi dung mạo <span>✧</span></button>
       </section>

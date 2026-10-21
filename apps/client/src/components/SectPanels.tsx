@@ -3,6 +3,7 @@ import { CONSUMABLES, DAILY_QUESTS, ITEMS, NPCS, REALMS, SECT_RANK_LABEL, SHOP_S
   type DailyQuestId, type NpcId, type OwnCharacter } from '@van-thuong/shared';
 
 const format = (n: number) => n.toLocaleString('vi-VN');
+const balance = (c: OwnCharacter, amount: number) => c.devMode ? '∞' : format(amount);
 const near = (c: OwnCharacter, id: NpcId) => c.scene === 'overworld' &&
   Math.hypot(c.position.x - NPCS[id].position.x, c.position.z - NPCS[id].position.z) <= 4.2;
 const actionButton = 'rounded border border-amberlight/40 bg-amberlight/90 px-4 py-2 text-[11px] font-bold text-night transition hover:bg-parchment disabled:opacity-40';
@@ -13,7 +14,7 @@ export function QuestPanel({ character: c, connected, onAction }: { character: O
     <div className="rounded border border-jade/30 bg-jade/10 p-4">
       <div className="flex items-center gap-2 text-jade"><ScrollText size={20} /><strong className="text-sm">Nhiệm Vụ Các · {c.dailyDay || 'Đang tải'}</strong></div>
       <p className="mt-2 text-xs leading-5 text-slate-300">Mỗi ngày ngẫu nhiên 5 nhiệm vụ, làm mới lúc 00:00 giờ Việt Nam. Gặp Trưởng Lão Chấp Sự để lĩnh thưởng.</p>
-      <div className="mt-3 flex items-center gap-2 text-xs"><Gem size={15} className="text-amberlight" /> Cống hiến hiện có: <b className="text-amberlight">{format(c.contribution)}</b></div>
+      <div className="mt-3 flex items-center gap-2 text-xs"><Gem size={15} className="text-amberlight" /> Cống hiến hiện có: <b className="text-amberlight">{balance(c, c.contribution)}</b></div>
       {!atElder && <p className="mt-2 text-[11px] text-amberlight"><MapPin size={12} className="inline" /> Đến Nhiệm Vụ Các tại X -17, Z 18.5 để nhận thưởng.</p>}
     </div>
     {c.dailyQuests.map((progress) => {
@@ -48,7 +49,7 @@ export function ShopPanel({ character: c, connected, onAction }: { character: Ow
     <div className="rounded border border-amberlight/30 bg-amberlight/10 p-4">
       <div className="flex items-center gap-2 text-amberlight"><Package size={20} /><strong className="text-sm">Trưởng Lão Hậu Cần</strong></div>
       <p className="mt-2 text-xs leading-5 text-slate-300">Pháp y và vũ khí đổi vật liệu 3D khi trang bị. Mua sách công pháp để học và gán vào phím 1–4. Đan dược được lưu trong Túi đồ.</p>
-      <div className="mt-3 flex gap-4 text-xs"><span>◈ {format(c.resources.stones)} Linh Thạch</span><span>✧ {format(c.contribution)} Cống hiến</span></div>
+      <div className="mt-3 flex gap-4 text-xs"><span>◈ {balance(c, c.resources.stones)} Linh Thạch</span><span>✧ {balance(c, c.contribution)} Cống hiến</span></div>
       {!atShop && <p className="mt-2 text-[11px] text-amberlight"><MapPin size={12} className="inline" /> Đến Tàng Bảo Các tại X 17, Z 18.5 để giao dịch.</p>}
     </div>
     {SHOP_STOCK.map((offer) => {
@@ -81,7 +82,7 @@ export function SectPanel({ character: c, connected, onAction }: { character: Ow
     <div className="rounded border border-amberlight/30 bg-amberlight/10 p-4">
       <div className="flex items-center gap-2 text-amberlight"><Crown size={20} /><strong className="text-base">Chính Điện Vân Thượng</strong></div>
       <p className="mt-2 text-xs leading-5 text-slate-300">Chưởng Môn ở X 0, Z 29 truyền thừa cốt truyện và quyết định phẩm cấp đệ tử.</p>
-      <div className="mt-3 flex gap-3 text-xs"><span>{SECT_RANK_LABEL[c.sectRank]}</span><span className="text-amberlight">{format(c.contribution)} điểm cống hiến</span></div>
+      <div className="mt-3 flex gap-3 text-xs"><span>{SECT_RANK_LABEL[c.sectRank]}</span><span className="text-amberlight">{balance(c, c.contribution)} điểm cống hiến</span></div>
     </div>
     <article className="rounded border border-jade/30 bg-jade/5 p-4"><span className="text-[10px] font-bold tracking-widest text-jade">CỐT TRUYỆN · CHƯƠNG {Math.min(3, c.storyStep)}/3</span>
       <h3 className="my-2 font-serif text-xl">Đạo tâm nhập môn</h3><p className="text-xs leading-6 text-slate-300">{story}</p>
