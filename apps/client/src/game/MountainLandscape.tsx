@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { HOME_GATE, SECRET_GATE, SECT_BUILDINGS, SPIRIT_LAKE, type Vector3 } from '@van-thuong/shared';
+import { HOME_GATE, SECRET_GATE, SECT_BUILDINGS, SECT_RADIUS, SPIRIT_LAKE, type Vector3 } from '@van-thuong/shared';
 import { BillboardLabel } from './Billboard';
 
 // All decoration is deterministic and instanced; the server's walkable surface remains y=0.
@@ -115,9 +115,11 @@ function Lake({ playerPosition }: { playerPosition: Vector3 }) {
 type Tree = { x: number; y: number; z: number; height: number; shade: number };
 function forestPositions(): Tree[] {
   const trees: Tree[] = [];
-  for (let i = 0; i < 400; i++) {
+  // An open courtyard leaves sightlines to every building; woods now frame the summit,
+  // rather than filling the playable sect with hundreds of obstructing trees.
+  for (let i = 0; i < 82; i++) {
     const angle = i * 2.39996322973;
-    const radius = 15 + Math.sqrt((i + 0.3) / 400) * 29;
+    const radius = 27 + Math.sqrt((i + 0.3) / 82) * 28;
     const x = Math.sin(angle) * radius, z = Math.cos(angle) * radius;
     if (SECT_BUILDINGS.some((room) => Math.abs(x - room.x) < room.width / 2 + 3.4 && Math.abs(z - room.z) < room.depth / 2 + 3.4)) continue;
     if (Math.abs(x) < 7.3 && z > -2 && z < 41 ||
@@ -127,11 +129,11 @@ function forestPositions(): Tree[] {
         riverDistance(x, z) < 4.5) continue;
     trees.push({ x, z, y: 0, height: 2.7 + (i % 7) * 0.43, shade: i });
   }
-  for (let i = 0; i < 165; i++) {
+  for (let i = 0; i < 92; i++) {
     const angle = i * 2.39996322973;
-    const radius = 50 + Math.sqrt((i + 0.5) / 165) * 24;
+    const radius = 59 + Math.sqrt((i + 0.5) / 92) * 23;
     trees.push({ x: Math.sin(angle) * radius, z: Math.cos(angle) * radius,
-      y: -1.9 - (radius - 48) * 0.43, height: 3.2 + (i % 5) * 0.5, shade: i + 100 });
+      y: -1.9 - (radius - 58) * 0.4, height: 3.2 + (i % 5) * 0.5, shade: i + 100 });
   }
   return trees;
 }
@@ -181,13 +183,13 @@ function MountainForest() {
 export function SectLandscape({ playerPosition }: { playerPosition: Vector3 }) {
   return <>
     <mesh castShadow receiveShadow position={[0, -8.9, 0]}>
-      <cylinderGeometry args={[47, 71, 17.8, 80, 5]} /><meshStandardMaterial color="#657568" roughness={1} flatShading />
+      <cylinderGeometry args={[SECT_RADIUS, SECT_RADIUS + 20, 17.8, 96, 5]} /><meshStandardMaterial color="#657568" roughness={1} flatShading />
     </mesh>
     <mesh castShadow receiveShadow position={[0, -13.8, 0]}>
-      <cylinderGeometry args={[68, 84, 7.3, 80, 2]} /><meshStandardMaterial color="#526b62" roughness={1} flatShading />
+      <cylinderGeometry args={[SECT_RADIUS + 17, SECT_RADIUS + 36, 7.3, 96, 2]} /><meshStandardMaterial color="#526b62" roughness={1} flatShading />
     </mesh>
     <mesh receiveShadow position={[0, 0, 0]}>
-      <cylinderGeometry args={[46.9, 47, 0.14, 80]} /><meshStandardMaterial color="#79917a" roughness={1} />
+      <cylinderGeometry args={[SECT_RADIUS - 0.1, SECT_RADIUS, 0.14, 96]} /><meshStandardMaterial color="#79917a" roughness={1} />
     </mesh>
     <MountainRiver />
     <Lake playerPosition={playerPosition} />

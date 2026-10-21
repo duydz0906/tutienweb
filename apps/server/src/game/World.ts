@@ -2,7 +2,8 @@ import { randomInt, randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import {
   CONSUMABLES, DAILY_QUESTS, HERB_NODES, ASCENDANT_HERBS, ASCENDANT_GATE, HOME_GATE, HOME_EXIT, SECRET_GATE,
-  SANCTUM_EXIT, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PORTALS, PUBLIC_ZONES, REALMS, RECIPES, SHOP_STOCK, SKILLS, expForStage, skillsForPath, isWorldZone,
+  SANCTUM_EXIT, HABITATS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PATH_LABEL, PORTALS, PUBLIC_ZONES, REALMS, RECIPES, SHOP_STOCK, SKILLS,
+  TAMEABLE_BEASTS, expForStage, skillRealm, skillsForPath, isWorldZone,
   type ActionResult, type BossState, type CharacterState, type ChatMessage, type DailyQuestId,
   type CombatEvent, type FormationState, type GameScene, type MonsterState, type OwnCharacter, type Path, type PublicPlayer,
   type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot, type WorldZone,
@@ -14,10 +15,10 @@ import type { GameCache } from '../db/cache.js';
 import {
   addItem, advanceMinorStage, artifactDropChance, bankCultivation, breakthroughCost, canEnterSanctum, clampToWorld,
   completeMajorBreakthrough, distanceXZ, equipItem, equippedStats, gainCultivation, GOD_STAT, hitsTarget,
-  isAtSpiritLake, moveStoredItem, PRIVATE_RADIUS, reincarnate, TRIAL_RADIUS, WORLD_RADIUS,
+  isAtSpiritLake, moveStoredItem, parseAppearance, PRIVATE_RADIUS, reincarnate, SECT_RADIUS, TRIAL_RADIUS, WORLD_RADIUS,
 } from './rules.js';
 import { canWalkInSect } from './sectGeometry.js';
-import { activateDevMode, hasDevPower, ownCharacter, revokeDevMode } from './devMode.js';
+import { activateDevMode, equipDevLoadout, hasDevPower, ownCharacter, revokeDevMode } from './devMode.js';
 import { advanceDaily, claimDaily, ensureDaily, requireNpc } from './sect.js';
 
 type Trial = { state: TribulationState; returnPosition: Vector3; returnScene: WorldZone };
@@ -31,6 +32,7 @@ type LivePlayer = {
 type Ack = (result: ActionResult) => void;
 
 function message(error: unknown): string { return error instanceof Error ? error.message : 'Thao tác thất bại.'; }
+function worldRadius(scene: WorldZone): number { return scene === 'overworld' ? SECT_RADIUS : WORLD_RADIUS; }
 function own(s: LivePlayer): OwnCharacter {
   return { ...ownCharacter(s.character, s.identity), shieldUntil: s.shieldUntil };
 }
@@ -49,20 +51,15 @@ function publicPlayer(s: LivePlayer): PublicPlayer {
   };
 }
 
-const MONSTER_SPAWNS: MonsterState[] = [
-  { scene: 'wilderness', id: 'wolf-1', kind: 'wolf', name: 'Linh Lang', level: 1, position: { x: -9, y: 0, z: -12 }, maxHp: 75, hp: 75, radius: 0.9, respawnAt: null },
-  { scene: 'wilderness', id: 'wolf-2', kind: 'wolf', name: 'Linh Lang', level: 1, position: { x: 10, y: 0, z: -14 }, maxHp: 75, hp: 75, radius: 0.9, respawnAt: null },
-  { scene: 'wilderness', id: 'wolf-3', kind: 'wolf', name: 'Linh Lang', level: 2, position: { x: -14, y: 0, z: -7 }, maxHp: 95, hp: 95, radius: 0.9, respawnAt: null },
-  { scene: 'wilderness', id: 'wolf-4', kind: 'wolf', name: 'Linh Lang', level: 2, position: { x: 14, y: 0, z: -7 }, maxHp: 95, hp: 95, radius: 0.9, respawnAt: null },
-  { scene: 'wilderness', id: 'boar-1', kind: 'boar', name: 'Thiết Giáp Trư', level: 3, position: { x: -24, y: 0, z: -18 }, maxHp: 185, hp: 185, radius: 1.3, respawnAt: null },
-  { scene: 'wilderness', id: 'boar-2', kind: 'boar', name: 'Thiết Giáp Trư', level: 3, position: { x: -25, y: 0, z: -31 }, maxHp: 185, hp: 185, radius: 1.3, respawnAt: null },
-  { scene: 'wilderness', id: 'shade-1', kind: 'shade', name: 'U Ảnh', level: 5, position: { x: 24, y: 0, z: -29 }, maxHp: 340, hp: 340, radius: 1.1, respawnAt: null },
-  { scene: 'ascendant', id: 'stag-1', kind: 'spirit_stag', name: 'Linh Lộc Thượng Giới', level: 9, position: { x: -14, y: 0, z: -12 }, maxHp: 520, hp: 520, radius: 1.35, respawnAt: null },
-  { scene: 'ascendant', id: 'stag-2', kind: 'spirit_stag', name: 'Linh Lộc Thượng Giới', level: 10, position: { x: 12, y: 0, z: -16 }, maxHp: 620, hp: 620, radius: 1.35, respawnAt: null },
-  { scene: 'ascendant', id: 'stag-3', kind: 'spirit_stag', name: 'Linh Lộc Thượng Giới', level: 10, position: { x: -20, y: 0, z: -27 }, maxHp: 620, hp: 620, radius: 1.35, respawnAt: null },
-  { scene: 'ascendant', id: 'wraith-1', kind: 'sky_wraith', name: 'Thiên Ảnh', level: 12, position: { x: 21, y: 0, z: -29 }, maxHp: 940, hp: 940, radius: 1.2, respawnAt: null },
-  { scene: 'ascendant', id: 'wraith-2', kind: 'sky_wraith', name: 'Thiên Ảnh', level: 12, position: { x: 0, y: 0, z: -36 }, maxHp: 940, hp: 940, radius: 1.2, respawnAt: null },
-];
+export const MONSTER_SPAWNS: MonsterState[] = HABITATS.flatMap((habitat) =>
+  [[-2.2, -1.5], [2.3, 1.4], [0.5, -2.7]].map(([dx, dz], index) => ({
+    scene: habitat.scene, id: `${habitat.id}-${index + 1}`, kind: habitat.kind,
+    name: habitat.name, level: habitat.level,
+    position: { x: habitat.center.x + dx, y: 0, z: habitat.center.z + dz },
+    maxHp: habitat.hp, hp: habitat.hp,
+    radius: habitat.kind === 'boar' || habitat.kind === 'stone_golem' || habitat.kind === 'star_guardian' ? 1.35 : 1.0,
+    respawnAt: null,
+  })));
 
 export class World {
   private readonly players = new Map<string, LivePlayer>();
@@ -73,7 +70,7 @@ export class World {
   private readonly drops = new Map<string, WorldDrop>();
   private readonly formations = new Map<string, FormationState>();
   private readonly boss: BossState = {
-    id: 'world-boss', name: 'Huyền Thiên Cổ Long', position: { x: 0, y: 0, z: -33 },
+    id: 'world-boss', name: 'Huyền Thiên Cổ Long', position: { x: 0, y: 0, z: -54 },
     hp: 850, maxHp: 850, respawnAt: null,
   };
   private readonly contributors = new Set<string>();
@@ -134,6 +131,7 @@ export class World {
       revokeDevMode(character);
       await this.store.save(character);
     }
+    if (hasDevPower(character, effectiveIdentity) && equipDevLoadout(character)) await this.store.save(character);
     // One-time migration: old single-island saves had the wilderness at Z < 2.
     // Versioning matters: a new player at Z < 2 on the sect map must NOT migrate on reconnect.
     const legacyWorld = (character.worldVersion ?? 1) < 2;
@@ -238,15 +236,24 @@ export class World {
     socket.on('guard', action(async () => this.guard(s)));
     socket.on('choose-path', action(async (payload: unknown) => {
       const path = (payload as Record<string, unknown> | null)?.path;
-      if (s.character.realm < 2 || s.character.path || s.character.scene === 'tribulation') throw new Error('Cần đạt Trúc Cơ và chưa từng chọn đạo.');
-      if (path !== 'kiem' && path !== 'phap' && path !== 'the') throw new Error('Đạo tu không hợp lệ.');
-      s.character.path = path as Path;
-      // Choosing a path teaches its first technique; advanced books come from the Sect Shop.
-      const starter = skillsForPath(s.character.path)[1].id;
-      if (!s.character.learnedSkills.includes(starter)) s.character.learnedSkills.push(starter);
-      s.character.hotbar[1] = starter;
+      const c = s.character;
+      const god = this.god(s);
+      if (c.realm < 2 || (c.path && !god) || c.scene === 'tribulation') throw new Error('Cần đạt Trúc Cơ và chưa từng chọn đạo.');
+      if (typeof path !== 'string' || !Object.hasOwn(PATH_LABEL, path)) throw new Error('Đạo tu không hợp lệ.');
+      c.path = path as Path;
+      // Ordinary players choose once and learn the entry technique. A verified dev may switch
+      // paths; incompatible techniques leave the hotbar and only their new path can be cast.
+      const pathSkills = skillsForPath(c.path);
+      const starter = pathSkills[1].id;
+      if (god) {
+        c.learnedSkills = [...new Set([...c.learnedSkills, ...pathSkills.map((skill) => skill.id)])];
+        c.hotbar = [SKILLS.spirit_cut.id, starter, pathSkills.at(-2)!.id, pathSkills.at(-1)!.id];
+      } else {
+        if (!c.learnedSkills.includes(starter)) c.learnedSkills.push(starter);
+        c.hotbar[1] = starter;
+      }
       await this.sync(s);
-      return `Đã bước lên con đường ${path === 'kiem' ? 'Kiếm Tu' : path === 'phap' ? 'Pháp Tu' : 'Thể Tu'}. Đã lĩnh ngộ ${SKILLS[starter].name}.`;
+      return `Đã bước lên con đường ${PATH_LABEL[c.path]}. Đã lĩnh ngộ ${SKILLS[starter].name}.`;
     }));
     socket.on('equip', action(async (payload: unknown) => {
       const instanceId = (payload as Record<string, unknown> | null)?.instanceId;
@@ -262,10 +269,22 @@ export class World {
     socket.on('sect:story', action(async () => this.story(s)));
     socket.on('sect:promote', action(async () => this.promote(s)));
     socket.on('shop:buy', action(async (payload: unknown) => this.buy(s, payload)));
+    socket.on('beast:tame', action(async (payload: unknown) => this.tame(s, payload)));
     socket.on('use-item', action(async (payload: unknown) => this.useItem(s, payload)));
     socket.on('assign-hotbar', action(async (payload: unknown) => this.assignHotbar(s, payload)));
-    // Keep a rejection handler for old clients; appearance is immutable after entering the sect.
-    socket.on('appearance:update', action(async () => { throw new Error('Dung mạo đã định khi nhập môn, không thể thay đổi.'); }));
+    // Only verified dev power can revisit the character editor; ordinary post-creation
+    // appearance is still immutable. Parse every field with the original creation allowlist.
+    socket.on('appearance:update', action(async (payload: unknown) => {
+      if (!this.god(s) || s.character.scene === 'tribulation') throw new Error('Dung mạo đã định khi nhập môn, không thể thay đổi.');
+      const data = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+      const appearance = parseAppearance(data.appearance);
+      if (data.gender !== 'nam' && data.gender !== 'nu') throw new Error('Giới tính nhân vật không hợp lệ.');
+      s.character.appearance = appearance;
+      s.character.gender = data.gender;
+      await this.sync(s);
+      this.sendSnapshots();
+      return 'Đã lưu dung mạo nhân vật trong dev mode.';
+    }));
     socket.on('place-array', action(async () => this.placeArray(s)));
     socket.on('pickup', action(async (payload: unknown) => this.pickup(s, payload)));
     socket.on('chat', (payload: unknown, ack?: Ack) => {
@@ -374,10 +393,11 @@ export class World {
     const buffed = [...this.formations.values()].some((f) => f.scene === c.scene && distanceXZ(origin, f.position) <= f.radius);
     const stats = equippedStats(c);
     let count = 0, total = 0, crit = false;
+    const companion = c.inventory.some((owned) => owned.instanceId === c.equipment.pet && ITEMS[owned.itemId]?.slot === 'pet');
     const damageFor = (hp: number) => {
       const critical = randomInt(100) < 12 + (c.root.tier === 'bien_di' ? 8 : 0);
       const damage = this.god(s) ? hp : Math.max(1, Math.round((baseDamage + c.realm * 9 + stats.attack * 1.4) *
-        (buffed ? 1.2 : 1) * (critical ? 1.65 : 1)));
+        (buffed ? 1.2 : 1) * (c.path === 'thu' && companion ? 1.22 : c.path === 'ma' ? 1.08 : 1) * (critical ? 1.65 : 1)));
       count++; total += damage; crit ||= critical;
       return { damage, critical };
     };
@@ -397,6 +417,8 @@ export class World {
         position: { ...monster.position }, damage, critical, at: Date.now() }, undefined, monster.scene);
       if (monster.hp === 0) this.defeatMonster(s, monster);
     }
+    // Ma Tu trades defense for life-drain, but only real hits grant healing.
+    if (count && c.path === 'ma' && !this.god(s)) c.hp = Math.min(c.maxHp, c.hp + Math.ceil(total * 0.08));
     return { count, total, crit };
   }
 
@@ -443,7 +465,7 @@ export class World {
     const c = s.character;
     if (c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể xuất chiêu lúc này.');
     if (!c.learnedSkills.includes(skill.id)) throw new Error('Hãy học sách công pháp trước khi sử dụng kỹ năng.');
-    if (skill.path && (c.path !== skill.path || c.realm < 2)) throw new Error('Bạn chưa lĩnh ngộ kỹ năng này.');
+    if (c.realm < skillRealm(skill) || skill.path && c.path !== skill.path) throw new Error('Bạn chưa đạt cảnh giới hoặc không theo đạo tu của kỹ năng này.');
     if (!isWorldZone(c.scene)) throw new Error('Không thể thi triển công pháp trong nhà hoặc mật thất.');
     if (skill.id !== 'healing_bloom' && c.scene === 'overworld') throw new Error('Tông Môn là khu vực an toàn: không thể tấn công.');
     if (data.targetId !== undefined && (data.targetId === this.boss.id ? c.scene !== 'wilderness' :
@@ -531,6 +553,7 @@ export class World {
     const recipeId = (payload as Record<string, unknown> | null)?.recipeId;
     const recipe = typeof recipeId === 'string' && Object.hasOwn(RECIPES, recipeId) ? RECIPES[recipeId] : undefined;
     if (!recipe || s.character.scene === 'tribulation') throw new Error('Công thức không hợp lệ.');
+    if (recipe.station === 'alchemy' && !this.god(s)) requireNpc(s.character, 'alchemist');
     if (recipe.itemId && s.character.inventory.length >= 80) throw new Error('Túi đồ đã đầy.');
     if (!this.god(s)) {
       for (const [key, amount] of Object.entries(recipe.cost)) {
@@ -539,7 +562,7 @@ export class World {
       for (const [key, amount] of Object.entries(recipe.cost)) s.character.resources[key as keyof typeof s.character.resources] -= amount;
     }
     if (recipe.itemId) addItem(s.character, recipe.itemId);
-    if (recipe.reward) for (const [key, amount] of Object.entries(recipe.reward)) s.character.resources[key as keyof typeof s.character.resources] += amount;
+    if (recipe.reward && !this.god(s)) for (const [key, amount] of Object.entries(recipe.reward)) s.character.resources[key as keyof typeof s.character.resources] += amount;
     await this.sync(s);
     return `Chế tạo ${recipe.name} thành công!`;
   }
@@ -625,7 +648,8 @@ export class World {
 
   private async buy(s: LivePlayer, payload: unknown): Promise<string> {
     const c = s.character;
-    requireNpc(c, 'shop');
+    if (!this.god(s)) requireNpc(c, 'shop');
+    else if (c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể giao dịch lúc này.');
     const offerId = (payload as Record<string, unknown> | null)?.offerId;
     const offer = SHOP_STOCK.find((entry) => entry.id === offerId);
     if (!offer) throw new Error('Cửa hàng không bán vật phẩm này.');
@@ -635,7 +659,8 @@ export class World {
     if (offer.skillId) {
       const skill = SKILLS[offer.skillId];
       if (!skill || c.learnedSkills.includes(skill.id)) throw new Error('Công pháp đã học hoặc không hợp lệ.');
-      if (skill.path && (c.path !== skill.path || c.realm < 2)) throw new Error('Sách chỉ dành cho đạo tu tương ứng từ Trúc Cơ.');
+      if (!this.god(s) && (c.realm < skillRealm(skill) || skill.path && c.path !== skill.path))
+        throw new Error(`Sách cần đạo tu tương ứng và cảnh giới ${REALMS[skillRealm(skill)]}.`);
     }
     if (!this.god(s)) {
       c.resources.stones -= offer.stones;
@@ -643,9 +668,37 @@ export class World {
     }
     if (offer.itemId) addItem(c, offer.itemId);
     if (offer.skillId) c.learnedSkills.push(offer.skillId);
+    if (offer.resource && offer.quantity && !this.god(s)) c.resources[offer.resource] += offer.quantity;
     await this.sync(s);
     return offer.skillId ? `Đã lĩnh ngộ ${SKILLS[offer.skillId].name}. Mở Công Pháp để gán vào phím 1–4.` :
+      offer.resource ? `Đã mua ${offer.quantity} ${({ stones: 'linh thạch', herbs: 'dược thảo', ore: 'linh thiết', ink: 'phù mực' } as const)[offer.resource]}${this.god(s) ? ' (dev mode: vô hạn, không ghi vào save).' : '.'}` :
       `Mua ${ITEMS[offer.itemId!]?.name ?? CONSUMABLES[offer.itemId! as keyof typeof CONSUMABLES].name} thành công.`;
+  }
+
+  /** Only an injured, nearby, living beast may be tamed; neither HP nor position come from the client. */
+  private async tame(s: LivePlayer, payload: unknown): Promise<string> {
+    const targetId = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>).targetId : undefined;
+    const c = s.character;
+    if (typeof targetId !== 'string' || targetId.length > 90 ||
+        c.scene !== 'wilderness' && c.scene !== 'ascendant' || c.hp <= 0 ||
+        c.realm < 2 || c.path !== 'thu' && !this.god(s))
+      throw new Error('Cần theo Ngự Thú đạo từ Trúc Cơ và đến bãi linh thú.');
+    const beast = this.monsters.get(targetId);
+    const petId = beast && TAMEABLE_BEASTS[beast.kind];
+    if (!beast || !petId || beast.scene !== c.scene || beast.hp <= 0 ||
+        beast.hp > beast.maxHp * 0.35 || distanceXZ(c.position, beast.position) > 3.5 ||
+        !this.god(s) && beast.level > c.realm + 2)
+      throw new Error('Hãy đến gần linh thú đúng vùng và làm nó suy yếu dưới 35% sinh lực trước khi thuần hóa.');
+    if (c.inventory.length >= 80) throw new Error('Túi đồ đã đầy (80/80).');
+    if (!this.god(s) && (c.resources.herbs < 3 || c.resources.stones < 5)) throw new Error('Cần 3 linh thảo và 5 linh thạch để kết khế ước.');
+    const instanceId = addItem(c, petId); // unique, server-owned item instance
+    if (!this.god(s)) { c.resources.herbs -= 3; c.resources.stones -= 5; }
+    equipItem(c, instanceId);
+    beast.hp = 0;
+    beast.respawnAt = Date.now() + 18_000;
+    await this.sync(s);
+    this.sendSnapshots();
+    return `Đã kết khế ước với ${beast.name}! ${ITEMS[petId].name} đã vào ô Linh thú, Ngự Thú đạo tăng 22% sát thương khi có thú.`;
   }
 
   private async useItem(s: LivePlayer, payload: unknown): Promise<string> {
@@ -670,8 +723,9 @@ export class World {
     if (!Number.isInteger(slot) || typeof slot !== 'number' || slot < 0 || slot > 3) throw new Error('Ô hotbar phải là phím 1–4.');
     if (skillId !== null && (typeof skillId !== 'string' || !Object.hasOwn(SKILLS, skillId) || !c.learnedSkills.includes(skillId)))
       throw new Error('Bạn chưa học công pháp này.');
-    if (typeof skillId === 'string' && SKILLS[skillId].path && (c.path !== SKILLS[skillId].path || c.realm < 2))
-      throw new Error('Công pháp không dành cho đạo tu này.');
+    if (typeof skillId === 'string' && (c.realm < skillRealm(SKILLS[skillId]) ||
+        SKILLS[skillId].path && c.path !== SKILLS[skillId].path))
+      throw new Error('Công pháp không dành cho đạo tu / cảnh giới này.');
     if (skillId !== null && c.hotbar.some((id, index) => index !== slot && id === skillId)) throw new Error('Công pháp đã có trên hotbar.');
     c.hotbar[slot] = skillId;
     await this.sync(s);
@@ -702,7 +756,7 @@ export class World {
       c.resources.ink--;
       c.resources.stones -= 3;
     }
-    const position = clampToWorld({ x: c.position.x + Math.sin(c.rotation) * 3, y: 0, z: c.position.z + Math.cos(c.rotation) * 3 }, WORLD_RADIUS - 5);
+    const position = clampToWorld({ x: c.position.x + Math.sin(c.rotation) * 3, y: 0, z: c.position.z + Math.cos(c.rotation) * 3 }, worldRadius(c.scene as WorldZone) - 5);
     const id = randomUUID();
     this.formations.set(id, { id, ownerId: c.id, scene: c.scene, position, radius: 5, expiresAt: Date.now() + 60_000 });
     await this.sync(s);
@@ -853,7 +907,7 @@ export class World {
       if (typeof data.itemId !== 'string' || !Object.hasOwn(ITEMS, data.itemId)) throw new Error('ID vật phẩm không hợp lệ.');
       if (this.drops.size >= 80) throw new Error('Thế giới có quá nhiều vật phẩm chưa được nhặt.');
       if (!isWorldZone(s.character.scene)) throw new Error('Chỉ được triệu hồi vật phẩm ở bản đồ công khai.');
-      this.dropItem(data.itemId, clampToWorld({ x: s.character.position.x + Math.sin(s.character.rotation) * 3, y: 0, z: s.character.position.z + Math.cos(s.character.rotation) * 3 }, WORLD_RADIUS), s.character.scene);
+      this.dropItem(data.itemId, clampToWorld({ x: s.character.position.x + Math.sin(s.character.rotation) * 3, y: 0, z: s.character.position.z + Math.cos(s.character.rotation) * 3 }, worldRadius(s.character.scene)), s.character.scene);
       this.sendSnapshots();
       return `Đã triệu hồi ${ITEMS[data.itemId].name}.`;
     }
@@ -877,7 +931,7 @@ export class World {
       bankCultivation(s.character);
       s.character.scene = target.character.scene;
       s.character.position = { ...target.character.position, x: target.character.position.x + 2 };
-      clampToWorld(s.character.position, WORLD_RADIUS);
+      clampToWorld(s.character.position, worldRadius(s.character.scene));
       s.input = { x: 0, z: 0 }; s.lastInputAt = 0;
       await this.sync(s);
       this.sendSnapshots();
@@ -887,7 +941,7 @@ export class World {
       bankCultivation(target.character);
       target.character.scene = s.character.scene;
       target.character.position = { ...s.character.position, x: s.character.position.x + 2 };
-      clampToWorld(target.character.position, WORLD_RADIUS);
+      clampToWorld(target.character.position, worldRadius(target.character.scene));
       target.input = { x: 0, z: 0 }; target.lastInputAt = 0;
       target.socket.emit('notice', 'Thiên đạo đã triệu hồi bạn đến vị trí của quản trị viên.');
       await this.sync(target);
@@ -933,11 +987,11 @@ export class World {
         s.socket.emit('notice', 'Thần hồn quy vị. Bạn đã hồi sinh tại Tông Môn.' );
       }
       if (now - s.lastInputAt <= 400 && (s.character.hp > 0 || this.god(s))) {
-        const speed = this.god(s) ? 30 : 6;
+        const speed = 6; // dev uses the same walking pace as everyone else
         const previous = { ...s.character.position };
         s.character.position.x += s.input.x * speed * dt;
         s.character.position.z += s.input.z * speed * dt;
-        clampToWorld(s.character.position, s.trial ? TRIAL_RADIUS : isWorldZone(s.character.scene) ? WORLD_RADIUS : PRIVATE_RADIUS);
+        clampToWorld(s.character.position, s.trial ? TRIAL_RADIUS : isWorldZone(s.character.scene) ? worldRadius(s.character.scene) : PRIVATE_RADIUS);
         if (!s.trial) {
           const zone = s.character.scene;
           const obstacles = [

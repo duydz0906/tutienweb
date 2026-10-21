@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Flame, FlaskConical,
   Gem, Hammer, House, MapPin, RotateCcw, Shield, Sparkles, Swords, Target, Trophy, Users, Warehouse, WandSparkles, X, Zap } from 'lucide-react';
-import { CONSUMABLES, EQUIPMENT_SLOTS, HOME_CHEST, ITEMS, MAX_REALM, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
-  houseAbsorptionBonus, houseLevel, storageCapacity, type ConsumableId, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
-import { QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
+import { CONSUMABLES, EQUIPMENT_SLOTS, HOME_CHEST, ITEMS, MAX_REALM, NPCS, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
+  houseAbsorptionBonus, houseLevel, storageCapacity, type Appearance, type ConsumableId, type Gender, type LeaderboardEntry, type OwnCharacter, type Path } from '@van-thuong/shared';
+import { AppearanceControls } from './AppearanceControls';
+import { AlchemyPanel, BeastPanel, QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
 
-export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'home' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
+export type ActivePanel = 'inventory' | 'craft' | 'alchemy' | 'beast' | 'dev' | 'leaderboard' | 'help' | 'home' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 
-export function Panels({ panel, onClose, onNavigate, character, leaderboard, roster, onAction, onLogout, connected }: {
-  panel: ActivePanel; onClose: () => void; onNavigate: (panel: ActivePanel) => void; character: OwnCharacter;
+export function Panels({ panel, onClose, onNavigate, onOpenPath, character, leaderboard, roster, onAction, onLogout, connected }: {
+  panel: ActivePanel; onClose: () => void; onNavigate: (panel: ActivePanel) => void; onOpenPath: () => void; character: OwnCharacter;
   leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
   onAction: (event: string, payload?: object) => void; onLogout: () => void;
   connected: boolean;
@@ -21,9 +22,14 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
   const [itemId, setItemId] = useState('immortal_sword');
   const [bossId, setBossId] = useState('world-boss');
   const [reincarnationConfirmed, setReincarnationConfirmed] = useState(false);
+  const [devAppearance, setDevAppearance] = useState<Appearance>(character.appearance);
+  const [devGender, setDevGender] = useState<Gender>(character.gender);
   // An irreversible choice must require a fresh acknowledgement each time the dialog opens.
   useEffect(() => { if (panel !== 'rebirth') setReincarnationConfirmed(false); }, [panel]);
-  if (!panel || (panel === 'admin' && !character.isAdmin)) return null;
+  useEffect(() => {
+    if (panel === 'dev') { setDevAppearance(character.appearance); setDevGender(character.gender); }
+  }, [panel, character.id]);
+  if (!panel || (panel === 'admin' && !character.isAdmin) || (panel === 'dev' && !character.devMode)) return null;
   const available = (amount: number) => character.devMode ? '∞' : amount.toLocaleString('vi-VN');
 
   const equipped = (slot: string) => {
@@ -40,7 +46,7 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
     Math.hypot(character.position.x - HOME_CHEST.position.x, character.position.z - HOME_CHEST.position.z) <= HOME_CHEST.radius;
   const altarNear = character.scene === 'sanctum' &&
     Math.hypot(character.position.x - REBIRTH_ALTAR.position.x, character.position.z - REBIRTH_ALTAR.position.z) <= REBIRTH_ALTAR.radius;
-  const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', leaderboard: 'Thiên Kiêu Bảng',
+  const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', alchemy: 'Phòng Luyện Đan', beast: 'Ngự Thú Viện', dev: 'Đổi Nhân Vật · Dev Mode', leaderboard: 'Thiên Kiêu Bảng',
     help: 'Thiên Đạo Chỉ Dẫn', home: 'Nhà Riêng & Rương Đồ', rebirth: 'Mật Thất Tái Sinh', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
     shop: 'Cửa Hàng Tông Môn', skills: 'Công Pháp & Hotbar', admin: 'Thiên Đạo · God Mode' }[panel];
 
@@ -48,6 +54,19 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
     <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
       <div className="drawer-head"><div><span className="eyebrow">VÂN THƯỢNG · {panel === 'admin' ? 'ADMIN' : 'HÀNH TRANG'}</span><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={19} /></button></div>
 
+      {panel === 'dev' && <div className="drawer-scroll dev-customizer">
+        <div className="rounded border border-jade/30 bg-jade/10 p-4 text-xs leading-6 text-slate-300"><strong className="text-jade">Thế giới thử nghiệm</strong><p>Thay đổi đạo tu, hình dáng và nam/nữ ngay trên nhân vật {character.name}. Lưu riêng theo UID; không đổi chủ kho, không cấp quyền quản trị, thoát dev mode sẽ khôi phục nguyên trạng.</p></div>
+        <button className="btn btn-gold btn-full" onClick={onOpenPath}><Swords size={16} /> Đổi đạo tu: {character.path ? { kiem: 'Kiếm Tu', phap: 'Pháp Tu', the: 'Thể Tu', thu: 'Ngự Thú', ma: 'Ma Tu' }[character.path] : 'Chưa chọn'} <ArrowRight size={16} /></button>
+        <button className="btn btn-quiet btn-full" onClick={() => onNavigate('skills')}><BookOpen size={16} /> Sắp xếp công pháp & Hotbar</button>
+        <div className="form-label margin-top">CHỌN CHÂN THÂN · NAM / NỮ</div>
+        <div className="appearance-choice-grid" role="group" aria-label="Chọn nhân vật">
+          {(['nam', 'nu'] as const).map((gender) => <button type="button" key={gender} className={`appearance-choice ${devGender === gender ? 'selected' : ''}`} aria-pressed={devGender === gender} onClick={() => setDevGender(gender)}>{gender === 'nam' ? 'Nam tu sĩ' : 'Nữ tu sĩ'}</button>)}
+        </div>
+        <AppearanceControls value={devAppearance} onChange={setDevAppearance} />
+        <button className="btn btn-gold btn-full" disabled={!connected || character.scene === 'tribulation'} onClick={() => onAction('appearance:update', { gender: devGender, appearance: devAppearance })}><Sparkles size={16} /> Lưu chân thân</button>
+      </div>}
+      {panel === 'beast' && <BeastPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'alchemy' && <AlchemyPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'quests' && <QuestPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'sect' && <SectPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'shop' && <ShopPanel character={character} connected={connected} onAction={onAction} />}
@@ -131,13 +150,15 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
         <div className="materials-bar"><span><Gem size={15} /> {available(character.resources.stones)} linh thạch</span><span>✿ {available(character.resources.herbs)} dược thảo</span><span>⬡ {available(character.resources.ore)} linh thiết</span><span>✧ {available(character.resources.ink)} phù mực</span></div>
         <div className="craft-tabs"><button className={profession === 'dan' ? 'active' : ''} onClick={() => setProfession('dan')}><FlaskConical size={16} /> Luyện Đan</button><button className={profession === 'khi' ? 'active' : ''} onClick={() => setProfession('khi')}><Hammer size={16} /> Luyện Khí</button><button className={profession === 'tran' ? 'active' : ''} onClick={() => setProfession('tran')}><WandSparkles size={16} /> Trận Pháp</button></div>
         {Object.values(RECIPES).filter((recipe) => recipe.profession === profession).map((recipe) => {
-          const canMake = Object.entries(recipe.cost).every(([key, amount]) => character.resources[key as keyof typeof character.resources] >= amount);
+          const canMake = character.devMode || Object.entries(recipe.cost).every(([key, amount]) => character.resources[key as keyof typeof character.resources] >= amount);
+          const atFurnace = Math.hypot(character.position.x - NPCS.alchemist.position.x, character.position.z - NPCS.alchemist.position.z) <= 4.2;
           return <div className="recipe-card" key={recipe.id}>
-            <div className="recipe-emblem">{recipe.itemId ? ITEMS[recipe.itemId].icon : '✺'}</div>
+            <div className="recipe-emblem">{recipe.itemId ? ITEMS[recipe.itemId]?.icon ?? CONSUMABLES[recipe.itemId as ConsumableId]?.icon ?? '✺' : '✺'}</div>
             <span className="eyebrow">{profession === 'dan' ? 'ĐAN DƯỢC' : profession === 'khi' ? 'TIÊN KHÍ' : 'PHÁP TRẬN'}</span>
             <h3>{recipe.name}</h3><p>{recipe.description}</p>
             <div className="recipe-cost">{Object.entries(recipe.cost).map(([key, amount]) => <span key={key} className={character.resources[key as keyof typeof character.resources] < amount ? 'missing' : ''}>{key === 'stones' ? '◈' : key === 'herbs' ? '✿' : key === 'ore' ? '⬡' : '✧'} {amount} {({ stones: 'linh thạch', herbs: 'dược thảo', ore: 'linh thiết', ink: 'phù mực' } as Record<string, string>)[key]}</span>)}</div>
-            <button className="btn btn-gold btn-full" disabled={!canMake} onClick={() => onAction('craft', { recipeId: recipe.id })}>{canMake ? 'Bắt đầu chế tạo' : 'Thiếu nguyên liệu'} <ArrowRight size={15} /></button>
+            <button className="btn btn-gold btn-full" disabled={!connected || !canMake || recipe.station === 'alchemy' && !(atFurnace && character.scene === 'overworld' || character.devMode) || character.scene === 'tribulation' || Boolean(recipe.itemId && character.inventory.length >= 80)}
+              onClick={() => onAction('craft', { recipeId: recipe.id })}>{recipe.station === 'alchemy' && !atFurnace && !character.devMode ? 'Đến Phòng Luyện Đan' : canMake ? 'Bắt đầu chế tạo' : 'Thiếu nguyên liệu'} <ArrowRight size={15} /></button>
           </div>;
         })}
         {profession === 'tran' && <div className="recipe-card formation-recipe">
@@ -163,7 +184,7 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
         <p className="drawer-description">Từ một phàm nhân đến con đường đắc đạo. Thiên địa rộng lớn, hãy bắt đầu từ đây.</p>
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
           <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
-          <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay góc nhìn · cuộn để thu phóng</span></div>
+          <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay / ngước lên nhìn bầu trời · cuộn để thu phóng</span></div>
           <div className="help-row"><kbd>E</kbd><span>Đứng gần cổng Tông Môn / Hoang Vực để dịch chuyển qua lại</span></div>
           <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · chỉ ở Hoang Vực</span></div>
           <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><span>Công pháp gán trên hotbar; cooldown do server quyết định</span></div>
@@ -171,9 +192,10 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
         <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> TÔNG MÔN & CON ĐƯỜNG TU TIÊN</div>
           <div className="help-tip"><strong>01 / Tĩnh tọa & thăng tầng</strong><p>Thu EXP tích lũy ngay cả lúc rời game (tối đa 8 giờ). Luyện Khí trở lên có 9 tầng, chi phí tăng ×5 mỗi tầng.</p></div>
           <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đi qua cửa Nhiệm Vụ Các tới Trưởng Lão Chấp Sự ở X −17, Z 18.5 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>
-          <div className="help-tip"><strong>03 / Độ kiếp & đạo tu</strong><p>Đạt tầng 9 và đủ EXP để vượt 9 đạo lôi. Trúc Cơ Đan tăng 20% cơ hội thành công; đến Trúc Cơ được chọn Kiếm/Pháp/Thể Tu.</p></div>
+          <div className="help-tip"><strong>03 / Độ kiếp & đạo tu</strong><p>Đạt tầng 9 và đủ EXP để vượt 9 đạo lôi. Trúc Cơ Đan tăng 20% cơ hội thành công; từ Trúc Cơ chọn Kiếm, Pháp, Thể, Ngự Thú hoặc Ma Tu. Kỹ năng cấp cao chỉ dùng được khi đạt đúng đại cảnh giới.</p></div>
           <div className="help-tip"><strong>04 / Nhà riêng, hồ và Thượng Giới</strong><p>Nhà riêng Đệ Tử Xá tại X −33, Z 12: rương theo UID, nâng cấp khi thăng đại cảnh giới (+5–20% hấp thụ). Hồ Tụ Linh X −10, Z −24 thêm 15% khi AFK tại hồ. Đạt Tiên Đế tầng 9, tìm mật thất X 32, Z 20 để tái sinh một lần, +50% vĩnh viễn và mở Thượng Giới (+35% linh khí).</p></div>
-          <div className="help-tip"><strong>05 / Hoang Vực</strong><p>Đến Cổng Hoang Vực (X 0, Z 2), nhấn E hoặc chạm cổng để dịch chuyển đến bãi quái. Cổng Hồi Tông (X 0, Z 34) đưa bạn về nhà. Nhấp chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
+          <div className="help-tip"><strong>05 / Hoang Vực · 14 sinh cảnh</strong><p>Đến Cổng Hoang Vực (X 0, Z 2), nhấn E hoặc chạm cổng để dịch chuyển. Quái từ cấp 1–8 ở 8 bãi riêng; 6 bãi cấp 9–16 thuộc Thượng Giới. Nhấp quái để chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
+          <div className="help-tip"><strong>06 / Linh thú & luyện đan</strong><p>Ngự Thú Viện (X −17, Z −4) hướng dẫn thuần hóa: làm yếu quái còn dưới 35% HP, đứng gần và nhấn Thuần hóa trên HUD. Phòng Luyện Đan (X 17, Z −8) có ba công thức đan, yêu cầu đứng gần Đan Sư.</p></div>
         </div>
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐI ĐẾN</div>
           <div className="help-links">
@@ -182,6 +204,9 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
             <button onClick={() => onNavigate('quests')}><BookOpen size={16} /> Nhiệm vụ</button>
             <button onClick={() => onNavigate('shop')}><Gem size={16} /> Cửa hàng</button>
             <button onClick={() => onNavigate('craft')}><FlaskConical size={16} /> Chế tạo</button>
+            <button onClick={() => onNavigate('alchemy')}><FlaskConical size={16} /> Luyện đan</button>
+            <button onClick={() => onNavigate('beast')}><Sparkles size={16} /> Ngự thú</button>
+            {character.devMode && <button onClick={() => onNavigate('dev')}><Sparkles size={16} /> Đổi nhân vật (dev)</button>}
             <button onClick={() => onNavigate('leaderboard')}><Trophy size={16} /> Xếp hạng</button>
           </div>
         </div>
@@ -217,16 +242,18 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
   </div>;
 }
 
-export function PathModal({ onSelect, onClose }: { onSelect: (path: 'kiem' | 'phap' | 'the') => void; onClose: () => void }) {
+export function PathModal({ onSelect, onClose, devMode = false }: { onSelect: (path: Path) => void; onClose: () => void; devMode?: boolean }) {
   const paths = [
     { id: 'kiem' as const, icon: <Swords size={34} strokeWidth={1.4} />, title: 'Kiếm Tu', alias: 'VẠN KIẾM QUY TÔNG', color: '#9ee9d4', description: 'Một kiếm phá vạn pháp. Truy đuổi kẻ địch bằng kiếm khí và hitbox chính xác.', specialty: 'Sát thương vật lý · Phi kiếm' },
     { id: 'phap' as const, icon: <Flame size={34} strokeWidth={1.4} />, title: 'Pháp Tu', alias: 'THIÊN THẠCH GIÁNG THẾ', color: '#ffad81', description: 'Mượn linh khí trời đất, triệu hồi thiên thạch quét sạch chiến trường.', specialty: 'Sát thương phép · Diện rộng' },
     { id: 'the' as const, icon: <Shield size={34} strokeWidth={1.4} />, title: 'Thể Tu', alias: 'KIM CANG HỘ THỂ', color: '#f0ce88', description: 'Thân là pháp bảo. Tạo địa chấn, kiên cường và hút lại sinh lực.', specialty: 'Chống chịu · Hấp huyết' },
+    { id: 'thu' as const, icon: <Sparkles size={34} strokeWidth={1.4} />, title: 'Ngự Thú', alias: 'BÁCH THÚ TRIỀU TÔNG', color: '#9ee4af', description: 'Làm quái suy yếu dưới 35% rồi thuần hóa; linh thú cùng ra trận tăng 22% sát thương.', specialty: 'Kết khế ước · Hiệp kích' },
+    { id: 'ma' as const, icon: <RotateCcw size={34} strokeWidth={1.4} />, title: 'Ma Tu', alias: 'HUYẾT NGUYỆT ẤN', color: '#e89ab9', description: 'Đạo ma lấy chiến dưỡng chiến: đòn đánh hút lại 8% sát thương thành sinh lực.', specialty: 'Ma khí · Hấp huyết' },
   ];
   return <div className="path-scrim" role="dialog" aria-modal="true" aria-label="Chọn đạo tu luyện">
     <div className="path-dialog glass-panel"><button className="icon-button path-close" onClick={onClose} aria-label="Đóng"><X size={19} /></button>
       <span className="eyebrow">TRÚC CƠ ĐẠO THÀNH · NGÃ RẼ ĐỊNH MỆNH</span><h2>Ngươi sẽ đi theo <em>đạo nào?</em></h2>
-      <p>Đạo tu chỉ được chọn một lần. Mỗi con đường mở ra kỹ năng, hiệu ứng và lối chiến đấu riêng.</p>
+      <p>{devMode ? 'Dev mode có thể đổi đạo tu và tự lĩnh ngộ kỹ năng theo cảnh giới.' : 'Đạo tu chỉ chọn một lần. Tiên đạo, ngự thú hoặc ma đạo đều có kỹ năng và lối chiến đấu riêng.'}</p>
       <div className="path-options">{paths.map((path) => <button key={path.id} className="path-option" onClick={() => onSelect(path.id)} style={{ '--path-color': path.color } as React.CSSProperties}>
         <span className="path-icon">{path.icon}</span><span className="path-alias">{path.alias}</span><strong>{path.title}</strong><span className="path-description">{path.description}</span><span className="path-specialty">{path.specialty}</span><span className="path-select">Chọn con đường này <ArrowRight size={16} /></span>
       </button>)}</div>

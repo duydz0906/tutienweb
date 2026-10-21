@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SectLandscape } from './MountainLandscape';
-import { ITEMS, SECT_BUILDINGS, SKILLS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
+import { SkyAtmosphere } from './SkyAtmosphere';
+import { ITEMS, SECT_BUILDINGS, SECT_RADIUS, SKILLS, WORLD_RADIUS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
 
 const JADE = '#82cdbb';
 const GOLD = '#eac58b';
@@ -15,8 +16,7 @@ const sectStones = stonePositions.filter(({ x, z }) =>
   SECT_BUILDINGS.every((room) => Math.abs(x - room.x) > room.width / 2 + 1.5 || Math.abs(z - room.z) > room.depth / 2 + 1.5) &&
   Math.hypot(x, z - 2) > 5.5);
 const sectTrees: [number, number, number][] = [
-  [-29, 29, 1.05], [-32, 9, 1], [-25, -14, 1.2], [29, 29, 1.05],
-  [32, 9, 1], [25, -14, 1.2], [-36, 18, 0.8], [36, 18, 0.8],
+  [-47, 37, 1.05], [-45, -28, 1.1], [47, 36, 1.05], [45, -29, 1.08],
 ];
 
 function RuneCircle({ x, z, radius = 3, color = JADE, opacity = 0.48 }: { x: number; z: number; radius?: number; color?: string; opacity?: number }) {
@@ -49,14 +49,14 @@ function CherryTree({ x, z, scale }: { x: number; z: number; scale: number }) {
 function BambooGrove() {
   const stalks = useRef<THREE.InstancedMesh>(null);
   const leaves = useRef<THREE.InstancedMesh>(null);
-  const count = 68;
+  const count = 24;
   useEffect(() => {
     if (!stalks.current || !leaves.current) return;
     const dummy = new THREE.Object3D();
     for (let i = 0; i < count; i++) {
       const side = i % 2 ? -1 : 1;
-      const x = side * (27 + ((i * 17) % 13));
-      const z = ((i * 31) % 76) - 38;
+      const x = side * (44 + ((i * 7) % 10));
+      const z = ((i * 13) % 58) - 29;
       const height = 2.1 + (i % 7) * 0.32;
       dummy.position.set(x, height / 2, z);
       dummy.scale.set(0.75, height, 0.75);
@@ -122,11 +122,11 @@ function GroundFoliage() {
 function MountainHorizon({ sect }: { sect: boolean }) {
   const mountains = useMemo(() => Array.from({ length: 22 }, (_, i) => {
     const angle = (i / 22) * Math.PI * 2;
-    const distance = 78 + (i % 4) * 8;
+    const distance = (sect ? SECT_RADIUS + 20 : WORLD_RADIUS + 15) + (i % 4) * 8;
     return { x: Math.sin(angle) * distance, z: Math.cos(angle) * distance,
       height: sect ? 36 + ((i * 13) % 25) : 17 + ((i * 13) % 17),
       radius: sect ? 18 + ((i * 7) % 15) : 11 + ((i * 7) % 10) };
-  }), []);
+  }), [sect]);
   return <>
     {mountains.map((m, i) => <mesh key={i} position={[m.x, m.height * 0.25 - (sect ? 15 : 4), m.z]}>
       <coneGeometry args={[m.radius, m.height, 5]} />
@@ -178,16 +178,17 @@ export function Overworld({ zone, playerPosition, boss, drops, formations, onPic
 }) {
   const sect = zone === 'overworld';
   return <>
+    <SkyAtmosphere zone={zone} />
     <MountainHorizon sect={sect} />
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, sect ? -15 : -3.7, 0]}>
       <circleGeometry args={[300, 96]} /><meshStandardMaterial color={sect ? '#7fa8a6' : '#647c8e'} roughness={0.44} metalness={0.12} />
     </mesh>
     {sect ? <SectLandscape playerPosition={playerPosition} /> : <>
       <mesh castShadow receiveShadow position={[0, -1.45, 0]}>
-        <cylinderGeometry args={[47, 42, 3.1, 72]} /><meshStandardMaterial color="#434b50" roughness={1} flatShading />
+        <cylinderGeometry args={[WORLD_RADIUS, WORLD_RADIUS - 6, 3.1, 96]} /><meshStandardMaterial color="#434b50" roughness={1} flatShading />
       </mesh>
       <mesh receiveShadow position={[0, 0, 0]}>
-        <cylinderGeometry args={[46.9, 47, 0.14, 72]} /><meshStandardMaterial color="#56645e" roughness={1} />
+        <cylinderGeometry args={[WORLD_RADIUS - 0.1, WORLD_RADIUS, 0.14, 96]} /><meshStandardMaterial color="#56645e" roughness={1} />
       </mesh>
     </>}
     <mesh position={[0, 0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -205,6 +206,22 @@ export function Overworld({ zone, playerPosition, boss, drops, formations, onPic
         </mesh>)}
       </group>)}
       <RuneCircle x={0} z={10} radius={4.35} />
+      {/* Stone walkways connect the new training, alchemy, beast and disciple courtyards. */}
+      {SECT_BUILDINGS.filter((room) => room.id !== 'master').flatMap((room) =>
+        Array.from({ length: Math.ceil(Math.abs(room.x) / 2.8) }, (_, i) => {
+          const t = (i + 1) / (Math.ceil(Math.abs(room.x) / 2.8) + 1);
+          const x = room.x * t, z = room.z - room.depth / 2 - 1.1;
+          return <mesh key={`walk-${room.id}-${i}`} receiveShadow position={[x, 0.107, z]} rotation={[0, (i % 3 - 1) * 0.1, 0]}>
+            <boxGeometry args={[2.5, 0.075, 1.65]} /><meshStandardMaterial color="#b0af9b" roughness={1} />
+          </mesh>;
+        }))}
+      <RuneCircle x={0} z={-17} radius={3.8} color="#e0c994" opacity={0.59} />
+      {[-1, 1].map((side) => <group key={`dojo-${side}`} position={[side * 5.4, 0, -17]}>
+        <mesh castShadow position={[0, 1.2, 0]}><cylinderGeometry args={[0.23, 0.4, 2.4, 8]} />
+          <meshStandardMaterial color="#5c6259" roughness={0.87} /></mesh>
+        <mesh position={[0, 2.45, 0]}><octahedronGeometry args={[0.43, 0]} />
+          <meshStandardMaterial color="#f2dfac" emissive="#c39961" emissiveIntensity={0.85} metalness={0.25} /></mesh>
+      </group>)}
       {sectStones.map(({ x, z, size }, i) => <mesh key={i} castShadow position={[x, size * 0.32, z]} rotation={[0, i * 2.3, 0]}>
         <dodecahedronGeometry args={[size, 0]} /><meshStandardMaterial color={i % 3 ? '#87988a' : '#a8ab99'} roughness={1} flatShading />
       </mesh>)}

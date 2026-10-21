@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DAILY_QUESTS, DEFAULT_APPEARANCE, expForStage, MAX_REALM, NPCS } from '@van-thuong/shared';
 import { newCharacter } from './rules.js';
-import { activateDevMode, revokeDevMode } from './devMode.js';
+import { activateDevMode, equipDevLoadout, revokeDevMode } from './devMode.js';
 import { advanceDaily, claimDaily, ensureDaily, requireNpc, vietnamDay } from './sect.js';
 
 const character = () => newCharacter('daily-test', { name: 'Thanh Vân', gender: 'nu', appearance: DEFAULT_APPEARANCE });
@@ -78,5 +78,27 @@ describe('dev mode server state, persistence and safe demotion', () => {
     revokeDevMode(persisted);
     expect(persisted).toEqual(original);
     expect(() => revokeDevMode({ ...c, devModeBackup: undefined })).toThrow('khôi phục');
+  });
+
+  it('upgrades a legacy dev save before customization and restores the original path, character and item ownership', () => {
+    const c = character();
+    c.realm = 2; c.path = 'phap'; c.learnedSkills.push('falling_star'); c.hotbar[1] = 'falling_star';
+    const original = structuredClone(c);
+    activateDevMode(c);
+    // Emulate a file saved before this release added dev-only skills or backup fields.
+    c.learnedSkills = [...original.learnedSkills]; c.hotbar = [...original.hotbar];
+    const backup = c.devModeBackup!;
+    delete backup.resources; delete backup.contribution;
+    delete backup.path; delete backup.gender; delete backup.appearance;
+    delete backup.learnedSkills; delete backup.hotbar;
+    delete backup.inventory; delete backup.equipment; delete backup.stash;
+    expect(equipDevLoadout(c)).toBe(true);
+    expect(c.devModeBackup?.path).toBe('phap');
+    expect(c.devModeBackup?.inventory).toEqual(original.inventory);
+    c.path = 'ma'; c.gender = 'nam'; c.appearance = { ...c.appearance, hair: 'cropped' };
+    c.learnedSkills.push('abyss_reap'); c.hotbar[1] = 'abyss_reap';
+    c.inventory.push({ instanceId: 'sandbox-only', itemId: 'immortal_sword', acquiredAt: Date.now() });
+    revokeDevMode(c);
+    expect(c).toEqual(original);
   });
 });

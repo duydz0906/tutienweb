@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { DAILY_QUESTS, NPCS, type CharacterState, type DailyQuestId, type NpcId, type Vector3 } from '@van-thuong/shared';
+import { DAILY_QUESTS, MONSTER_KINDS, NPCS, type CharacterState, type DailyQuestId, type NpcId, type Vector3 } from '@van-thuong/shared';
 import { distanceXZ } from './rules.js';
 
 /** Daily reset is midnight Vietnam time (UTC+7), independent of the server's timezone. */
@@ -24,7 +24,7 @@ export function advanceDaily(c: CharacterState, kind: string, amount = 1): boole
   let changed = false;
   for (const entry of c.dailyQuests) {
     const quest = DAILY_QUESTS[entry.id];
-    if (!quest || entry.claimed || (quest.kind !== kind && !(kind === 'wolf' || kind === 'boar' || kind === 'shade' || kind === 'spirit_stag' || kind === 'sky_wraith' ? quest.kind === 'kill' : false))) continue;
+    if (!quest || entry.claimed || (quest.kind !== kind && !(quest.kind === 'kill' && MONSTER_KINDS.some((monster) => monster === kind)))) continue;
     const next = Math.min(quest.target, entry.progress + amount);
     if (next > entry.progress) { entry.progress = next; changed = true; }
   }

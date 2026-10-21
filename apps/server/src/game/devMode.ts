@@ -1,4 +1,4 @@
-import { expForStage, MAX_REALM, ROOT_MULTIPLIER, type CharacterState, type DevModeBackup, type OwnCharacter } from '@van-thuong/shared';
+import { expForStage, MAX_REALM, ROOT_MULTIPLIER, SKILLS, skillsForPath, type CharacterState, type DevModeBackup, type OwnCharacter } from '@van-thuong/shared';
 import type { Identity } from '../auth.js';
 import { isLocalDevIdentity } from '../localDev.js';
 import { GOD_STAT } from './rules.js';
@@ -18,6 +18,33 @@ export function ownCharacter(c: CharacterState, identity: Identity): OwnCharacte
     contribution: god ? GOD_STAT : c.contribution, isAdmin: identity.isAdmin };
 }
 
+/** Upgrade older dev saves once; keep a customized hotbar on later reconnects. */
+export function equipDevLoadout(c: CharacterState): boolean {
+  if (!c.devMode) return false;
+  const before = JSON.stringify([c.path, c.learnedSkills, c.hotbar, c.devModeBackup]);
+  // Old dev saves predate customizable paths, looks and inventory. Snapshot their
+  // CURRENT data before giving any new skills or allowing any new dev-only edits.
+  // A revoked old account still restores its original, unmodified legacy save.
+  const backup = c.devModeBackup;
+  if (backup) {
+    if (backup.resources === undefined) backup.resources = structuredClone(c.resources);
+    if (backup.contribution === undefined) backup.contribution = c.contribution;
+    if (backup.path === undefined) backup.path = c.path;
+    if (backup.gender === undefined) backup.gender = c.gender;
+    if (backup.appearance === undefined) backup.appearance = structuredClone(c.appearance);
+    if (backup.learnedSkills === undefined) backup.learnedSkills = [...c.learnedSkills];
+    if (backup.hotbar === undefined) backup.hotbar = [...c.hotbar];
+    if (backup.inventory === undefined) backup.inventory = structuredClone(c.inventory);
+    if (backup.equipment === undefined) backup.equipment = structuredClone(c.equipment);
+    if (backup.stash === undefined) backup.stash = structuredClone(c.stash ?? []);
+  }
+  c.path ??= 'kiem';
+  const skills = skillsForPath(c.path);
+  c.learnedSkills = [...new Set([...c.learnedSkills, ...skills.map((skill) => skill.id)])];
+  if (c.hotbar.filter(Boolean).length < 2) c.hotbar = [SKILLS.spirit_cut.id, skills[1].id, skills.at(-2)!.id, skills.at(-1)!.id];
+  return before !== JSON.stringify([c.path, c.learnedSkills, c.hotbar, c.devModeBackup]);
+}
+
 /** The World checks both a verified Firebase admin identity AND MongoDB role before calling this. */
 export function activateDevMode(c: CharacterState): boolean {
   if (c.devMode) return false;
@@ -26,6 +53,9 @@ export function activateDevMode(c: CharacterState): boolean {
     cultivation: c.cultivation, totalCultivation: c.totalCultivation,
     hp: c.hp, mp: c.mp, maxHp: c.maxHp, maxMp: c.maxMp,
     resources: structuredClone(c.resources), contribution: c.contribution,
+    path: c.path, gender: c.gender, appearance: structuredClone(c.appearance),
+    learnedSkills: [...c.learnedSkills], hotbar: [...c.hotbar],
+    inventory: structuredClone(c.inventory), equipment: structuredClone(c.equipment), stash: structuredClone(c.stash),
   };
   c.devModeBackup = backup;
   c.devMode = true;
@@ -38,6 +68,7 @@ export function activateDevMode(c: CharacterState): boolean {
     multiplier: ROOT_MULTIPLIER.hon_don,
   };
   c.hp = c.mp = c.maxHp = c.maxMp = GOD_STAT;
+  equipDevLoadout(c);
   return true;
 }
 
@@ -58,6 +89,14 @@ export function revokeDevMode(c: CharacterState): void {
   c.mp = b.mp;
   if (b.resources) c.resources = { ...b.resources };
   if (typeof b.contribution === 'number') c.contribution = b.contribution;
+  if (b.path !== undefined) c.path = b.path;
+  if (b.gender) c.gender = b.gender;
+  if (b.appearance) c.appearance = structuredClone(b.appearance);
+  if (b.learnedSkills) c.learnedSkills = [...b.learnedSkills];
+  if (b.hotbar) c.hotbar = [...b.hotbar];
+  if (b.inventory) c.inventory = structuredClone(b.inventory);
+  if (b.equipment) c.equipment = structuredClone(b.equipment);
+  if (b.stash) c.stash = structuredClone(b.stash);
   c.devMode = false;
   delete c.devModeBackup;
 }

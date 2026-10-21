@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
 import { describe, expect, it } from 'vitest';
-import { ASCENDANT_HERBS, ASCENDANT_GATE, DEFAULT_APPEARANCE, HOME_CHEST, HOME_GATE, MAX_REALM,
+import { ASCENDANT_HERBS, ASCENDANT_GATE, DEFAULT_APPEARANCE, HABITATS, HOME_CHEST, HOME_GATE, MAX_REALM,
   REBIRTH_ALTAR, SECRET_GATE, type ActionResult, type OwnCharacter, type WorldSnapshot } from '@van-thuong/shared';
 import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
@@ -124,7 +124,7 @@ describe('server-owned homes, hidden chamber and Ascendant world', () => {
       if (entry.ok) expect([entry.character?.scene, entry.character?.position]).toEqual(['ascendant', ASCENDANT_GATE.arrival]);
       const upper = await snapshot(a, 'ascendant');
       expect(upper.players.map((p) => p.id)).toEqual([top.id]);
-      expect([upper.boss, upper.monsters.length, upper.herbs.length]).toEqual([null, 5, ASCENDANT_HERBS.length]);
+      expect([upper.boss, upper.monsters.length, upper.herbs.length]).toEqual([null, HABITATS.filter((h) => h.scene === 'ascendant').length * 3, ASCENDANT_HERBS.length]);
       expect((await snapshot(b, 'overworld')).players.some((p) => p.id === top.id)).toBe(false);
       expect((await ack(a, 'cast', { skillId: 'spirit_cut', targetId: 'wolf-1' })).ok).toBe(false);
       expect((await ack(a, 'gather', { nodeId: 'herb-1' })).ok).toBe(false);

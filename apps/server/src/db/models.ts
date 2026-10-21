@@ -42,7 +42,7 @@ export const CharacterModel = mongoose.model('Character', new Schema({
     elements: [{ type: String, required: true }],
     multiplier: { type: Number, required: true },
   },
-  path: { type: String, enum: ['kiem', 'phap', 'the'], default: null },
+  path: { type: String, enum: ['kiem', 'phap', 'the', 'thu', 'ma'], default: null },
   realm: { type: Number, default: 0, min: 0, max: MAX_REALM },
   // Old records without a stage are upgraded by fromMongo without rerolling the root.
   minorStage: { type: Number, min: 0, max: 9, default: 0 },

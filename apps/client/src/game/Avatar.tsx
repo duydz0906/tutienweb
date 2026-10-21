@@ -4,6 +4,7 @@ import { HumanAvatar, loadHumanPackage, type HumanPackage } from 'humanforge/hum
 import * as THREE from 'three';
 import { ELEMENT_COLOR, type PublicPlayer } from '@van-thuong/shared';
 import { toHumanConfig } from './humanAppearance';
+import { RealmAura } from './RealmAura';
 
 // One cached human base for the whole scene, but each player gets an independent skeleton,
 // fitted robe, face morphs, materials and equipment. Assets ship with the app (no CDN).
@@ -266,6 +267,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
       <ringGeometry args={[0.4, 0.43, 32]} /><meshBasicMaterial color="#ff847e" />
     </mesh>}
     {player.path === 'kiem' && <SwordHalo />}
+    {player.realm >= 2 && <RealmAura realm={player.realm} />}
     {(player.root.tier === 'bien_di' || player.devMode) && <>
       <mesh position={[0, 1.1, 0]} scale={[0.83, 1.35, 0.83]}>
         <sphereGeometry args={[1, 28, 18]} /><primitive object={aura} ref={auraRef} attach="material" />
