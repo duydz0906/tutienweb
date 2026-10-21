@@ -113,9 +113,6 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
         onOpenRebirth={() => onOpenPanel('rebirth')} onAscend={() => onWorldAction('sanctum:ascend')}
         onExit={() => onWorldAction('sanctum:exit')} /> : character?.scene === 'village' ? <>
       <VillageScene playerPosition={serverPosition} onInteract={onNpc} onTravel={onPortal} />
-      <SectWayfinding character={character} playerPosition={serverPosition}
-        onEnterHome={() => onWorldAction('home:enter')} onEnterSanctum={() => onWorldAction('sanctum:enter')}
-        onEnterVillage={() => onWorldAction('village:enter')} />
     </> : <>
       <Overworld zone={zone} playerPosition={serverPosition} boss={visibleWorld?.boss ?? null}
         drops={visibleWorld?.drops ?? []} formations={visibleWorld?.formations ?? []} onPickup={onPickup} />
