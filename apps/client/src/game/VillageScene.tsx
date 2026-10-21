@@ -22,7 +22,7 @@ function House({ x, z, rotation, scale = 1, tone = 0 }: { x: number; z: number; 
     <mesh castShadow position={[0, 1.05, 2.12]}><boxGeometry args={[1.15, 2.1, 0.12]} /><meshStandardMaterial color="#4f4335" /></mesh>
     <mesh position={[0, 1.9, 2.2]}><boxGeometry args={[1.25, 0.12, 0.06]} /><meshStandardMaterial color="#d9c08d" metalness={0.3} /></mesh>
     <mesh castShadow position={[0, 3.05, 0]} rotation={[0, Math.PI / 4, 0]}>
-      <coneGeometry args={[4.7, 1.75, 4]} /><meshStandardMaterial color={roof} roughness={0.88} flatShading />
+      <coneGeometry args={[4.7, 1.75, 16]} /><meshStandardMaterial color={roof} roughness={0.88} flatShading />
     </mesh>
     <mesh position={[0, 4.02, 0]}><boxGeometry args={[0.5, 0.16, 0.5]} /><meshStandardMaterial color="#444238" /></mesh>
   </group>;
@@ -32,8 +32,8 @@ function Lantern({ x, z }: { x: number; z: number }) {
   const glow = useRef<THREE.MeshBasicMaterial>(null);
   useFrame(({ clock }) => { if (glow.current) glow.current.opacity = 0.68 + Math.sin(clock.elapsedTime * 2.2 + x) * 0.12; });
   return <group position={[x, 0, z]}>
-    <mesh castShadow position={[0, 1.5, 0]}><cylinderGeometry args={[0.07, 0.1, 3, 6]} /><meshStandardMaterial color="#584d40" /></mesh>
-    <mesh position={[0, 3.05, 0]}><sphereGeometry args={[0.28, 12, 9]} />
+    <mesh castShadow position={[0, 1.5, 0]}><cylinderGeometry args={[0.07, 0.1, 3, 16]} /><meshStandardMaterial color="#584d40" /></mesh>
+    <mesh position={[0, 3.05, 0]}><sphereGeometry args={[0.28, 20, 14]} />
       <meshBasicMaterial ref={glow} color="#ffcf86" transparent opacity={0.7} /></mesh>
     <mesh position={[0, 3.05, 0]}><torusGeometry args={[0.31, 0.025, 6, 16]} /><meshStandardMaterial color="#8b7050" /></mesh>
     <pointLight color="#ffc27a" intensity={2.2} distance={8} position={[0, 3, 0]} />
@@ -44,11 +44,11 @@ function Stall({ x, z, rotation, color }: { x: number; z: number; rotation: numb
   return <group position={[x, 0, z]} rotation={[0, rotation, 0]}>
     <mesh castShadow receiveShadow position={[0, 0.5, 0]}><boxGeometry args={[2.9, 0.16, 1.5]} /><meshStandardMaterial color="#9c845f" roughness={0.9} /></mesh>
     {[-1, 1].map((sign) => <mesh key={sign} castShadow position={[sign * 1.35, 1.15, 0]}>
-      <cylinderGeometry args={[0.055, 0.07, 2.2, 6]} /><meshStandardMaterial color="#6d5c45" /></mesh>)}
+      <cylinderGeometry args={[0.055, 0.07, 2.2, 16]} /><meshStandardMaterial color="#6d5c45" /></mesh>)}
     <mesh castShadow position={[0, 2.3, 0]} rotation={[0.1, 0, 0]}><boxGeometry args={[3.3, 0.09, 1.9]} />
       <meshStandardMaterial color={color} roughness={0.8} /></mesh>
     {[-0.9, 0, 0.9].map((offset) => <mesh key={offset} position={[offset, 0.72, 0]}>
-      <sphereGeometry args={[0.17, 9, 7]} /><meshStandardMaterial color={offset ? '#c9b58d' : '#a7c48b'} emissive="#3e4a2b" emissiveIntensity={0.25} /></mesh>)}
+      <sphereGeometry args={[0.17, 20, 14]} /><meshStandardMaterial color={offset ? '#c9b58d' : '#a7c48b'} emissive="#3e4a2b" emissiveIntensity={0.25} /></mesh>)}
   </group>;
 }
 
@@ -57,7 +57,7 @@ function Well() {
     <mesh receiveShadow position={[0, 0.16, 0]}><cylinderGeometry args={[1.2, 1.3, 0.34, 22]} /><meshStandardMaterial color="#8f8f83" roughness={1} /></mesh>
     <mesh position={[0, 0.36, 0]}><cylinderGeometry args={[0.9, 0.9, 0.16, 20]} /><meshStandardMaterial color="#415d5e" roughness={0.4} metalness={0.15} /></mesh>
     {[-1, 1].map((sign) => <mesh key={sign} castShadow position={[sign * 1.05, 1.2, 0]}>
-      <cylinderGeometry args={[0.08, 0.1, 2, 6]} /><meshStandardMaterial color="#6b5a45" /></mesh>)}
+      <cylinderGeometry args={[0.08, 0.1, 2, 16]} /><meshStandardMaterial color="#6b5a45" /></mesh>)}
     <mesh castShadow position={[0, 2.25, 0]}><boxGeometry args={[2.5, 0.14, 0.7]} /><meshStandardMaterial color="#7a654c" /></mesh>
   </group>;
 }
@@ -117,7 +117,7 @@ export function VillageScene({ playerPosition, onInteract, onTravel }: {
         <planeGeometry args={[2.3, 2]} /><meshStandardMaterial color={index % 2 ? '#5f8a58' : '#6d9761'} roughness={1} />
       </mesh>
       {[-0.7, 0, 0.7].map((offset) => <mesh key={offset} position={[offset, 0.16, 0]} rotation={[0, 0, offset * 0.2]}>
-        <coneGeometry args={[0.12, 0.34, 5]} /><meshStandardMaterial color="#8cb96f" roughness={0.9} />
+        <coneGeometry args={[0.12, 0.34, 16]} /><meshStandardMaterial color="#8cb96f" roughness={0.9} />
       </mesh>)}
     </group>)}
 
@@ -141,7 +141,7 @@ export function VillageScene({ playerPosition, onInteract, onTravel }: {
     {Array.from({ length: 22 }, (_, i) => {
       const angle = i * 2.39996, radius = 34 + (i % 4) * 1.8;
       return <group key={`tree-${i}`} position={[Math.sin(angle) * radius, 0, Math.cos(angle) * radius - 3]}>
-        <mesh castShadow position={[0, 1.8, 0]}><cylinderGeometry args={[0.13, 0.22, 3.6, 6]} /><meshStandardMaterial color="#6d6247" /></mesh>
+        <mesh castShadow position={[0, 1.8, 0]}><cylinderGeometry args={[0.13, 0.22, 3.6, 16]} /><meshStandardMaterial color="#6d6247" /></mesh>
         {[0, 0.9, 1.7].map((height, k) => <mesh key={k} castShadow position={[0, 3.1 + height, 0]} scale={1 - k * 0.16}>
           <icosahedronGeometry args={[1.1, 1]} /><meshStandardMaterial color={i % 2 ? '#527c5a' : '#5f8a68'} roughness={0.96} flatShading />
         </mesh>)}
@@ -160,15 +160,15 @@ export function VillageScene({ playerPosition, onInteract, onTravel }: {
         <boxGeometry args={[8.4 - step * 0.6, 0.55, 1.5]} /><meshStandardMaterial color={step % 2 ? '#8b8d7d' : '#96998a'} roughness={1} />
       </mesh>)}
       <mesh castShadow position={[0, 8, -19]} rotation={[0.08, 0, 0]}>
-        <coneGeometry args={[19, 24, 6]} /><meshStandardMaterial color="#617b6b" roughness={1} flatShading />
+        <coneGeometry args={[19, 24, 16]} /><meshStandardMaterial color="#617b6b" roughness={1} flatShading />
       </mesh>
       <BillboardLabel text="SƠN ĐẠO · TÔNG MÔN" position={[0, 3.4, 1.6]} width={5.6} color="#ffe8ba" />
     </group>
     {/* A low tea hill fills the view back toward the village entrance. */}
     <group position={[0, 0, 33]}>
-      <mesh castShadow position={[0, 2.4, 2]}><coneGeometry args={[9, 6.5, 7]} /><meshStandardMaterial color="#5f8064" roughness={1} flatShading /></mesh>
+      <mesh castShadow position={[0, 2.4, 2]}><coneGeometry args={[9, 6.5, 16]} /><meshStandardMaterial color="#5f8064" roughness={1} flatShading /></mesh>
       {[-3, 0, 3].map((offset) => <mesh key={offset} position={[offset, 0.3, -2.2]}>
-        <cylinderGeometry args={[0.5, 0.62, 0.6, 8]} /><meshStandardMaterial color="#6b8a5e" roughness={1} />
+        <cylinderGeometry args={[0.5, 0.62, 0.6, 16]} /><meshStandardMaterial color="#6b8a5e" roughness={1} />
       </mesh>)}
     </group>
 

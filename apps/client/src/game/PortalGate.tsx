@@ -29,7 +29,7 @@ export function PortalGate({ zone, playerPosition, onTravel }: {
       <ringGeometry args={[r, r + 0.045, 64]} /><meshBasicMaterial color={glow} transparent opacity={r === 3.4 ? 0.32 : 0.68} depthWrite={false} side={THREE.DoubleSide} />
     </mesh>)}
     {[-1, 1].map((sign) => <group key={sign} position={[sign * 2.67, 0, 0]}>
-      <mesh castShadow position={[0, 2.15, 0]}><cylinderGeometry args={[0.35, 0.5, 4.3, 8]} />
+      <mesh castShadow position={[0, 2.15, 0]}><cylinderGeometry args={[0.35, 0.5, 4.3, 16]} />
         <meshStandardMaterial color={isHome ? '#5c6b63' : '#565668'} roughness={0.8} /></mesh>
       <mesh position={[0, 4.51, 0]}><octahedronGeometry args={[0.34, 0]} />
         <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={2} metalness={0.55} roughness={0.25} /></mesh>

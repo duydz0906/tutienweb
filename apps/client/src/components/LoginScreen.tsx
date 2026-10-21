@@ -1,13 +1,30 @@
 import { useState } from 'react';
-import { ArrowRight, Compass, Crown, MousePointer2, ShieldCheck, Sparkles, Swords } from 'lucide-react';
+import { ArrowRight, Compass, Crown, MailCheck, MousePointer2, ShieldCheck, Sparkles, Swords } from 'lucide-react';
 
-export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, onDemo, onGoogle, onPassword }: {
-  demoAvailable: boolean; firebaseAvailable: boolean; busy: boolean; error: string | null;
-  onDemo: () => void; onGoogle: () => void; onPassword: (email: string, password: string) => void;
+type AuthMode = 'login' | 'register';
+
+export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, notice, onDemo, onGoogle, onPassword, onRegister, onReset }: {
+  demoAvailable: boolean; firebaseAvailable: boolean; busy: boolean; error: string | null; notice?: string | null;
+  onDemo: () => void; onGoogle: () => void;
+  onPassword: (email: string, password: string) => void;
+  onRegister: (email: string, password: string, name: string) => void;
+  onReset: (email: string) => void;
 }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [name, setName] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mismatch = mode === 'register' && confirm.length > 0 && confirm !== password;
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setLocalError(null);
+    if (mode === 'register' && password !== confirm) { setLocalError('Hai mật khẩu chưa khớp nhau.'); return; }
+    if (mode === 'register') onRegister(email.trim(), password, name.trim());
+    else onPassword(email.trim(), password);
+  };
   return <div className="splash-layout">
     <div className="splash-left">
       <div className="brand-lockup"><div className="brand-seal">雲</div><span>VÂN THƯỢNG <small>ONLINE</small></span></div>
@@ -25,20 +42,45 @@ export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, onD
       <div className="entrance-card">
         <div className="entrance-ornament">✦ <span>THIÊN MỆNH CHỜ NGƯỜI</span> ✦</div>
         <div className="entrance-icon"><Crown size={32} strokeWidth={1.3} /></div>
-        <h2>Khởi hành tu đạo</h2>
-        <p>Đăng nhập để tiếp tục hành trình hoặc bước vào cõi tiên bằng phiên chơi thử.</p>
+        <h2>{mode === 'register' ? 'Khai mở đạo tịch' : 'Khởi hành tu đạo'}</h2>
+        <p>{mode === 'register'
+          ? 'Tạo tài khoản để giữ nhân vật, kho đồ và tiến độ tu luyện trên mọi thiết bị.'
+          : 'Đăng nhập để tiếp tục hành trình hoặc bước vào cõi tiên bằng phiên chơi thử.'}</p>
         {error && <div className="inline-error" role="alert">{error}</div>}
+        {localError && <div className="inline-error" role="alert">{localError}</div>}
+        {notice && <div className="inline-notice" role="status"><MailCheck size={15} /> {notice}</div>}
+        {firebaseAvailable && <div className="auth-tabs" role="tablist" aria-label="Đăng nhập hoặc đăng ký">
+          {(['login', 'register'] as const).map((value) => <button key={value} type="button" role="tab"
+            aria-selected={mode === value} className={mode === value ? 'active' : ''}
+            onClick={() => { setMode(value); setLocalError(null); setShowPassword(true); }}>
+            {value === 'login' ? 'Đăng nhập' : 'Đăng ký'}
+          </button>)}
+        </div>}
         {firebaseAvailable && <button className="btn btn-light btn-full" disabled={busy} onClick={onGoogle}>
           <span className="google-g">G</span> Tiếp tục với Google <ArrowRight size={16} />
         </button>}
         {firebaseAvailable && <>
           <button className="link-button account-toggle" onClick={() => setShowPassword(!showPassword)}>
-            {showPassword ? 'Ẩn đăng nhập email' : 'Đăng nhập bằng email và mật khẩu'}
+            {showPassword ? 'Ẩn biểu mẫu email' : mode === 'register' ? 'Đăng ký bằng email' : 'Đăng nhập bằng email và mật khẩu'}
           </button>
-          {showPassword && <form className="email-form" onSubmit={(event) => { event.preventDefault(); onPassword(email, password); }}>
-            <input type="email" placeholder="Email Firebase" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input type="password" placeholder="Mật khẩu" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-            <button className="btn btn-gold btn-full" disabled={busy} type="submit">Đăng nhập <ArrowRight size={16} /></button>
+          {showPassword && <form className="email-form" onSubmit={submit}>
+            {mode === 'register' && <input type="text" placeholder="Đạo hiệu (tuỳ chọn)" autoComplete="nickname" maxLength={40}
+              value={name} onChange={(e) => setName(e.target.value)} />}
+            <input type="email" placeholder="Email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input type="password" placeholder="Mật khẩu" required minLength={6} value={password}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'} onChange={(e) => setPassword(e.target.value)} />
+            {mode === 'register' && <input type="password" placeholder="Nhập lại mật khẩu" required minLength={6} autoComplete="new-password"
+              value={confirm} onChange={(e) => setConfirm(e.target.value)} />}
+            {mismatch && <div className="form-hint warn">Hai mật khẩu chưa khớp nhau.</div>}
+            <button className="btn btn-gold btn-full" disabled={busy || mismatch} type="submit">
+              {busy ? 'Đang xử lý...' : mode === 'register' ? 'Tạo tài khoản' : 'Đăng nhập'} <ArrowRight size={16} />
+            </button>
+            <div className="email-form-foot">
+              <button type="button" className="link-button" disabled={busy || !email.trim()} onClick={() => { setLocalError(null); onReset(email.trim()); }}>
+                Quên mật khẩu?
+              </button>
+              {mode === 'register' && <span>Mật khẩu tối thiểu 6 ký tự.</span>}
+            </div>
           </form>}
         </>}
         {demoAvailable && <button className="btn btn-gold btn-full" disabled={busy} onClick={onDemo}>

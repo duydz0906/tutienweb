@@ -7,7 +7,7 @@ type Room = (typeof SECT_BUILDINGS)[number];
 function HallDetails({ room }: { room: Room }) {
   if (room.id === 'alchemy') return <group>
     {/* The usable furnace stands to the side of the NPC, not across the open doorway. */}
-    <mesh castShadow position={[3.6, 0.54, 1.15]}><cylinderGeometry args={[0.71, 0.8, 1.08, 12]} />
+    <mesh castShadow position={[3.6, 0.54, 1.15]}><cylinderGeometry args={[0.71, 0.8, 1.08, 16]} />
       <meshStandardMaterial color="#685858" metalness={0.63} roughness={0.43} /></mesh>
     <mesh position={[3.6, 1.14, 1.15]} rotation={[-Math.PI / 2, 0, 0]}><torusGeometry args={[0.57, 0.105, 8, 28]} />
       <meshStandardMaterial color="#dbc08d" emissive="#b2793f" emissiveIntensity={0.35} metalness={0.65} /></mesh>
@@ -17,7 +17,7 @@ function HallDetails({ room }: { room: Room }) {
     {[-1, 1].map((side) => <group key={side} position={[-3.9, 0, 0.9 + side * 1.25]}>
       <mesh castShadow position={[0, 0.55, 0]}><boxGeometry args={[1.1, 1.1, 0.5]} /><meshStandardMaterial color="#705a45" /></mesh>
       {[0, 1, 2].map((i) => <mesh key={i} position={[(i - 1) * 0.27, 1.25, 0]}>
-        <sphereGeometry args={[0.17, 9, 7]} /><meshStandardMaterial color={i % 2 ? '#9bc4aa' : '#d9b48a'} emissive={i % 2 ? '#51785f' : '#8a5a38'} emissiveIntensity={0.3} /></mesh>)}
+        <sphereGeometry args={[0.17, 20, 14]} /><meshStandardMaterial color={i % 2 ? '#9bc4aa' : '#d9b48a'} emissive={i % 2 ? '#51785f' : '#8a5a38'} emissiveIntensity={0.3} /></mesh>)}
     </group>)}
   </group>;
   if (room.id === 'beast') return <group>
@@ -75,7 +75,7 @@ function SectHall({ room, playerPosition }: { room: Room; playerPosition: Vector
         <boxGeometry args={[0.10, 1.5, 0.06]} /><meshStandardMaterial color="#5c4b43" /></mesh>)}
       {/* Timber columns frame the usable door without placing a mesh in its opening. */}
       {[-width / 2 + 0.45, -doorway / 2 - 0.28].map((column, i) => <mesh key={i} castShadow position={[sign * Math.abs(column), height / 2, front - 0.16]}>
-        <cylinderGeometry args={[0.23, 0.28, height, 10]} /><meshStandardMaterial color="#624b3d" roughness={0.8} /></mesh>)}
+        <cylinderGeometry args={[0.23, 0.28, height, 16]} /><meshStandardMaterial color="#624b3d" roughness={0.8} /></mesh>)}
     </group>)}
     {[-1, 1].map((sign) => <mesh key={sign} castShadow receiveShadow position={[sign * width / 2, height / 2, 0]}>
       <boxGeometry args={[wall, height, depth]} /><meshStandardMaterial color="#c5baa2" roughness={0.88} />
@@ -116,13 +116,13 @@ function SectHall({ room, playerPosition }: { room: Room; playerPosition: Vector
         <boxGeometry args={[width + 2.55, 0.12, 0.18]} /><meshStandardMaterial color="#c4aa76" metalness={0.5} roughness={0.42} />
       </mesh>)}
       {[-1, 1].map((sign) => <mesh key={`finial-${sign}`} position={[sign * (width / 2 + 1), height + 2.02, 0]}>
-        <coneGeometry args={[0.32, 0.95, 6]} /><meshStandardMaterial color="#e5c68d" metalness={0.65} roughness={0.3} />
+        <coneGeometry args={[0.32, 0.95, 16]} /><meshStandardMaterial color="#e5c68d" metalness={0.65} roughness={0.3} />
       </mesh>)}
       {main && <group position={[0, height + 2.55, 0]}>
         <mesh castShadow position={[0, 0, 0]}><boxGeometry args={[7.8, 0.95, 4.9]} /><meshStandardMaterial color="#d5c6a4" /></mesh>
         <mesh castShadow position={[0, 0.87, 0]} rotation={[0, Math.PI / 4, 0]}>
-          <coneGeometry args={[5.4, 1.55, 4]} /><meshStandardMaterial color="#315a58" roughness={0.55} metalness={0.1} /></mesh>
-        <mesh position={[0, 1.83, 0]}><coneGeometry args={[0.22, 0.9, 7]} /><meshStandardMaterial color="#eac787" metalness={0.72} /></mesh>
+          <coneGeometry args={[5.4, 1.55, 16]} /><meshStandardMaterial color="#315a58" roughness={0.55} metalness={0.1} /></mesh>
+        <mesh position={[0, 1.83, 0]}><coneGeometry args={[0.22, 0.9, 16]} /><meshStandardMaterial color="#eac787" metalness={0.72} /></mesh>
       </group>}
     </group>
   </group>;

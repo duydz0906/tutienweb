@@ -13,7 +13,7 @@ import { TouchJoystick } from './components/TouchJoystick';
 import { Panels, PathModal, type ActivePanel, type AdminPlayer } from './components/Panels';
 import { ApiError, api } from './lib/api';
 import { loadHudPrefs, saveHudPrefs, type HudPrefs } from './lib/uiPrefs';
-import { firebaseEnabled, loginGoogle, loginPassword, logoutFirebase, observeFirebase } from './lib/firebase';
+import { describeAuthError, firebaseEnabled, loginGoogle, loginPassword, logoutFirebase, observeFirebase, registerPassword, resendVerification, resetPassword } from './lib/firebase';
 import type { User } from 'firebase/auth';
 
 type Phase = 'loading' | 'login' | 'create' | 'reveal' | 'entering' | 'game';
@@ -33,6 +33,8 @@ export function App() {
   const [character, setCharacter] = useState<OwnCharacter | null>(null);
   const [preview, setPreview] = useState<PreviewOptions>(initialPreview);
   const [error, setError] = useState<string | null>(null);
+  /** Friendly, non-blocking confirmation (verification mail, reset link, registration done). */
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(false);
   const [world, setWorld] = useState<WorldSnapshot | null>(null);
@@ -176,6 +178,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    // A freshly registered account starts unverified; remind once without blocking play.
+    if (phase === 'game' && session?.kind === 'firebase' && !session.user.emailVerified) {
+      setNotice('Email chưa xác thực: bạn vẫn chơi được, nhưng hãy xác thực để bảo vệ tài khoản.');
+      void resendVerification().catch(() => {});
+    }
+  }, [phase, session?.kind]);
+
+  useEffect(() => {
     if (phase === 'game' && character && character.realm >= 2 && !character.path && previousRealm.current < 2) setPathModal(true);
     if (character) previousRealm.current = character.realm;
   }, [character?.realm, character?.path, phase]);
@@ -223,8 +233,24 @@ export function App() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Không thể vào bản chơi thử.'); }
     finally { setBusy(false); }
   };
-  const enterGoogle = async () => { setBusy(true); setError(null); try { await loginGoogle(); } catch (e) { setError(e instanceof Error ? e.message : 'Đăng nhập Google không thành công.'); } finally { setBusy(false); } };
-  const enterPassword = async (email: string, password: string) => { setBusy(true); setError(null); try { await loginPassword(email, password); } catch (e) { setError(e instanceof Error ? e.message : 'Đăng nhập không thành công.'); } finally { setBusy(false); } };
+  const enterGoogle = async () => { setBusy(true); setError(null); try { await loginGoogle(); }
+    catch (e) { setError(describeAuthError(e)); } finally { setBusy(false); } };
+  const enterPassword = async (email: string, password: string) => { setBusy(true); setError(null); try { await loginPassword(email, password); }
+    catch (e) { setError(describeAuthError(e)); } finally { setBusy(false); } };
+  const enterRegister = async (email: string, password: string, name: string) => {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await registerPassword(email, password, name);
+      setNotice('Tài khoản đã tạo. Kiểm tra email để xác thực, rồi tạo nhân vật đầu tiên.');
+    } catch (e) { setError(describeAuthError(e)); }
+    finally { setBusy(false); }
+  };
+  const sendReset = async (email: string) => {
+    setBusy(true); setError(null); setNotice(null);
+    try { await resetPassword(email); setNotice('Đã gửi email đặt lại mật khẩu. Hãy kiểm tra hộp thư.'); }
+    catch (e) { setError(describeAuthError(e)); }
+    finally { setBusy(false); }
+  };
 
   const create = async () => {
     if (!session || busy) return;
@@ -243,7 +269,7 @@ export function App() {
     sessionStorage.removeItem(DEMO_KEY);
     if (session?.kind === 'firebase') await logoutFirebase().catch(() => {});
     setSession(null); setCharacter(null); setWorld(null); setTrial(null); setMessages([]); setPanel(null); setSelectedTarget(null);
-    setPhase('login'); setError(null);
+    setPhase('login'); setError(null); setNotice(null);
   };
 
   const action = useCallback(async (event: string, payload: object = {}, options?: { quiet?: boolean }): Promise<boolean> => {
@@ -381,6 +407,7 @@ export function App() {
     <div className="vignette" aria-hidden="true" />
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}
     {phase === 'login' && <LoginScreen demoAvailable={demoAvailable} firebaseAvailable={firebaseEnabled && !demoAvailable} busy={busy} error={error}
+      notice={notice} onRegister={enterRegister} onReset={sendReset}
       onDemo={() => { void enterDemo(); }} onGoogle={() => { void enterGoogle(); }} onPassword={(email, password) => { void enterPassword(email, password); }} />}
     {(phase === 'create' || phase === 'reveal') && <CharacterCreation preview={preview} onChange={(next) => { setPreview(next); setError(null); }} onCreate={() => { void create(); }}
       busy={busy} error={error} revealed={phase === 'reveal' ? character : null}

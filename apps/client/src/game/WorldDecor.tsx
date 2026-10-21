@@ -36,8 +36,8 @@ function RuneCircle({ x, z, radius = 3, color = JADE, opacity = 0.48 }: { x: num
 
 function CherryTree({ x, z, scale }: { x: number; z: number; scale: number }) {
   return <group position={[x, 0, z]} scale={scale}>
-    <mesh castShadow position={[0, 1.9, 0]}><cylinderGeometry args={[0.18, 0.32, 3.8, 8]} /><meshStandardMaterial color="#574d4b" roughness={1} /></mesh>
-    <mesh castShadow position={[0.67, 3.35, 0]} rotation={[0, 0, -0.65]}><cylinderGeometry args={[0.09, 0.16, 1.8, 7]} /><meshStandardMaterial color="#574d4b" /></mesh>
+    <mesh castShadow position={[0, 1.9, 0]}><cylinderGeometry args={[0.18, 0.32, 3.8, 16]} /><meshStandardMaterial color="#574d4b" roughness={1} /></mesh>
+    <mesh castShadow position={[0.67, 3.35, 0]} rotation={[0, 0, -0.65]}><cylinderGeometry args={[0.09, 0.16, 1.8, 16]} /><meshStandardMaterial color="#574d4b" /></mesh>
     {[[0, 4.2, 0, 1.65], [1.25, 4.05, 0.4, 1.15], [-1.15, 3.85, -0.2, 1.2], [0.2, 4.55, -0.8, 1.2]].map(([cx, cy, cz, s], i) =>
       <mesh key={i} castShadow position={[cx, cy, cz]} scale={[s, s * 0.75, s]}>
         <icosahedronGeometry args={[1, 1]} />
@@ -74,10 +74,10 @@ function BambooGrove() {
   }, []);
   return <>
     <instancedMesh ref={stalks} args={[undefined, undefined, count]} castShadow>
-      <cylinderGeometry args={[0.055, 0.075, 1, 5]} /><meshStandardMaterial color="#658c6c" roughness={0.95} />
+      <cylinderGeometry args={[0.055, 0.075, 1, 16]} /><meshStandardMaterial color="#658c6c" roughness={0.95} />
     </instancedMesh>
     <instancedMesh ref={leaves} args={[undefined, undefined, count]} castShadow>
-      <coneGeometry args={[1, 2, 6]} /><meshStandardMaterial color="#4f826f" roughness={1} flatShading />
+      <coneGeometry args={[1, 2, 16]} /><meshStandardMaterial color="#4f826f" roughness={1} flatShading />
     </instancedMesh>
   </>;
 }
@@ -129,7 +129,7 @@ function MountainHorizon({ sect }: { sect: boolean }) {
   }), [sect]);
   return <>
     {mountains.map((m, i) => <mesh key={i} position={[m.x, m.height * 0.25 - (sect ? 15 : 4), m.z]}>
-      <coneGeometry args={[m.radius, m.height, 5]} />
+      <coneGeometry args={[m.radius, m.height, 16]} />
       <meshStandardMaterial color={i % 3 ? '#6e9090' : '#7ea39e'} roughness={1} flatShading />
     </mesh>)}
     <mesh position={[-45, 50, -80]}><sphereGeometry args={[8, 24, 16]} /><meshBasicMaterial color="#fff0d0" fog={false} /></mesh>
@@ -138,9 +138,9 @@ function MountainHorizon({ sect }: { sect: boolean }) {
 
 function Lantern({ x, z }: { x: number; z: number }) {
   return <group position={[x, 0, z]}>
-    <mesh castShadow position={[0, 1.7, 0]}><cylinderGeometry args={[0.085, 0.14, 3.4, 7]} /><meshStandardMaterial color="#3d5b59" metalness={0.4} /></mesh>
+    <mesh castShadow position={[0, 1.7, 0]}><cylinderGeometry args={[0.085, 0.14, 3.4, 16]} /><meshStandardMaterial color="#3d5b59" metalness={0.4} /></mesh>
     <mesh position={[0, 3.2, 0]}><boxGeometry args={[0.68, 0.72, 0.68]} /><meshStandardMaterial color="#ffe0a1" emissive="#ffcb76" emissiveIntensity={1.15} roughness={0.4} /></mesh>
-    <mesh castShadow position={[0, 3.6, 0]} rotation={[0, Math.PI / 4, 0]}><coneGeometry args={[0.65, 0.44, 4]} /><meshStandardMaterial color="#315d5b" /></mesh>
+    <mesh castShadow position={[0, 3.6, 0]} rotation={[0, Math.PI / 4, 0]}><coneGeometry args={[0.65, 0.44, 16]} /><meshStandardMaterial color="#315d5b" /></mesh>
     <pointLight position={[0, 3.2, 0]} color="#ffd69a" intensity={3} distance={8} decay={2} />
   </group>;
 }
@@ -217,7 +217,7 @@ export function Overworld({ zone, playerPosition, boss, drops, formations, onPic
         }))}
       <RuneCircle x={0} z={-17} radius={3.8} color="#e0c994" opacity={0.59} />
       {[-1, 1].map((side) => <group key={`dojo-${side}`} position={[side * 5.4, 0, -17]}>
-        <mesh castShadow position={[0, 1.2, 0]}><cylinderGeometry args={[0.23, 0.4, 2.4, 8]} />
+        <mesh castShadow position={[0, 1.2, 0]}><cylinderGeometry args={[0.23, 0.4, 2.4, 16]} />
           <meshStandardMaterial color="#5c6259" roughness={0.87} /></mesh>
         <mesh position={[0, 2.45, 0]}><octahedronGeometry args={[0.43, 0]} />
           <meshStandardMaterial color="#f2dfac" emissive="#c39961" emissiveIntensity={0.85} metalness={0.25} /></mesh>
@@ -247,7 +247,7 @@ function FormationPillars({ formation }: { formation: FormationState }) {
       {Array.from({ length: 4 }, (_, i) => {
         const angle = (i / 4) * Math.PI * 2;
         return <group key={i} position={[Math.sin(angle) * 3.4, 0, Math.cos(angle) * 3.4]}>
-          <mesh castShadow position={[0, 1, 0]}><cylinderGeometry args={[0.21, 0.33, 2, 6]} /><meshStandardMaterial color="#456b6b" metalness={0.45} roughness={0.45} /></mesh>
+          <mesh castShadow position={[0, 1, 0]}><cylinderGeometry args={[0.21, 0.33, 2, 16]} /><meshStandardMaterial color="#456b6b" metalness={0.45} roughness={0.45} /></mesh>
           <mesh position={[0, 2.17, 0]}><octahedronGeometry args={[0.39, 0]} /><meshStandardMaterial color="#a4eedc" emissive="#4ed5b5" emissiveIntensity={1.7} /></mesh>
           <mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.45, 0.5, 16]} /><meshBasicMaterial color="#b2ffe3" side={THREE.DoubleSide} transparent opacity={0.65} /></mesh>
         </group>;
@@ -267,13 +267,13 @@ function BossModel({ boss }: { boss: BossState }) {
     <mesh castShadow position={[0, 2.05, 0]}><icosahedronGeometry args={[1.55, 1]} /><meshStandardMaterial color="#334f55" metalness={0.7} roughness={0.34} flatShading /></mesh>
     <mesh position={[0, 2.3, 1.35]}><octahedronGeometry args={[0.68, 1]} /><meshStandardMaterial color="#e38d68" emissive="#e96845" emissiveIntensity={2.1} metalness={0.55} roughness={0.2} /></mesh>
     <mesh castShadow position={[0, 4.13, 0.32]} rotation={[-0.22, 0, 0]}><dodecahedronGeometry args={[0.96, 0]} /><meshStandardMaterial color="#394d53" flatShading metalness={0.5} /></mesh>
-    <mesh position={[0, 4.19, 1.14]}><sphereGeometry args={[0.42, 10, 8]} /><meshBasicMaterial color="#ffc781" /></mesh>
+    <mesh position={[0, 4.19, 1.14]}><sphereGeometry args={[0.42, 20, 14]} /><meshBasicMaterial color="#ffc781" /></mesh>
     {[-1, 1].map((side) => <group key={side}>
-      <mesh castShadow position={[side * 1.5, 2.8, 0]} rotation={[0, 0, side * 0.46]}><coneGeometry args={[0.38, 2.7, 6]} /><meshStandardMaterial color="#527775" metalness={0.6} /></mesh>
-      <mesh castShadow position={[side * 0.55, 5.23, 0]} rotation={[0, 0, -side * 0.38]}><coneGeometry args={[0.24, 1.78, 6]} /><meshStandardMaterial color="#e6d6aa" roughness={0.45} /></mesh>
-      <mesh castShadow position={[side * 2.2, 1.35, 0.25]} rotation={[0, 0, side * 0.2]}><cylinderGeometry args={[0.27, 0.43, 2.8, 7]} /><meshStandardMaterial color="#344b52" metalness={0.5} /></mesh>
-      <mesh castShadow position={[side * 0.83, 0.64, 0.25]}><cylinderGeometry args={[0.34, 0.46, 1.35, 7]} /><meshStandardMaterial color="#41565a" metalness={0.5} /></mesh>
-      <mesh position={[side * 0.3, 4.25, 0.98]}><sphereGeometry args={[0.1, 8, 6]} /><meshBasicMaterial color="#fff1b1" /></mesh>
+      <mesh castShadow position={[side * 1.5, 2.8, 0]} rotation={[0, 0, side * 0.46]}><coneGeometry args={[0.38, 2.7, 16]} /><meshStandardMaterial color="#527775" metalness={0.6} /></mesh>
+      <mesh castShadow position={[side * 0.55, 5.23, 0]} rotation={[0, 0, -side * 0.38]}><coneGeometry args={[0.24, 1.78, 16]} /><meshStandardMaterial color="#e6d6aa" roughness={0.45} /></mesh>
+      <mesh castShadow position={[side * 2.2, 1.35, 0.25]} rotation={[0, 0, side * 0.2]}><cylinderGeometry args={[0.27, 0.43, 2.8, 16]} /><meshStandardMaterial color="#344b52" metalness={0.5} /></mesh>
+      <mesh castShadow position={[side * 0.83, 0.64, 0.25]}><cylinderGeometry args={[0.34, 0.46, 1.35, 16]} /><meshStandardMaterial color="#41565a" metalness={0.5} /></mesh>
+      <mesh position={[side * 0.3, 4.25, 0.98]}><sphereGeometry args={[0.1, 20, 14]} /><meshBasicMaterial color="#fff1b1" /></mesh>
     </group>)}
     <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 2.4, 0]}><torusGeometry args={[2.15, 0.035, 6, 56]} /><meshBasicMaterial color="#eea36a" transparent opacity={0.8} /></mesh>
     <pointLight color="#f99d60" intensity={8} distance={15} position={[0, 3.5, 1]} />
@@ -305,11 +305,11 @@ export function TrialArena({ trial, playerPosition }: { trial: TribulationState 
       <octahedronGeometry args={[0.5 + (i % 3) * 0.2, 0]} /><meshStandardMaterial color="#69647f" metalness={0.4} flatShading />
     </mesh>)}
     {Array.from({ length: 12 }, (_, i) => <mesh key={i} position={[Math.sin(i * 3.8) * 24, 12 + (i % 3), Math.cos(i * 3.8) * 19]} scale={[6, 1.9, 3.7]}>
-      <sphereGeometry args={[1, 9, 7]} /><meshStandardMaterial color="#383647" roughness={1} transparent opacity={0.79} depthWrite={false} />
+      <sphereGeometry args={[1, 20, 14]} /><meshStandardMaterial color="#383647" roughness={1} transparent opacity={0.79} depthWrite={false} />
     </mesh>)}
     {trial?.guarding && <group position={[playerPosition.x, 1.35, playerPosition.z]}>
-      <mesh><sphereGeometry args={[1.15, 20, 12]} /><meshStandardMaterial color="#aeefff" emissive="#6dd8f3" emissiveIntensity={1.6} transparent opacity={0.26} depthWrite={false} side={THREE.DoubleSide} wireframe /></mesh>
-      <mesh><sphereGeometry args={[1.06, 20, 12]} /><meshBasicMaterial color="#a8dcff" transparent opacity={0.13} depthWrite={false} side={THREE.DoubleSide} /></mesh>
+      <mesh><sphereGeometry args={[1.15, 20, 14]} /><meshStandardMaterial color="#aeefff" emissive="#6dd8f3" emissiveIntensity={1.6} transparent opacity={0.26} depthWrite={false} side={THREE.DoubleSide} wireframe /></mesh>
+      <mesh><sphereGeometry args={[1.06, 20, 14]} /><meshBasicMaterial color="#a8dcff" transparent opacity={0.13} depthWrite={false} side={THREE.DoubleSide} /></mesh>
       <mesh position={[0, 1.35, 0]}><octahedronGeometry args={[0.27, 0]} /><meshStandardMaterial color="#c4faff" emissive="#9becff" emissiveIntensity={2} /></mesh>
       <pointLight color="#9ae8ff" intensity={5} distance={6} />
     </group>}
@@ -323,8 +323,8 @@ export function TrialArena({ trial, playerPosition }: { trial: TribulationState 
         <meshBasicMaterial color="#ff6970" transparent opacity={0.95} side={THREE.DoubleSide} />
       </mesh>
       {trial.phase === 'strike' && <>
-        <mesh position={[0, 11, 0]}><cylinderGeometry args={[0.25, 0.61, 22, 10]} /><meshBasicMaterial color="#f2ecff" toneMapped={false} /></mesh>
-        <mesh position={[0, 11, 0]}><cylinderGeometry args={[0.7, 1.5, 22, 10]} /><meshBasicMaterial color="#a88ff9" transparent opacity={0.25} depthWrite={false} /></mesh>
+        <mesh position={[0, 11, 0]}><cylinderGeometry args={[0.25, 0.61, 22, 16]} /><meshBasicMaterial color="#f2ecff" toneMapped={false} /></mesh>
+        <mesh position={[0, 11, 0]}><cylinderGeometry args={[0.7, 1.5, 22, 16]} /><meshBasicMaterial color="#a88ff9" transparent opacity={0.25} depthWrite={false} /></mesh>
         <pointLight color="#d7c0ff" intensity={18} distance={26} position={[0, 2.5, 0]} />
       </>}
     </group>}
@@ -348,6 +348,6 @@ export function SkillVfx({ event }: { event: VisualEffect }) {
   return <group ref={group} position={[event.position.x, skill?.id.includes('meteor') || skill?.id === 'falling_star' ? 8 : 0.4, event.position.z]}>
     <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.8, 1.02, 32]} /><meshBasicMaterial color={color} transparent opacity={0.65} depthWrite={false} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} /></mesh>
     {event.type === 'cast' && <mesh><icosahedronGeometry args={[0.21, 0]} /><meshBasicMaterial color={color} /></mesh>}
-    {event.type === 'lightning' && <mesh position={[0, 4, 0]}><cylinderGeometry args={[0.13, 0.4, 8, 7]} /><meshBasicMaterial color="#eee9ff" toneMapped={false} /></mesh>}
+    {event.type === 'lightning' && <mesh position={[0, 4, 0]}><cylinderGeometry args={[0.13, 0.4, 8, 16]} /><meshBasicMaterial color="#eee9ff" toneMapped={false} /></mesh>}
   </group>;
 }
