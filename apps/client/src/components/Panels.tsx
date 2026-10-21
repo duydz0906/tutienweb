@@ -1,0 +1,156 @@
+import { useState } from 'react';
+import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Flame, FlaskConical,
+  Gem, Hammer, MapPin, Shield, Sparkles, Swords, Target, Trophy, Users, WandSparkles, X, Zap } from 'lucide-react';
+import { EQUIPMENT_SLOTS, ITEMS, REALMS, RECIPES, SLOT_LABEL,
+  type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
+
+export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'admin' | null;
+export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
+const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
+
+export function Panels({ panel, onClose, character, leaderboard, roster, onAction, onLogout }: {
+  panel: ActivePanel; onClose: () => void; character: OwnCharacter;
+  leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
+  onAction: (event: string, payload?: object) => void; onLogout: () => void;
+}) {
+  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [profession, setProfession] = useState<'dan' | 'khi' | 'tran'>('dan');
+  const [targetId, setTargetId] = useState<string>('');
+  const [itemId, setItemId] = useState('immortal_sword');
+  const [bossId, setBossId] = useState('world-boss');
+  if (!panel || (panel === 'admin' && !character.isAdmin)) return null;
+
+  const equipped = (slot: string) => {
+    const instanceId = character.equipment[slot as keyof typeof character.equipment];
+    return character.inventory.find((item) => item.instanceId === instanceId);
+  };
+  const selection = character.inventory.find((item) => item.instanceId === selectedItem);
+  const selectionDefinition = selection && ITEMS[selection.itemId];
+  const selectedPlayer = roster.find((player) => player.id === targetId);
+  const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', leaderboard: 'Thiên Kiêu Bảng', help: 'Thiên Đạo Chỉ Dẫn', admin: 'Thiên Đạo · God Mode' }[panel];
+
+  return <div className="panel-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
+      <div className="drawer-head"><div><span className="eyebrow">VÂN THƯỢNG · {panel === 'admin' ? 'ADMIN' : 'HÀNH TRANG'}</span><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={19} /></button></div>
+
+      {panel === 'inventory' && <div className="drawer-scroll">
+        <div className="drawer-section-heading"><Shield size={15} /> MƯỜI Ô TRANG BỊ <span>{Object.keys(character.equipment).length}/10</span></div>
+        <div className="equipment-grid">{EQUIPMENT_SLOTS.map((slot) => {
+          const owned = equipped(slot);
+          const item = owned && ITEMS[owned.itemId];
+          return <div className={`equipment-slot ${item ? `rarity-${item.rarity}` : ''}`} key={slot}>
+            <div className="equipment-slot-icon">{item?.icon ?? '·'}</div>
+            <div><small>{SLOT_LABEL[slot]}</small><strong>{item?.name ?? 'Trống'}</strong></div>
+          </div>;
+        })}</div>
+        <div className="drawer-section-heading section-separator"><Backpack size={15} /> VẬT PHẨM SỞ HỮU <span>{character.inventory.length}/80</span></div>
+        <div className="item-list">{character.inventory.map((owned) => {
+          const item = ITEMS[owned.itemId];
+          if (!item) return null;
+          const inUse = character.equipment[item.slot] === owned.instanceId;
+          return <button className={`item-row rarity-${item.rarity} ${selectedItem === owned.instanceId ? 'item-selected' : ''}`} key={owned.instanceId} onClick={() => setSelectedItem(owned.instanceId)}>
+            <span className="item-visual">{item.icon}</span><span className="item-text"><strong>{item.name}</strong><small>{rarityLabel[item.rarity]} · {SLOT_LABEL[item.slot]}</small></span>{inUse ? <span className="item-worn">ĐANG MẶC</span> : <ChevronRight size={15} />}
+          </button>;
+        })}</div>
+        {selectionDefinition && <div className="item-detail">
+          <div className="item-detail-name">{selectionDefinition.icon} {selectionDefinition.name} <span>{rarityLabel[selectionDefinition.rarity]}</span></div>
+          <p>{selectionDefinition.description}</p>
+          <div className="item-stats">{selectionDefinition.attack > 0 && <span><Swords size={14} /> Công +{selectionDefinition.attack}</span>}{selectionDefinition.defense > 0 && <span><Shield size={14} /> Thủ +{selectionDefinition.defense}</span>}</div>
+          {character.equipment[selectionDefinition.slot] !== selectedItem && <button className="btn btn-gold btn-full" onClick={() => onAction('equip', { instanceId: selectedItem })}>Trang bị vào {SLOT_LABEL[selectionDefinition.slot]} <ArrowRight size={15} /></button>}
+        </div>}
+      </div>}
+
+      {panel === 'craft' && <div className="drawer-scroll">
+        <p className="drawer-description">Dùng nguyên liệu từ hành trình và chiến lợi phẩm đánh boss để khai mở bách nghệ.</p>
+        <div className="materials-bar"><span><Gem size={15} /> {character.resources.stones} linh thạch</span><span>✿ {character.resources.herbs} dược thảo</span><span>⬡ {character.resources.ore} linh thiết</span><span>✧ {character.resources.ink} phù mực</span></div>
+        <div className="craft-tabs"><button className={profession === 'dan' ? 'active' : ''} onClick={() => setProfession('dan')}><FlaskConical size={16} /> Luyện Đan</button><button className={profession === 'khi' ? 'active' : ''} onClick={() => setProfession('khi')}><Hammer size={16} /> Luyện Khí</button><button className={profession === 'tran' ? 'active' : ''} onClick={() => setProfession('tran')}><WandSparkles size={16} /> Trận Pháp</button></div>
+        {Object.values(RECIPES).filter((recipe) => recipe.profession === profession).map((recipe) => {
+          const canMake = Object.entries(recipe.cost).every(([key, amount]) => character.resources[key as keyof typeof character.resources] >= amount);
+          return <div className="recipe-card" key={recipe.id}>
+            <div className="recipe-emblem">{recipe.itemId ? ITEMS[recipe.itemId].icon : '✺'}</div>
+            <span className="eyebrow">{profession === 'dan' ? 'ĐAN DƯỢC' : profession === 'khi' ? 'TIÊN KHÍ' : 'PHÁP TRẬN'}</span>
+            <h3>{recipe.name}</h3><p>{recipe.description}</p>
+            <div className="recipe-cost">{Object.entries(recipe.cost).map(([key, amount]) => <span key={key} className={character.resources[key as keyof typeof character.resources] < amount ? 'missing' : ''}>{key === 'stones' ? '◈' : key === 'herbs' ? '✿' : key === 'ore' ? '⬡' : '✧'} {amount} {({ stones: 'linh thạch', herbs: 'dược thảo', ore: 'linh thiết', ink: 'phù mực' } as Record<string, string>)[key]}</span>)}</div>
+            <button className="btn btn-gold btn-full" disabled={!canMake} onClick={() => onAction('craft', { recipeId: recipe.id })}>{canMake ? 'Bắt đầu chế tạo' : 'Thiếu nguyên liệu'} <ArrowRight size={15} /></button>
+          </div>;
+        })}
+        {profession === 'tran' && <div className="recipe-card formation-recipe">
+          <div className="recipe-emblem"><WandSparkles size={31} /></div>
+          <span className="eyebrow">TRẬN PHÁP · TRIỆU HỒI 3D</span>
+          <h3>Tứ Tượng Trận</h3>
+          <p>Bố trí bốn trụ pháp thuật trước mặt. Đạo hữu trong phạm vi 5m tăng 20% sát thương, giảm 20% sát thương nhận và hồi chân khí. Tồn tại 60 giây.</p>
+          <div className="recipe-cost"><span>✧ 1 phù mực</span><span>◈ 3 linh thạch</span><span>25 giây hồi</span></div>
+          <button className="btn btn-gold btn-full" disabled={character.resources.ink < 1 || character.resources.stones < 3 || character.scene !== 'overworld'} onClick={() => onAction('place-array')}>Bố trí trận trước mặt <ArrowRight size={15} /></button>
+        </div>}
+      </div>}
+
+      {panel === 'leaderboard' && <div className="drawer-scroll">
+        <p className="drawer-description">Bảng xếp hạng tu vi từ Redis · Cập nhật khi đạo hữu tu luyện và đột phá.</p>
+        <div className="leaderboard-list">{leaderboard.length ? leaderboard.map((entry, i) => <div className={`leaderboard-row ${entry.id === character.id ? 'me' : ''}`} key={entry.id}>
+          <span className="leaderboard-rank">{i < 3 ? <Crown size={20} /> : String(i + 1).padStart(2, '0')}</span>
+          <div><strong>{entry.name}</strong><small>{REALMS[entry.realm]}</small></div>
+          <b>{entry.score.toLocaleString('vi-VN')}</b>
+        </div>) : <div className="empty-state"><Trophy size={27} /> Chưa có đạo hữu nào trên Thiên Kiêu Bảng.</div>}</div>
+      </div>}
+
+      {panel === 'help' && <div className="drawer-scroll">
+        <p className="drawer-description">Từ một phàm nhân đến con đường đắc đạo. Thiên địa rộng lớn, hãy bắt đầu từ đây.</p>
+        <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
+          <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
+          <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay góc nhìn · cuộn để thu phóng</span></div>
+          <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><span>Xuất chiêu · cooldown tính trên server</span></div>
+          <div className="help-row"><kbd>I</kbd><span>Mở / đóng túi Càn Khôn</span></div></div>
+        <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> CON ĐƯỜNG TU TIÊN</div>
+          <div className="help-tip"><strong>01 / Tĩnh tọa</strong><p>Tu vi tích lũy ngay cả lúc rời game, tối đa 8 giờ. Nhấn “Thu linh khí” để nhận.</p></div>
+          <div className="help-tip"><strong>02 / Độ kiếp</strong><p>Đủ tu vi hãy bước vào lôi kiếp. Né đủ 9 đạo sét bằng WASD để đột phá.</p></div>
+          <div className="help-tip"><strong>03 / Chọn đạo</strong><p>Đến Trúc Cơ, chọn Kiếm Tu, Pháp Tu hoặc Thể Tu để mở bí kỹ và thần thông.</p></div>
+          <div className="help-tip"><strong>04 / Cộng chiến</strong><p>Đến gần Huyền Thiên Cổ Long, nhắm hướng để ra đòn. Cùng hạ boss để nhận thưởng.</p></div>
+        </div>
+        <button className="btn btn-quiet btn-full logout-button" onClick={onLogout}>Rời khỏi thế giới <ArrowRight size={15} /></button>
+      </div>}
+
+      {panel === 'admin' && <div className="drawer-scroll admin-layout">
+        <div className="admin-status"><Crown size={18} /> QUYỀN NĂNG THIÊN ĐẠO <span>CHỈ FIREBASE UID + CUSTOM CLAIM</span></div>
+        <div className="admin-columns">
+          <div className="admin-column">
+            <div className="drawer-section-heading"><Users size={16} /> ĐẠO HỮU TRỰC TUYẾN <span>{roster.length}</span></div>
+            <div className="admin-player-list">{roster.map((player) => <button key={player.id} className={`admin-player ${targetId === player.id ? 'selected' : ''}`} onClick={() => setTargetId(player.id)}>
+              <div className="admin-avatar">{player.name.charAt(0)}</div><div><strong>{player.name}</strong><small>{REALMS[player.realm]} · {player.scene === 'tribulation' ? 'Lôi kiếp' : 'Ngoại giới'}</small></div><span className="admin-player-hp">{player.hp.toLocaleString('vi-VN')} HP</span>
+            </button>)}</div>
+          </div>
+          <div className="admin-column">
+            <div className="drawer-section-heading"><Target size={16} /> QUẢN LÝ NHÂN VẬT</div>
+            {selectedPlayer ? <div className="admin-target-card">
+              <span className="eyebrow">MỤC TIÊU ĐANG CHỌN</span><h3>{selectedPlayer.name}</h3>
+              <div className="admin-coordinates"><MapPin size={17} /> X {selectedPlayer.position.x.toFixed(1)} <span>Y {selectedPlayer.position.y.toFixed(1)}</span> Z {selectedPlayer.position.z.toFixed(1)}</div>
+              <div className="admin-actions"><button onClick={() => onAction('admin:action', { type: 'teleport-to', targetId })}><ArrowRight size={15} /> Đến chỗ họ</button><button onClick={() => onAction('admin:action', { type: 'summon', targetId })}><ArrowDownToLine size={15} /> Kéo đến đây</button><button className="danger" onClick={() => onAction('admin:action', { type: 'lightning', targetId })}><Zap size={15} /> Thiên Phạt</button></div>
+            </div> : <div className="empty-state"><Users size={26} /> Chọn một người chơi để sử dụng thần quyền.</div>}
+            <div className="drawer-section-heading section-separator"><Sparkles size={16} /> TRIỆU HỒI</div>
+            <label className="admin-input-label">ID VẬT PHẨM</label>
+            <div className="admin-input-row"><input list="admin-item-ids" value={itemId} onChange={(e) => setItemId(e.target.value)} placeholder="VD: immortal_sword" /><datalist id="admin-item-ids">{Object.keys(ITEMS).map((id) => <option key={id} value={id} />)}</datalist><button onClick={() => onAction('admin:action', { type: 'spawn-item', itemId })}>Thả vật phẩm</button></div>
+            <label className="admin-input-label">ID THẾ GIỚI BOSS</label>
+            <div className="admin-input-row"><input value={bossId} onChange={(e) => setBossId(e.target.value)} placeholder="world-boss" /><button onClick={() => onAction('admin:action', { type: 'spawn-boss', bossId })}>Gọi Boss</button></div>
+            <div className="admin-audit-note"><Flame size={15} /> Mọi lệnh được xác thực, kiểm tra whitelist và ghi nhật ký tại server.</div>
+          </div>
+        </div>
+      </div>}
+    </div>
+  </div>;
+}
+
+export function PathModal({ onSelect, onClose }: { onSelect: (path: 'kiem' | 'phap' | 'the') => void; onClose: () => void }) {
+  const paths = [
+    { id: 'kiem' as const, icon: <Swords size={34} strokeWidth={1.4} />, title: 'Kiếm Tu', alias: 'VẠN KIẾM QUY TÔNG', color: '#9ee9d4', description: 'Một kiếm phá vạn pháp. Truy đuổi kẻ địch bằng kiếm khí và hitbox chính xác.', specialty: 'Sát thương vật lý · Phi kiếm' },
+    { id: 'phap' as const, icon: <Flame size={34} strokeWidth={1.4} />, title: 'Pháp Tu', alias: 'THIÊN THẠCH GIÁNG THẾ', color: '#ffad81', description: 'Mượn linh khí trời đất, triệu hồi thiên thạch quét sạch chiến trường.', specialty: 'Sát thương phép · Diện rộng' },
+    { id: 'the' as const, icon: <Shield size={34} strokeWidth={1.4} />, title: 'Thể Tu', alias: 'KIM CANG HỘ THỂ', color: '#f0ce88', description: 'Thân là pháp bảo. Tạo địa chấn, kiên cường và hút lại sinh lực.', specialty: 'Chống chịu · Hấp huyết' },
+  ];
+  return <div className="path-scrim" role="dialog" aria-modal="true" aria-label="Chọn đạo tu luyện">
+    <div className="path-dialog glass-panel"><button className="icon-button path-close" onClick={onClose} aria-label="Đóng"><X size={19} /></button>
+      <span className="eyebrow">TRÚC CƠ ĐẠO THÀNH · NGÃ RẼ ĐỊNH MỆNH</span><h2>Ngươi sẽ đi theo <em>đạo nào?</em></h2>
+      <p>Đạo tu chỉ được chọn một lần. Mỗi con đường mở ra kỹ năng, hiệu ứng và lối chiến đấu riêng.</p>
+      <div className="path-options">{paths.map((path) => <button key={path.id} className="path-option" onClick={() => onSelect(path.id)} style={{ '--path-color': path.color } as React.CSSProperties}>
+        <span className="path-icon">{path.icon}</span><span className="path-alias">{path.alias}</span><strong>{path.title}</strong><span className="path-description">{path.description}</span><span className="path-specialty">{path.specialty}</span><span className="path-select">Chọn con đường này <ArrowRight size={16} /></span>
+      </button>)}</div>
+    </div>
+  </div>;
+}
