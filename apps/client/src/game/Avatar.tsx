@@ -104,9 +104,9 @@ function SwordHalo() {
   </instancedMesh>;
 }
 
-function InnerAvatar({ player, local, preview, groupRef }: {
-  player: PublicPlayer; local: boolean; preview: boolean;
-  groupRef?: React.RefObject<THREE.Group | null>;
+function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering = false, meditating = false }: {
+  player: PublicPlayer; local: boolean; preview: boolean; attackAt?: number;
+  wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
 }) {
   const [human, setHuman] = useState<HumanAvatar | null>(null);
   const [ready, setReady] = useState(false);
@@ -157,7 +157,7 @@ function InnerAvatar({ player, local, preview, groupRef }: {
     };
   }, []);
 
-  const appearanceKey = JSON.stringify(player.appearance);
+  const appearanceKey = JSON.stringify([player.appearance, player.equipment.robe]);
   useEffect(() => {
     if (!human) return;
     let active = true;
@@ -167,7 +167,9 @@ function InnerAvatar({ player, local, preview, groupRef }: {
     const timer = window.setTimeout(() => {
       configChain.current = configChain.current.catch(() => {}).then(async () => {
         if (!active || revision !== configRevision.current) return;
-        await human.setConfig(toHumanConfig(player.gender, player.appearance));
+        // Equipped sect robes replace the original garment's PBR tint/material.
+        const visual = player.equipment.robe === 'moon_robe' ? { ...player.appearance, robeColor: 'lilac' as const } : player.appearance;
+        await human.setConfig(toHumanConfig(player.gender, visual));
         if (!active || revision !== configRevision.current) return;
         human.group.traverse((object) => {
           if (object instanceof THREE.Mesh) { object.castShadow = true; object.receiveShadow = true; }
@@ -204,7 +206,7 @@ function InnerAvatar({ player, local, preview, groupRef }: {
     if (human && ready) {
       if (outer.position.distanceTo(lastPosition.current) > 0.002) lastMoveAt.current = time;
       lastPosition.current.copy(outer.position);
-      const walking = !preview && time - lastMoveAt.current < 0.22 ? 0.25 : 0;
+      const walking = !preview && !meditating && (wandering || time - lastMoveAt.current < 0.22) ? 0.25 : 0;
       for (const [name, phase] of [['LeftUpLeg', 0], ['RightUpLeg', Math.PI], ['LeftArm', Math.PI], ['RightArm', 0]] as const) {
         const bone = human.bones.find((b) => b.name.endsWith(`:${name}`));
         const rest = bone && pose.current.get(bone.name);
@@ -213,7 +215,18 @@ function InnerAvatar({ player, local, preview, groupRef }: {
           const restArm = name === 'LeftArm' ? -0.65 : name === 'RightArm' ? 0.65 : 0;
           if (restArm) bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), restArm));
           if (walking) bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.sin(time * 8 + phase) * walking));
+          if (meditating) bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0),
+            name.endsWith('UpLeg') ? 1.12 : -0.55));
+          if (name === 'RightArm' && attackAt && Date.now() - attackAt < 480) {
+            const swing = Math.sin(Math.max(0, (Date.now() - attackAt) / 480) * Math.PI);
+            bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -swing * 1.55));
+          }
         }
+      }
+      if (meditating) for (const name of ['LeftLeg', 'RightLeg']) {
+        const leg = human.bones.find((b) => b.name.endsWith(`:${name}`));
+        const rest = leg && pose.current.get(leg.name);
+        if (leg && rest) leg.quaternion.copy(rest).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -1.7));
       }
       const head = human.bones.find((b) => b.name.endsWith(':Head'));
       const headRest = head && pose.current.get(head.name);
@@ -238,18 +251,21 @@ function InnerAvatar({ player, local, preview, groupRef }: {
       petRef.current.rotation.y = -0.32 + Math.sin(time) * 0.14;
     }
     if (magicRef.current) magicRef.current.rotation.y += dt * 0.25;
-    if (auraRef.current) auraRef.current.uniforms.uTime.value = time;
+    if (auraRef.current) {
+      auraRef.current.uniforms.uTime.value = time;
+      if (player.devMode) auraRef.current.uniforms.uColor.value.setHSL((time * 0.13) % 1, 0.82, 0.74);
+    }
   });
 
   const immortal = player.equipment.weapon === 'immortal_sword';
   return <group ref={groupRef ?? internalRef} position={[player.position.x, player.position.y, player.position.z]}
-    rotation={[0, player.rotation, 0]} scale={player.isAdmin ? 1.2 : 1}>
-    {human && ready && <primitive object={human.group} />}
+    rotation={[0, player.rotation, 0]} scale={player.devMode ? 1.2 : 1}>
+    {human && ready && <primitive object={human.group} position={meditating ? [0, -0.51, 0] : [0, 0, 0]} />}
     {loadError && preview && <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[0.4, 0.43, 32]} /><meshBasicMaterial color="#ff847e" />
     </mesh>}
     {player.path === 'kiem' && <SwordHalo />}
-    {player.root.tier === 'bien_di' && <>
+    {(player.root.tier === 'bien_di' || player.devMode) && <>
       <mesh position={[0, 1.1, 0]} scale={[0.83, 1.35, 0.83]}>
         <sphereGeometry args={[1, 28, 18]} /><primitive object={aura} ref={auraRef} attach="material" />
       </mesh>
@@ -269,7 +285,7 @@ function InnerAvatar({ player, local, preview, groupRef }: {
       {[-0.15, 0.15].map((x) => <mesh key={x} position={[x, 0.43, 0.18]} rotation={[0, 0, x]}><coneGeometry args={[0.09, 0.23, 5]} /><meshStandardMaterial color="#eac7b4" /></mesh>)}
       <mesh position={[0.15, 0.09, -0.32]} rotation={[0.35, 0, -0.5]}><coneGeometry args={[0.11, 0.47, 7]} /><meshStandardMaterial color="#fff0df" /></mesh>
     </group>}
-    {player.isAdmin && <group ref={magicRef} position={[0, 0.035, 0]}>
+    {player.devMode && <group ref={magicRef} position={[0, 0.08, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.15, 1.22, 64]} />
         <meshBasicMaterial color="#ffc48b" transparent opacity={0.9} side={THREE.DoubleSide} />
@@ -287,7 +303,8 @@ function InnerAvatar({ player, local, preview, groupRef }: {
   </group>;
 }
 
-export function Avatar(props: { player: PublicPlayer; local?: boolean; preview?: boolean; groupRef?: React.RefObject<THREE.Group | null> }) {
+export function Avatar(props: { player: PublicPlayer; local?: boolean; preview?: boolean; attackAt?: number;
+  wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null> }) {
   return <InnerAvatar {...props} local={props.local ?? false} preview={props.preview ?? false} />;
 }
 

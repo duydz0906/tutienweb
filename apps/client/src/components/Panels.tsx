@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Flame, FlaskConical,
   Gem, Hammer, MapPin, ScanFace, Shield, Sparkles, Swords, Target, Trophy, UserRound, Users, WandSparkles, X, Zap } from 'lucide-react';
-import { EQUIPMENT_SLOTS, ITEMS, REALMS, RECIPES, SLOT_LABEL,
-  type Appearance, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
+import { CONSUMABLES, EQUIPMENT_SLOTS, ITEMS, REALMS, RECIPES, SLOT_LABEL,
+  type Appearance, type ConsumableId, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
 import { AppearanceControls } from './AppearanceControls';
+import { QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
 
-export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'appearance' | 'admin' | null;
+export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'appearance' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 
-export function Panels({ panel, onClose, character, leaderboard, roster, onAction, onLogout,
+export function Panels({ panel, onClose, onNavigate, character, leaderboard, roster, onAction, onLogout,
   appearanceDraft, onAppearanceChange, onSaveAppearance, connected, editorView, onEditorView }: {
-  panel: ActivePanel; onClose: () => void; character: OwnCharacter;
+  panel: ActivePanel; onClose: () => void; onNavigate: (panel: ActivePanel) => void; character: OwnCharacter;
   leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
   onAction: (event: string, payload?: object) => void; onLogout: () => void;
   appearanceDraft: Appearance | null; onAppearanceChange: (next: Appearance) => void;
@@ -31,14 +32,20 @@ export function Panels({ panel, onClose, character, leaderboard, roster, onActio
   };
   const selection = character.inventory.find((item) => item.instanceId === selectedItem);
   const selectionDefinition = selection && ITEMS[selection.itemId];
+  const selectedPill = selection && Object.hasOwn(CONSUMABLES, selection.itemId) ? CONSUMABLES[selection.itemId as ConsumableId] : null;
   const selectedPlayer = roster.find((player) => player.id === targetId);
   const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', leaderboard: 'Thiên Kiêu Bảng',
-    help: 'Thiên Đạo Chỉ Dẫn', appearance: 'Dung Mạo Tiên Gia', admin: 'Thiên Đạo · God Mode' }[panel];
+    help: 'Thiên Đạo Chỉ Dẫn', appearance: 'Dung Mạo Tiên Gia', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
+    shop: 'Cửa Hàng Tông Môn', skills: 'Công Pháp & Hotbar', admin: 'Thiên Đạo · God Mode' }[panel];
 
   return <div className={`panel-scrim ${panel === 'appearance' ? 'appearance-scrim' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
       <div className="drawer-head"><div><span className="eyebrow">VÂN THƯỢNG · {panel === 'admin' ? 'ADMIN' : 'HÀNH TRANG'}</span><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={19} /></button></div>
 
+      {panel === 'quests' && <QuestPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'sect' && <SectPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'shop' && <ShopPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'skills' && <SkillsPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'appearance' && <div className="drawer-scroll appearance-drawer">
         <p className="drawer-description">Đổi tóc, màu sắc, khuôn mặt và vóc dáng ngay trong thế giới. Bên ngoài cửa sổ này, nhân vật đang hiển thị bản xem trước; chỉ lưu khi bạn xác nhận.</p>
         <AppearanceControls value={appearanceDraft ?? character.appearance} onChange={onAppearanceChange} />
@@ -64,17 +71,21 @@ export function Panels({ panel, onClose, character, leaderboard, roster, onActio
         <div className="drawer-section-heading section-separator"><Backpack size={15} /> VẬT PHẨM SỞ HỮU <span>{character.inventory.length}/80</span></div>
         <div className="item-list">{character.inventory.map((owned) => {
           const item = ITEMS[owned.itemId];
-          if (!item) return null;
-          const inUse = character.equipment[item.slot] === owned.instanceId;
-          return <button className={`item-row rarity-${item.rarity} ${selectedItem === owned.instanceId ? 'item-selected' : ''}`} key={owned.instanceId} onClick={() => setSelectedItem(owned.instanceId)}>
-            <span className="item-visual">{item.icon}</span><span className="item-text"><strong>{item.name}</strong><small>{rarityLabel[item.rarity]} · {SLOT_LABEL[item.slot]}</small></span>{inUse ? <span className="item-worn">ĐANG MẶC</span> : <ChevronRight size={15} />}
+          const pill = Object.hasOwn(CONSUMABLES, owned.itemId) ? CONSUMABLES[owned.itemId as ConsumableId] : null;
+          if (!item && !pill) return null;
+          const inUse = Boolean(item && character.equipment[item.slot] === owned.instanceId);
+          return <button className={`item-row rarity-${item?.rarity ?? 'common'} ${selectedItem === owned.instanceId ? 'item-selected' : ''}`} key={owned.instanceId} onClick={() => setSelectedItem(owned.instanceId)}>
+            <span className="item-visual">{item?.icon ?? pill?.icon}</span><span className="item-text"><strong>{item?.name ?? pill?.name}</strong><small>{item ? `${rarityLabel[item.rarity]} · ${SLOT_LABEL[item.slot]}` : 'Đan dược · Tiêu hao'}</small></span>{inUse ? <span className="item-worn">ĐANG MẶC</span> : <ChevronRight size={15} />}
           </button>;
         })}</div>
-        {selectionDefinition && <div className="item-detail">
-          <div className="item-detail-name">{selectionDefinition.icon} {selectionDefinition.name} <span>{rarityLabel[selectionDefinition.rarity]}</span></div>
-          <p>{selectionDefinition.description}</p>
-          <div className="item-stats">{selectionDefinition.attack > 0 && <span><Swords size={14} /> Công +{selectionDefinition.attack}</span>}{selectionDefinition.defense > 0 && <span><Shield size={14} /> Thủ +{selectionDefinition.defense}</span>}</div>
-          {character.equipment[selectionDefinition.slot] !== selectedItem && <button className="btn btn-gold btn-full" onClick={() => onAction('equip', { instanceId: selectedItem })}>Trang bị vào {SLOT_LABEL[selectionDefinition.slot]} <ArrowRight size={15} /></button>}
+        {(selectionDefinition || selectedPill) && <div className="item-detail">
+          <div className="item-detail-name">{selectionDefinition?.icon ?? selectedPill?.icon} {selectionDefinition?.name ?? selectedPill?.name} <span>{selectionDefinition ? rarityLabel[selectionDefinition.rarity] : 'Đan dược'}</span></div>
+          <p>{selectionDefinition?.description ?? selectedPill?.description}</p>
+          {selectionDefinition && <><div className="item-stats">{selectionDefinition.attack > 0 && <span><Swords size={14} /> Công +{selectionDefinition.attack}</span>}{selectionDefinition.defense > 0 && <span><Shield size={14} /> Thủ +{selectionDefinition.defense}</span>}</div>
+            {character.equipment[selectionDefinition.slot] !== selectedItem && <button className="btn btn-gold btn-full" onClick={() => onAction('equip', { instanceId: selectedItem })}>Trang bị vào {SLOT_LABEL[selectionDefinition.slot]} <ArrowRight size={15} /></button>}
+          </>}
+          {selectedPill && selection?.itemId !== 'foundation_pill' && <button className="btn btn-gold btn-full" disabled={!connected} onClick={() => onAction('use-item', { instanceId: selectedItem })}>Sử dụng đan dược <ArrowRight size={15} /></button>}
+          {selection?.itemId === 'foundation_pill' && <p>Đan sẽ được dùng khi bạn chọn “Dùng Trúc Cơ Đan” lúc bắt đầu Độ kiếp tầng 9.</p>}
         </div>}
       </div>}
 
@@ -116,19 +127,29 @@ export function Panels({ panel, onClose, character, leaderboard, roster, onActio
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
           <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
           <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay góc nhìn · cuộn để thu phóng</span></div>
-          <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><span>Xuất chiêu · cooldown tính trên server</span></div>
-          <div className="help-row"><kbd>I</kbd><span>Mở / đóng túi Càn Khôn</span></div></div>
-        <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> CON ĐƯỜNG TU TIÊN</div>
-          <div className="help-tip"><strong>01 / Tĩnh tọa</strong><p>Tu vi tích lũy ngay cả lúc rời game, tối đa 8 giờ. Nhấn “Thu linh khí” để nhận.</p></div>
-          <div className="help-tip"><strong>02 / Độ kiếp</strong><p>Đủ tu vi hãy bước vào lôi kiếp. Né đủ 9 đạo sét bằng WASD để đột phá.</p></div>
-          <div className="help-tip"><strong>03 / Chọn đạo</strong><p>Đến Trúc Cơ, chọn Kiếm Tu, Pháp Tu hoặc Thể Tu để mở bí kỹ và thần thông.</p></div>
-          <div className="help-tip"><strong>04 / Cộng chiến</strong><p>Đến gần Huyền Thiên Cổ Long, nhắm hướng để ra đòn. Cùng hạ boss để nhận thưởng.</p></div>
+          <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · chỉ ngoài Tông Môn</span></div>
+          <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><span>Công pháp gán trên hotbar; cooldown do server quyết định</span></div>
+          <div className="help-row"><kbd>I</kbd><kbd>Q</kbd><kbd>K</kbd><span>Túi đồ · Nhiệm vụ · Công pháp</span></div></div>
+        <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> TÔNG MÔN & CON ĐƯỜNG TU TIÊN</div>
+          <div className="help-tip"><strong>01 / Tĩnh tọa & thăng tầng</strong><p>Thu EXP tích lũy ngay cả lúc rời game (tối đa 8 giờ). Luyện Khí trở lên có 9 tầng, chi phí tăng ×5 mỗi tầng.</p></div>
+          <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đến Trưởng Lão Chấp Sự ở X −8, Z 14 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>
+          <div className="help-tip"><strong>03 / Độ kiếp & đạo tu</strong><p>Đạt tầng 9 và đủ EXP để vượt 9 đạo lôi. Trúc Cơ Đan tăng 20% cơ hội thành công; đến Trúc Cơ được chọn Kiếm/Pháp/Thể Tu.</p></div>
+          <div className="help-tip"><strong>04 / Hoang Vực</strong><p>Ra phía nam cổng Tông Môn hái thảo, săn quái, đánh Boss. Nhấp chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
+        </div>
+        <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐI ĐẾN</div>
+          <div className="help-links">
+            <button onClick={() => onNavigate('sect')}><Crown size={16} /> Chính Điện</button>
+            <button onClick={() => onNavigate('quests')}><BookOpen size={16} /> Nhiệm vụ</button>
+            <button onClick={() => onNavigate('shop')}><Gem size={16} /> Cửa hàng</button>
+            <button onClick={() => onNavigate('craft')}><FlaskConical size={16} /> Chế tạo</button>
+            <button onClick={() => onNavigate('leaderboard')}><Trophy size={16} /> Xếp hạng</button>
+          </div>
         </div>
         <button className="btn btn-quiet btn-full logout-button" onClick={onLogout}>Rời khỏi thế giới <ArrowRight size={15} /></button>
       </div>}
 
       {panel === 'admin' && <div className="drawer-scroll admin-layout">
-        <div className="admin-status"><Crown size={18} /> QUYỀN NĂNG THIÊN ĐẠO <span>CHỈ FIREBASE UID + CUSTOM CLAIM</span></div>
+        <div className="admin-status"><Crown size={18} /> QUYỀN NĂNG THIÊN ĐẠO <span>FIREBASE UID + CLAIM + ROLE DATABASE</span></div>
         <div className="admin-columns">
           <div className="admin-column">
             <div className="drawer-section-heading"><Users size={16} /> ĐẠO HỮU TRỰC TUYẾN <span>{roster.length}</span></div>

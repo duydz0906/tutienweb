@@ -1,12 +1,13 @@
 import mongoose, { Schema } from 'mongoose';
-import { EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS, HAIR_STYLES, ROBE_COLORS, SKIN_TONES } from '@van-thuong/shared';
+import { EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS, HAIR_STYLES, MAX_REALM, ROBE_COLORS, SKIN_TONES } from '@van-thuong/shared';
 
 /** The Firebase UID is the only login identifier; passwords are never stored here. */
 export const UserModel = mongoose.model('User', new Schema({
   firebaseUid: { type: String, required: true, unique: true, index: true },
   displayName: { type: String, required: true, maxlength: 80 },
   provider: { type: String, enum: ['google', 'password', 'demo'], required: true },
-  // Synchronized from VERIFIED Firebase claims, never from a request body.
+  // Independently provisioned in MongoDB only after Firebase UID/claim verification.
+  // Normal login cannot re-grant a role that an operator has revoked.
   role: { type: String, enum: ['player', 'admin'], default: 'player' },
   lastLoginAt: { type: Date, default: Date.now },
 }, { timestamps: true }));
@@ -37,12 +38,14 @@ export const CharacterModel = mongoose.model('Character', new Schema({
     build: { type: Number, min: 0, max: 1, default: 0.5 },
   },
   root: {
-    tier: { type: String, enum: ['tap', 'chan', 'thien', 'bien_di'], required: true },
+    tier: { type: String, enum: ['tap', 'chan', 'thien', 'bien_di', 'hon_don'], required: true },
     elements: [{ type: String, required: true }],
     multiplier: { type: Number, required: true },
   },
   path: { type: String, enum: ['kiem', 'phap', 'the'], default: null },
-  realm: { type: Number, default: 0, min: 0, max: 4 },
+  realm: { type: Number, default: 0, min: 0, max: MAX_REALM },
+  // Old records without a stage are upgraded by fromMongo without rerolling the root.
+  minorStage: { type: Number, min: 0, max: 9, default: 0 },
   cultivation: { type: Number, default: 0, min: 0 },
   totalCultivation: { type: Number, default: 0, min: 0 },
   lastCultivatedAt: { type: Number, required: true },
@@ -58,6 +61,17 @@ export const CharacterModel = mongoose.model('Character', new Schema({
     stones: { type: Number, default: 0, min: 0 }, herbs: { type: Number, default: 0, min: 0 },
     ore: { type: Number, default: 0, min: 0 }, ink: { type: Number, default: 0, min: 0 },
   },
+  contribution: { type: Number, default: 0, min: 0 },
+  sectRank: { type: String, enum: ['outer', 'inner', 'true'], default: 'outer' },
+  storyStep: { type: Number, min: 0, max: 3, default: 0 },
+  storyKills: { type: Number, min: 0, default: 0 }, bossKills: { type: Number, min: 0, default: 0 },
+  dailyDay: { type: String, default: '' },
+  dailyQuests: { type: [new Schema({ id: String, progress: { type: Number, min: 0, default: 0 }, claimed: { type: Boolean, default: false } }, { _id: false })], default: [] },
+  learnedSkills: { type: [String], default: ['spirit_cut'] },
+  hotbar: { type: [String], default: ['spirit_cut', null, null, null] },
+  devMode: { type: Boolean, default: false },
+  // Set by the server only, so a revoked admin session can restore the original character.
+  devModeBackup: { type: Schema.Types.Mixed, default: undefined },
   createdAt: { type: Number, required: true },
 }, { timestamps: { createdAt: false, updatedAt: true } }));
 
