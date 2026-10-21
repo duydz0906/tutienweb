@@ -1,0 +1,18 @@
+{
+  "name": "van-thuong-online",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/client", "apps/server", "packages/shared"],
+  "scripts": {
+    "dev": "concurrently -k -n SERVER,CLIENT -c yellow,cyan \"npm run dev -w @van-thuong/server\" \"npm run dev -w @van-thuong/client\"",
+    "build": "npm run typecheck && npm run build -w @van-thuong/client",
+    "typecheck": "npm run typecheck -w @van-thuong/server && npm run typecheck -w @van-thuong/client",
+    "test": "npm run test -w @van-thuong/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": { "node": ">=20" }
+}

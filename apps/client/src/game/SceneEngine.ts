@@ -1,0 +1,213 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+/**
+ * Owns the browser-only 3D controls. React Three Fiber supplies the renderer,
+ * scene and camera; the server, NOT this class, owns the actual world position.
+ */
+export class SceneEngine {
+  private readonly keys = new Set<string>();
+  private touchInput = { right: 0, forward: 0 };
+  private readonly loader = new GLTFLoader();
+  private readonly hemisphere: THREE.HemisphereLight;
+  private readonly sun: THREE.DirectionalLight;
+  private readonly direction = new THREE.Vector3();
+  private readonly desiredCamera = new THREE.Vector3();
+  private readonly lookAt = new THREE.Vector3();
+  private readonly target = new THREE.Vector3();
+  private dragging = false;
+  private previousPointerX = 0;
+  private previousPointerY = 0;
+  private yaw = 0.27;
+  private pitch = 0.31;
+  private distance = 14;
+  private lastRotation = Math.PI;
+  private cinematicUntil = 0;
+  private shakeUntil = 0;
+  private isTribulation = false;
+  private isAdminSky = false;
+  private wasCinematic = false;
+
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly camera: THREE.PerspectiveCamera,
+    private readonly canvas: HTMLCanvasElement,
+  ) {
+    scene.background = new THREE.Color('#8bb8bb');
+    scene.fog = new THREE.FogExp2('#88adb0', 0.0095);
+
+    this.hemisphere = new THREE.HemisphereLight('#e5fbff', '#284653', 1.6);
+    this.sun = new THREE.DirectionalLight('#ffebc8', 2.35);
+    this.sun.position.set(-16, 28, 12);
+    this.sun.castShadow = true;
+    const shadowResolution = window.matchMedia('(max-width: 720px)').matches ? 1024 : 2048;
+    this.sun.shadow.mapSize.set(shadowResolution, shadowResolution);
+    this.sun.shadow.camera.left = -42;
+    this.sun.shadow.camera.right = 42;
+    this.sun.shadow.camera.top = 42;
+    this.sun.shadow.camera.bottom = -42;
+    this.sun.shadow.camera.near = 0.5;
+    this.sun.shadow.camera.far = 90;
+    this.sun.shadow.bias = -0.0002;
+    scene.add(this.hemisphere, this.sun, this.sun.target);
+
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onBlur);
+    canvas.addEventListener('pointerdown', this.onPointerDown);
+    canvas.addEventListener('pointermove', this.onPointerMove);
+    canvas.addEventListener('pointerup', this.onPointerUp);
+    canvas.addEventListener('pointercancel', this.onPointerUp);
+    canvas.addEventListener('wheel', this.onWheel, { passive: false });
+  }
+
+  /** Load an optional GLB/GLTF avatar; the procedural skinned avatar is the fallback. */
+  async loadGLTF(url: string): Promise<THREE.Group> {
+    const gltf = await this.loader.loadAsync(url);
+    gltf.scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    return gltf.scene;
+  }
+
+  setTouchInput(right: number, forward: number): void {
+    this.touchInput = { right: THREE.MathUtils.clamp(right, -1, 1), forward: THREE.MathUtils.clamp(forward, -1, 1) };
+  }
+
+  getMovement(): { x: number; z: number; rotation: number } {
+    const forward = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) + this.touchInput.forward;
+    const right = Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')) + this.touchInput.right;
+    const magnitude = Math.min(1, Math.hypot(forward, right));
+    this.direction.set(
+      right * Math.cos(this.yaw) - forward * Math.sin(this.yaw),
+      0,
+      -right * Math.sin(this.yaw) - forward * Math.cos(this.yaw),
+    );
+    if (magnitude > 0.08) {
+      this.direction.normalize().multiplyScalar(magnitude);
+      this.lastRotation = Math.atan2(this.direction.x, this.direction.z);
+    } else this.direction.set(0, 0, 0);
+    return { x: this.direction.x, z: this.direction.z, rotation: this.lastRotation };
+  }
+
+  /** Client prediction is only visual; snapshots from the server reconcile it. */
+  update(
+    delta: number,
+    avatar: THREE.Object3D | null,
+    serverPosition: { x: number; y: number; z: number },
+    movementSpeed: number,
+    canMove: boolean,
+  ): void {
+    const dt = Math.min(delta, 0.05);
+    if (avatar) {
+      if (canMove) {
+        const { x, z, rotation } = this.getMovement();
+        avatar.position.x += x * movementSpeed * dt;
+        avatar.position.z += z * movementSpeed * dt;
+        if (x !== 0 || z !== 0) avatar.rotation.y = rotation;
+      }
+      this.target.set(serverPosition.x, serverPosition.y, serverPosition.z);
+      if (avatar.position.distanceTo(this.target) > 6) avatar.position.copy(this.target);
+      else avatar.position.lerp(this.target, Math.min(1, dt * 5));
+      this.lookAt.copy(avatar.position).add(new THREE.Vector3(0, 1.65, 0));
+    } else {
+      this.lookAt.set(0, 1.65, 0);
+    }
+
+    const cinematic = performance.now() < this.cinematicUntil;
+    if (cinematic !== this.wasCinematic) {
+      this.wasCinematic = cinematic;
+      this.applyAtmosphere();
+    }
+    if (cinematic && avatar) {
+      // Cut IN FRONT of the character's face, not behind their back.
+      this.desiredCamera.copy(this.lookAt).add(new THREE.Vector3(
+        Math.sin(avatar.rotation.y) * 3.2, 0.35, Math.cos(avatar.rotation.y) * 3.2,
+      ));
+    } else {
+      this.desiredCamera.set(
+        this.lookAt.x + Math.sin(this.yaw) * Math.cos(this.pitch) * this.distance,
+        this.lookAt.y + Math.sin(this.pitch) * this.distance + 1.2,
+        this.lookAt.z + Math.cos(this.yaw) * Math.cos(this.pitch) * this.distance,
+      );
+    }
+    this.camera.position.lerp(this.desiredCamera, Math.min(1, dt * (cinematic ? 5 : 6)));
+    if (performance.now() < this.shakeUntil) {
+      this.camera.position.x += (Math.random() - 0.5) * 0.12;
+      this.camera.position.y += (Math.random() - 0.5) * 0.12;
+    }
+    this.camera.lookAt(this.lookAt);
+  }
+
+  playCinematic(durationMs = 1550): void {
+    this.cinematicUntil = performance.now() + durationMs;
+  }
+
+  shake(durationMs = 440): void {
+    this.shakeUntil = performance.now() + durationMs;
+  }
+
+  setAtmosphere(tribulation: boolean, admin: boolean): void {
+    this.isTribulation = tribulation;
+    this.isAdminSky = admin;
+    this.applyAtmosphere();
+  }
+
+  private applyAtmosphere(): void {
+    const dark = this.isTribulation || this.wasCinematic;
+    const color = dark ? '#171729' : this.isAdminSky ? '#b97c68' : '#8bb8bb';
+    this.scene.background = new THREE.Color(color);
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.set(color);
+      this.scene.fog.density = dark ? 0.023 : 0.0095;
+    }
+    this.sun.color.set(dark ? '#b1a5ed' : this.isAdminSky ? '#ffb77a' : '#ffebc8');
+    this.hemisphere.intensity = dark ? 0.65 : 1.6;
+  }
+
+  dispose(): void {
+    this.scene.remove(this.hemisphere, this.sun, this.sun.target);
+    this.hemisphere.dispose();
+    this.sun.dispose();
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    this.canvas.removeEventListener('pointermove', this.onPointerMove);
+    this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('pointercancel', this.onPointerUp);
+    this.canvas.removeEventListener('wheel', this.onWheel);
+  }
+
+  private onKeyDown = (event: KeyboardEvent): void => {
+    if (event.target instanceof HTMLElement && (event.target.closest('input, textarea, select, [contenteditable="true"]'))) return;
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
+      this.keys.add(event.code);
+      if (event.code.startsWith('Arrow')) event.preventDefault();
+    }
+  };
+  private onKeyUp = (event: KeyboardEvent): void => { this.keys.delete(event.code); };
+  private onBlur = (): void => { this.keys.clear(); this.touchInput = { right: 0, forward: 0 }; this.dragging = false; };
+  private onPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    this.dragging = true;
+    this.previousPointerX = event.clientX;
+    this.previousPointerY = event.clientY;
+    this.canvas.setPointerCapture(event.pointerId);
+  };
+  private onPointerMove = (event: PointerEvent): void => {
+    if (!this.dragging) return;
+    this.yaw -= (event.clientX - this.previousPointerX) * 0.006;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + (event.clientY - this.previousPointerY) * 0.004, 0.18, 1.13);
+    this.previousPointerX = event.clientX;
+    this.previousPointerY = event.clientY;
+  };
+  private onPointerUp = (): void => { this.dragging = false; };
+  private onWheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    this.distance = THREE.MathUtils.clamp(this.distance + event.deltaY * 0.015, 6, 23);
+  };
+}

@@ -1,0 +1,73 @@
+import mongoose, { Schema } from 'mongoose';
+import { EQUIPMENT_SLOTS } from '@van-thuong/shared';
+
+/** The Firebase UID is the only login identifier; passwords are never stored here. */
+export const UserModel = mongoose.model('User', new Schema({
+  firebaseUid: { type: String, required: true, unique: true, index: true },
+  displayName: { type: String, required: true, maxlength: 80 },
+  provider: { type: String, enum: ['google', 'password', 'demo'], required: true },
+  // Synchronized from VERIFIED Firebase claims, never from a request body.
+  role: { type: String, enum: ['player', 'admin'], default: 'player' },
+  lastLoginAt: { type: Date, default: Date.now },
+}, { timestamps: true }));
+
+const vectorSchema = new Schema({
+  x: { type: Number, required: true }, y: { type: Number, required: true }, z: { type: Number, required: true },
+}, { _id: false });
+const inventoryItemSchema = new Schema({
+  instanceId: { type: String, required: true }, itemId: { type: String, required: true },
+  acquiredAt: { type: Number, required: true },
+}, { _id: false });
+const equipmentSlots = Object.fromEntries(EQUIPMENT_SLOTS.map((slot) => [slot, { type: String }])) as Record<string, { type: StringConstructor }>;
+
+/** Authoritative character and its current ten-slot loadout. */
+export const CharacterModel = mongoose.model('Character', new Schema({
+  id: { type: String, required: true, unique: true },
+  ownerUid: { type: String, required: true, unique: true, index: true },
+  user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  name: { type: String, required: true, maxlength: 20 },
+  gender: { type: String, enum: ['nam', 'nu'], required: true },
+  appearance: {
+    hair: { type: String, enum: ['long', 'tied'], required: true },
+    hairColor: { type: String, enum: ['ink', 'silver'], required: true },
+    robeColor: { type: String, enum: ['ivory', 'jade', 'ember'], required: true },
+  },
+  root: {
+    tier: { type: String, enum: ['tap', 'chan', 'thien', 'bien_di'], required: true },
+    elements: [{ type: String, required: true }],
+    multiplier: { type: Number, required: true },
+  },
+  path: { type: String, enum: ['kiem', 'phap', 'the'], default: null },
+  realm: { type: Number, default: 0, min: 0, max: 4 },
+  cultivation: { type: Number, default: 0, min: 0 },
+  totalCultivation: { type: Number, default: 0, min: 0 },
+  lastCultivatedAt: { type: Number, required: true },
+  hp: { type: Number, required: true }, mp: { type: Number, required: true },
+  maxHp: { type: Number, required: true }, maxMp: { type: Number, required: true },
+  position: { type: vectorSchema, required: true },
+  rotation: { type: Number, required: true },
+  scene: { type: String, enum: ['overworld', 'tribulation'], default: 'overworld' },
+  equipment: { type: new Schema(equipmentSlots, { _id: false }), default: () => ({}) },
+  // Canonical ownership list. EquipmentModel is a queryable materialized view of it.
+  inventory: { type: [inventoryItemSchema], default: [] },
+  resources: {
+    stones: { type: Number, default: 0, min: 0 }, herbs: { type: Number, default: 0, min: 0 },
+    ore: { type: Number, default: 0, min: 0 }, ink: { type: Number, default: 0, min: 0 },
+  },
+  createdAt: { type: Number, required: true },
+}, { timestamps: { createdAt: false, updatedAt: true } }));
+
+/** Individually owned equipment, with item metadata and an indexed owner. */
+export const EquipmentModel = mongoose.model('Equipment', new Schema({
+  instanceId: { type: String, required: true, unique: true },
+  ownerUid: { type: String, required: true, index: true },
+  characterId: { type: String, required: true, index: true },
+  itemId: { type: String, required: true },
+  slot: { type: String, enum: EQUIPMENT_SLOTS, required: true },
+  rarity: { type: String, enum: ['common', 'rare', 'epic', 'immortal'], required: true },
+  modifiers: {
+    attack: { type: Number, default: 0 }, defense: { type: Number, default: 0 },
+  },
+  equipped: { type: Boolean, default: false },
+  acquiredAt: { type: Number, required: true },
+}, { timestamps: true }));
