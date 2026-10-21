@@ -1,17 +1,22 @@
 import { useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Flame, FlaskConical,
-  Gem, Hammer, MapPin, Shield, Sparkles, Swords, Target, Trophy, Users, WandSparkles, X, Zap } from 'lucide-react';
+  Gem, Hammer, MapPin, ScanFace, Shield, Sparkles, Swords, Target, Trophy, UserRound, Users, WandSparkles, X, Zap } from 'lucide-react';
 import { EQUIPMENT_SLOTS, ITEMS, REALMS, RECIPES, SLOT_LABEL,
-  type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
+  type Appearance, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
+import { AppearanceControls } from './AppearanceControls';
 
-export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'admin' | null;
+export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'appearance' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 
-export function Panels({ panel, onClose, character, leaderboard, roster, onAction, onLogout }: {
+export function Panels({ panel, onClose, character, leaderboard, roster, onAction, onLogout,
+  appearanceDraft, onAppearanceChange, onSaveAppearance, connected, editorView, onEditorView }: {
   panel: ActivePanel; onClose: () => void; character: OwnCharacter;
   leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
   onAction: (event: string, payload?: object) => void; onLogout: () => void;
+  appearanceDraft: Appearance | null; onAppearanceChange: (next: Appearance) => void;
+  onSaveAppearance: () => void; connected: boolean;
+  editorView: 'body' | 'face'; onEditorView: (view: 'body' | 'face') => void;
 }) {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [profession, setProfession] = useState<'dan' | 'khi' | 'tran'>('dan');
@@ -27,11 +32,24 @@ export function Panels({ panel, onClose, character, leaderboard, roster, onActio
   const selection = character.inventory.find((item) => item.instanceId === selectedItem);
   const selectionDefinition = selection && ITEMS[selection.itemId];
   const selectedPlayer = roster.find((player) => player.id === targetId);
-  const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', leaderboard: 'Thiên Kiêu Bảng', help: 'Thiên Đạo Chỉ Dẫn', admin: 'Thiên Đạo · God Mode' }[panel];
+  const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', leaderboard: 'Thiên Kiêu Bảng',
+    help: 'Thiên Đạo Chỉ Dẫn', appearance: 'Dung Mạo Tiên Gia', admin: 'Thiên Đạo · God Mode' }[panel];
 
-  return <div className="panel-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return <div className={`panel-scrim ${panel === 'appearance' ? 'appearance-scrim' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
       <div className="drawer-head"><div><span className="eyebrow">VÂN THƯỢNG · {panel === 'admin' ? 'ADMIN' : 'HÀNH TRANG'}</span><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={19} /></button></div>
+
+      {panel === 'appearance' && <div className="drawer-scroll appearance-drawer">
+        <p className="drawer-description">Đổi tóc, màu sắc, khuôn mặt và vóc dáng ngay trong thế giới. Bên ngoài cửa sổ này, nhân vật đang hiển thị bản xem trước; chỉ lưu khi bạn xác nhận.</p>
+        <AppearanceControls value={appearanceDraft ?? character.appearance} onChange={onAppearanceChange} />
+        <button type="button" className="preview-toggle" onClick={() => onEditorView(editorView === 'face' ? 'body' : 'face')}>
+          {editorView === 'face' ? <UserRound size={15} /> : <ScanFace size={15} />}
+          {editorView === 'face' ? 'Xem toàn thân' : 'Xem cận khuôn mặt'}
+        </button>
+        <button className="btn btn-gold btn-full appearance-save" disabled={!connected || character.scene !== 'overworld'} onClick={onSaveAppearance}>
+          Lưu ngoại hình <ArrowRight size={16} />
+        </button>
+      </div>}
 
       {panel === 'inventory' && <div className="drawer-scroll">
         <div className="drawer-section-heading"><Shield size={15} /> MƯỜI Ô TRANG BỊ <span>{Object.keys(character.equipment).length}/10</span></div>

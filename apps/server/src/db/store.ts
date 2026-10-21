@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { ITEMS, type CharacterState } from '@van-thuong/shared';
+import { ITEMS, normalizeAppearance, type CharacterState } from '@van-thuong/shared';
 import { type Identity } from '../auth.js';
 import { CharacterModel, EquipmentModel, UserModel } from './models.js';
 
@@ -33,7 +33,7 @@ export class MemoryStore implements CharacterStore {
 function fromMongo(doc: Record<string, any>): CharacterState {
   return {
     id: doc.id, ownerUid: doc.ownerUid, name: doc.name, gender: doc.gender,
-    appearance: { hair: doc.appearance.hair, hairColor: doc.appearance.hairColor, robeColor: doc.appearance.robeColor },
+    appearance: normalizeAppearance(doc.appearance),
     root: { tier: doc.root.tier, elements: doc.root.elements, multiplier: doc.root.multiplier },
     path: doc.path ?? null, realm: doc.realm, cultivation: doc.cultivation, totalCultivation: doc.totalCultivation,
     lastCultivatedAt: doc.lastCultivatedAt, hp: doc.hp, mp: doc.mp, maxHp: doc.maxHp, maxMp: doc.maxMp,

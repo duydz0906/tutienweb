@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Backpack, BookOpen, ChevronRight, CircleHelp, Compass, Crown, Flame,
-  FlaskConical, Gem, MapPin, MessageCircle, Radio, Send, Shield, Sparkles, Swords, Trophy, Wifi, WifiOff, Zap } from 'lucide-react';
+  FlaskConical, Gem, MapPin, MessageCircle, Radio, ScanFace, Send, Shield, Sparkles, Swords, Trophy, Wifi, WifiOff, Zap } from 'lucide-react';
 import { BREAKTHROUGH_COSTS, ELEMENT_COLOR, ELEMENT_LABEL, ITEMS, REALMS, ROOT_LABEL, SKILLS,
   skillsForPath, type ChatMessage, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import type { ActivePanel } from './Panels';
@@ -45,6 +45,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <div className="vital-row"><div className="vital-label"><span><Activity size={14} /> Sinh lực</span><b>{format(character.hp)} / {format(character.maxHp)}</b></div><div className="vital-track"><span className="vital-fill health" style={{ width: `${Math.max(0, character.hp / character.maxHp * 100)}%` }} /></div></div>
         <div className="vital-row"><div className="vital-label"><span><Sparkles size={14} /> Chân khí</span><b>{format(character.mp)} / {format(character.maxMp)}</b></div><div className="vital-track"><span className="vital-fill mana" style={{ width: `${Math.max(0, character.mp / character.maxMp * 100)}%` }} /></div></div>
         <div className="root-banner" style={{ '--root-accent': rootColor } as React.CSSProperties}><span className="root-glyph">✥</span><div><small>BẢN MỆNH LINH CĂN</small><strong>{ROOT_LABEL[character.root.tier]}</strong><span>{character.root.elements.map((element) => ELEMENT_LABEL[element]).join(' · ')} · ×{character.root.multiplier.toFixed(1)} hấp thu</span></div></div>
+        <button className="appearance-open" disabled={inTrial} onClick={() => onPanel('appearance')}><ScanFace size={14} /> Đổi dung mạo <span>✧</span></button>
       </section>
 
       <section className="cultivate-card glass-panel">

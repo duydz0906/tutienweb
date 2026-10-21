@@ -10,15 +10,16 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 .
 ├── apps/
 │   ├── client/                         # React + Vite + React Three Fiber
-│   │   ├── public/models/cultivator.glb # GLB có skeletal skin + khớp xương thật
+│   │   ├── public/human/                # Mesh/morph/skin/tóc/pháp y người thật CC0, tự host
 │   │   └── src/
 │   │       ├── game/
 │   │       │   ├── SceneEngine.ts       # Scene, GLTFLoader, ánh sáng/bóng, WASD Vector3, camera bám
-│   │       │   ├── Avatar.tsx           # Clone Skeleton, gắn vũ khí/bảo vật/thú, shader aura
+│   │       │   ├── Avatar.tsx           # HumanForge Mixamo rig riêng/người, trang bị và hiệu ứng
+│   │       │   ├── humanAppearance.ts   # Male/female mesh, tóc, khuôn mặt, body morph
 │   │       │   ├── WorldDecor.tsx       # Núi, chùa, boss, ấn trận, thiên lôi, hạt 3D
 │   │       │   ├── BloomEffects.tsx     # Bloom lazy-loaded cho desktop
 │   │       │   └── WorldScene.tsx       # Canvas R3F, snapshot, camera
-│   │       ├── components/              # UI HTML đè lên Canvas; dashboard admin
+│   │       ├── components/              # Creator chỉnh ngoại hình, HUD, dashboard admin
 │   │       ├── lib/                     # REST, Firebase Auth lazy-loaded
 │   │       ├── App.tsx                  # Luồng đăng nhập → tạo → vào game; Socket.IO
 │   │       └── styles.css
@@ -35,13 +36,13 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 │           │   └── *.test.ts           # Unit + Socket.IO integration tests
 │           └── index.ts                # REST, websocket, static build
 ├── packages/shared/src/index.ts        # Wire types, 10 slot, item, skill, recipe
-├── scripts/generate-avatar.mjs         # Tạo GLB ~97 KB tại chỗ, không tải asset ngoài
+├── scripts/sync-human-assets.mjs       # Đồng bộ subset CC0 từ HumanForge nếu muốn tái tạo asset
 ├── scripts/grant-admin.mjs             # Gán claim qua Firebase Admin SDK
 ├── compose.yaml                        # MongoDB/Redis chỉ bind localhost
 └── .env.example                        # Mẫu biến môi trường, KHÔNG có bí mật
 ```
 
-**File tạo Scene đầu tiên**: [`apps/client/src/game/SceneEngine.ts`](apps/client/src/game/SceneEngine.ts). `SceneEngine` nhận Scene/Camera/Canvas từ R3F, khởi tạo HemisphereLight/DirectionalLight và shadow map, tải `.glb`/`.gltf` bằng `GLTFLoader`, chuẩn hóa vector WASD, chạy camera bám và xoay/zoom bằng chuột. Camera và prediction chỉ để hiển thị: tọa độ hợp lệ luôn được tính lại ở server. `Avatar.tsx` tải GLB mặc định qua `useLoader(GLTFLoader, ...)`; dùng `SkeletonUtils.clone` để mỗi người chơi có bone riêng, swap material áo/tóc và gắn kiếm vào `RightHand`, mũ vào `Head`, giáp vào `LeftArm`/`RightArm`.
+**File tạo Scene đầu tiên**: [`apps/client/src/game/SceneEngine.ts`](apps/client/src/game/SceneEngine.ts). `SceneEngine` nhận Scene/Camera/Canvas từ R3F, khởi tạo HemisphereLight/DirectionalLight và shadow map, tải `.glb`/`.gltf` bằng `GLTFLoader`, chuẩn hóa vector WASD, chạy camera bám và xoay/zoom bằng chuột. Camera và prediction chỉ để hiển thị: tọa độ hợp lệ luôn được tính lại ở server. `Avatar.tsx` dùng HumanForge/MakeHuman (CC0) để dựng mesh **người thật có xương Mixamo và morph khuôn mặt/vóc dáng**, riêng biệt theo giới tính, từ bộ asset tự host; mỗi người có skeleton/mesh riêng, tóc và trang phục theo lựa chọn, trang bị gắn vào xương tay/đầu. Không còn dùng GLB hình khối cũ. `SceneEngine.loadGLTF()` vẫn hỗ trợ tải thêm GLTF/GLB cho môi trường hoặc vật phẩm.
 
 ## 2. Chạy ngay — bản chơi thử không cần cloud
 
@@ -52,17 +53,17 @@ npm install
 npm run dev
 ```
 
-Mở **http://localhost:5173** (trong Arena dùng live preview cổng **5173**). Vite proxy `/api` và `/socket.io` về Express cổng **3001**, trình duyệt chỉ dùng đường dẫn tương đối, không gọi `localhost` để tới backend. Khi không có `.env` và không phải `NODE_ENV=production`, server tự mở demo; hoặc `cp .env.example .env` và giữ `DEMO_MODE=true`. Bấm **Bước vào chơi thử**, tạo nhân vật, rút Linh Căn rồi vào game. Dữ liệu demo nằm trong RAM và **mất khi restart**; phiên demo **không bao giờ có quyền admin**.
+Mở **http://localhost:5173** (trong Arena dùng live preview cổng **5173**). Vite proxy `/api` và `/socket.io` về Express cổng **3001**, trình duyệt chỉ dùng đường dẫn tương đối, không gọi `localhost` để tới backend. Khi không có `.env` và không phải `NODE_ENV=production`, server tự mở demo; hoặc `cp .env.example .env` và giữ `DEMO_MODE=true`. Bấm **Bước vào chơi thử**, chọn nam/nữ, 7 kiểu tóc, 8 màu tóc, 4 khuôn mặt, sắc da, chiều cao/vóc dáng rồi rút Linh Căn. Nút **Xem cận khuôn mặt** cho phép xem thay đổi trực tiếp. Nhấn **Bước vào Vân Thượng** và đợi kết nối world; có nút thử lại khi mất kết nối. Dữ liệu demo nằm trong RAM và **mất khi restart**; phiên demo **không bao giờ có quyền admin**. Trong demo có thể đặt tên `Daniel965` để chơi, nhưng đó chỉ là tên hiển thị, hoàn toàn không cấp quyền admin; ở production tên này chỉ dành cho UID đã được xác thực.
 
 ```bash
-npm test           # 11 test, gồm RNG 60/30/9/1, Socket.IO, anti-spoof, cooldown
+npm test           # 12 test, gồm RNG 60/30/9/1, tạo nhân vật, tùy chỉnh, anti-spoof
 npm run typecheck  # TypeScript cho client và server
 npm run build      # Kiểm tra kiểu + đóng gói client
 ```
 
 ### Hướng dẫn nhanh trong game
 
-- **WASD / phím mũi tên**: di chuyển; **kéo chuột**: xoay camera; **cuộn**: zoom; **1–3**: kỹ năng; **I**: túi đồ. Trên màn hình cảm ứng dùng cần điều khiển ảo và chạm ô kỹ năng; bloom/độ phân giải bóng được giảm trên màn hình nhỏ.
+- **WASD / phím mũi tên**: di chuyển; **kéo chuột**: xoay camera; **cuộn**: zoom; **1–3**: kỹ năng; **I**: túi đồ. Nút **Đổi dung mạo** trong HUD mở lại tóc/mặt/vóc dáng, xem trước và lưu qua server (tạm không dùng được trong lôi kiếp). Trên màn hình cảm ứng dùng cần điều khiển ảo và chạm ô kỹ năng; bloom/độ phân giải bóng được giảm trên màn hình nhỏ.
 - **Thu linh khí** để nhận tu vi tích lũy (kể cả offline, tối đa 8 giờ). Đủ tu vi chọn **Độ kiếp**, né **9** vùng đỏ bằng WASD. Có thể chế tạo/trang bị **Bản Mệnh Châu** rồi nhấn **F** hoặc nút “Xuất Pháp Bảo” để chắn một đạo lôi (server kiểm tra mana/cooldown). Đạt **Trúc Cơ** mới được chọn Kiếm Tu / Pháp Tu / Thể Tu.
 - Tiến gần, hướng mặt về **Huyền Thiên Cổ Long**, nhấn **1**. Mana, thời gian hồi, hitbox và sát thương là kết quả server. Boss đánh trả theo chu kỳ; chiến thắng nhận nguyên liệu và một món rơi trên đất. Nhấp hoặc đứng gần và nhấn **Nhặt**.
 - **Chế tạo**: Luyện Đan, Luyện Khí, Trận Pháp. Tứ Tượng Trận dựng bốn trụ 3D trong 60 giây, buff đồng đội trong bán kính 5m. **Túi Càn Khôn** có đúng 10 slot; Pháp Bảo bay quanh người, Linh Thú theo sau, Tiên Khí có ánh sáng đỏ.
@@ -72,10 +73,10 @@ npm run build      # Kiểm tra kiểu + đóng gói client
 
 | Thành phần | Trách nhiệm |
 |---|---|
-| Client Three.js / R3F | GLB skeletal avatar, môi trường isometric/third-person, directional shadows, instanced foliage/fire/swords, particle shader, bloom, lôi kiếp/meteor VFX; React HTML/CSS cho HUD. Giới hạn DPR ở `1..1.65`. |
+| Client Three.js / R3F | HumanForge/MakeHuman CC0 rigged mesh, nữ/nam có hình thể/da/pháp y riêng, morph khuôn mặt và cơ thể, tóc thẻ trong suốt đổi màu; môi trường isometric/third-person, directional shadows, instanced foliage/fire/swords, particle shader, bloom, lôi kiếp/meteor VFX; React HTML/CSS cho HUD. Giới hạn DPR ở `1..1.65`. |
 | Express REST | `/api/health`, `/api/demo/session` (chỉ dev), `/api/me`, `POST /api/characters` (idempotent), `/api/leaderboard`. JSON tối đa 16 KB; token bắt buộc ở endpoint tài khoản. |
 | Socket.IO world | Tick 20 Hz, snapshot 10 Hz; validate input, ranh giới map, World Boss, hình học line/sphere/cone, mana, cooldown Redis, AFK, 9 sóng lôi kiếp, craft/equip, item drop và lệnh admin. |
-| MongoDB/Mongoose | `User` (Firebase UID unique, provider, role *đồng bộ từ claim*, last login); `Character` (UID unique, giới tính, ngoại hình, Linh Căn, đạo, cảnh giới, tu vi, HP/MP, `position:{x,y,z}`, `rotation`, scene, resources, 10 slot, inventory); `Equipment` (instance ID unique, owner, character, slot, rarity, stats, equipped). Character.inventory là nguồn sở hữu; Equipment là view có index để truy vấn. |
+| MongoDB/Mongoose | `User` (Firebase UID unique, provider, role *đồng bộ từ claim*, last login); `Character` (UID unique, giới tính, ngoại hình `hair/hairColor/robeColor/face/skinTone/height/build`, Linh Căn, đạo, cảnh giới, tu vi, HP/MP, `position:{x,y,z}`, `rotation`, scene, resources, 10 slot, inventory); `Equipment` (instance ID unique, owner, character, slot, rarity, stats, equipped). Character.inventory là nguồn sở hữu; Equipment là view có index để truy vấn. |
 | Redis | Sorted set `rank:cultivation`, hash tên/cảnh giới, tọa độ + scene TTL 30s ở `scene:<characterId>`, cooldown skill atomic `SET NX PX` để reconnect không reset thời gian hồi. |
 | Firebase Auth | Đăng nhập Google OAuth hoặc Email/Password cùng một giao diện; Admin SDK **xác minh ID token, kiểm tra revoked**, mới suy ra quyền từ custom claim + UID pinned. Mật khẩu không qua game server. |
 
@@ -83,7 +84,7 @@ npm run build      # Kiểm tra kiểu + đóng gói client
 
 **Combat**: Client chỉ gửi `input:{x,z,rotation}` (vector đã được server normalize) và `cast:{skillId,targetId}`. Client gửi `position`, `damage`, `role`, `isAdmin`, `success` đều bị bỏ qua; server xác định tâm AoE từ trạng thái boss/chính người chơi, kiểm tra khoảng cách hitbox trên mặt phẳng `x,z` vì `y` bị khóa về 0, tính phòng thủ, chí mạng và máu boss. Cooldown áp dụng atomic ở Redis. Đột phá **chỉ được ghi sau khi server giải quyết đủ 9 tia sét**; ngắt kết nối hủy instance chứ không cấp cảnh giới.
 
-Các Socket event client: `input`, `cast`, `cultivate`, `breakthrough`, `guard`, `choose-path`, `craft`, `place-array`, `equip`, `pickup`, `chat`, `admin:action`. Server phát `world`, `character`, `tribulation`, `combat`, `cooldowns`, `notice`, `chat`; riêng admin còn nhận `admin:players`. Admin actions hỗ trợ `teleport-to`, `summon`, `lightning`, `spawn-item` (ID thuộc danh mục), `spawn-boss` (ID `world-boss`).
+Các Socket event client: `input`, `cast`, `cultivate`, `breakthrough`, `guard`, `choose-path`, `craft`, `place-array`, `equip`, `appearance:update`, `pickup`, `chat`, `admin:action`. Server phát `world`, `character`, `tribulation`, `combat`, `cooldowns`, `notice`, `chat`; riêng admin còn nhận `admin:players`. Admin actions hỗ trợ `teleport-to`, `summon`, `lightning`, `spawn-item` (ID thuộc danh mục), `spawn-boss` (ID `world-boss`).
 
 ## 4. Firebase + MongoDB + Redis, tài khoản quản trị
 
@@ -97,7 +98,7 @@ Các Socket event client: `input`, `cast`, `cultivate`, `breakthrough`, `guard`,
    CONFIRM_ADMIN_GRANT=daniel965 node scripts/grant-admin.mjs
    ```
 
-   Script từ chối UID chưa xác minh email/bị vô hiệu, chỉ gán claim cho `ADMIN_FIREBASE_UID`. Đăng xuất/đăng nhập lại để refresh ID token. Backend chỉ bật `isAdmin` nếu **claim `admin:true` + UID khớp + email đã xác minh**, không dựa vào tên hiển thị hay dữ liệu client.
+   Script từ chối UID chưa xác minh email/bị vô hiệu, chỉ gán claim cho `ADMIN_FIREBASE_UID`. Đăng xuất/đăng nhập lại để refresh ID token. Backend chỉ bật `isAdmin` nếu **claim `admin:true` + UID khớp + email đã xác minh**, không dựa vào tên hiển thị hay dữ liệu client; tên `Daniel965` trong demo chỉ là tên nhân vật thường.
 4. Admin sau khi đăng nhập thường có HP/MP hiển thị **999.999.999**, bất tử, one-hit boss **nếu đòn thực sự trúng**, tốc độ ×5, model lớn hơn 20%, magic circle/fire trail/bầu trời hoàng hôn. Bật dashboard bằng **Ctrl + Shift + F12** (hoặc nút Thiên Đạo trong HUD). Nhìn vị trí online `x,y,z`, dịch chuyển/triệu hồi/Thiên Phạt, spawn item/Boss. Server kiểm tra quyền trước **mỗi** lệnh và in audit log, không tin thao tác frontend.
 
 Chạy MongoDB/Redis cục bộ tùy chọn: `docker compose up -d`. `compose.yaml` chỉ bind `127.0.0.1`; production nên dùng dịch vụ có authentication/TLS. Để chạy bản build: `npm run build && NODE_ENV=production npm run start -w @van-thuong/server` (trước đó **phải** cấu hình các biến thật và `DEMO_MODE=false`). Express tự phục vụ `apps/client/dist` khi đã build. `DEMO_MODE=true` trong production làm server **dừng khởi động**.
@@ -105,5 +106,16 @@ Chạy MongoDB/Redis cục bộ tùy chọn: `docker compose up -d`. `compose.ya
 ## 5. An toàn & phạm vi triển khai
 
 - Không có credential mặc định, API tạo nhân vật và Socket.IO đều cần token; demo token là chuỗi random 256-bit do server cấp, hết hạn sau 8 giờ và chỉ tồn tại trong RAM. Firebase Admin ID token bị revoke được từ chối. Các ID item/boss/skill/path được whitelist, tên và chat có giới hạn, inventory giới hạn 80 món, one-person/one-socket, world movement do server quyết định.
-- Hình ảnh GLB được tạo bởi `node scripts/generate-avatar.mjs`, không tải asset từ CDN. `SceneEngine` dùng GLTFLoader hỗ trợ thay model thật sau này. Font WOFF2 phục vụ tại chỗ; Firebase Auth lazy-load khi bật, không tải trong demo.
-- Để vận hành MMO quy mô lớn cần thêm **zone/shard owner**, Socket.IO Redis adapter cho broadcast liên instance, transaction/outbox Mongo↔Redis, chống spam theo IP/identity và quan sát/metrics, hệ thống animation/quest, animation GLTF nghệ thuật và nội dung game mở rộng. **Không** giả vờ world state trong RAM là đã được đồng bộ ngang nhiều máy chủ.
+- Asset người thật lấy từ **[HumanForge](https://github.com/abdulrehman043/humanforge/tree/43b06f4de92d075e0861aa2f363a3e710b2eea2e)** (mesh MakeHuman/MPFB2, tóc/áo CC0-1.0) cùng npm `humanforge@0.8.0` (MIT). Giấy phép asset [tại đây](apps/client/public/human/LICENSE.ASSETS.md), MIT [tại đây](apps/client/public/human/LICENSE.HUMANFORGE.md). `apps/client/public/human` chứa khoảng 5,8 MB subset 7 tóc + 2 pháp y + body/morph; chỉ file cần cho ngoại hình hiện tại được tải sau core. **Trình duyệt không tải từ CDN**; Vite/Express tự phục vụ toàn bộ tài nguyên. Muốn tái tạo asset, dùng sparse checkout từ revision đã ghim (chạy từ thư mục gốc dự án):
+
+  ```bash
+  git clone --filter=blob:none --no-checkout --depth=1 https://github.com/abdulrehman043/humanforge.git /tmp/humanforge
+  git -C /tmp/humanforge sparse-checkout set --no-cone assets/human/manifest.json LICENSE.ASSETS.md LICENSE
+  git -C /tmp/humanforge fetch --depth=1 origin 43b06f4de92d075e0861aa2f363a3e710b2eea2e
+  git -C /tmp/humanforge checkout 43b06f4de92d075e0861aa2f363a3e710b2eea2e
+  node scripts/sync-human-assets.mjs /tmp/humanforge --list | git -C /tmp/humanforge sparse-checkout set --no-cone --stdin
+  node scripts/sync-human-assets.mjs /tmp/humanforge
+  ```
+
+  Font WOFF2 phục vụ tại chỗ; Firebase Auth lazy-load khi bật, không tải trong demo.
+- Để vận hành MMO quy mô lớn cần thêm **zone/shard owner**, Socket.IO Redis adapter cho broadcast liên instance, transaction/outbox Mongo↔Redis, chống spam theo IP/identity và quan sát/metrics, hệ thống animation/quest và nội dung game mở rộng. Mesh người thật tốn GPU hơn nhân vật hình khối; cần LOD/distance culling hoặc impostor khi số người cùng khu vực rất lớn. **Không** giả vờ world state trong RAM là đã được đồng bộ ngang nhiều máy chủ.
