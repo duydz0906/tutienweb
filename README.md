@@ -97,7 +97,7 @@ Các Socket event client: `input`, `cast`, `cultivate`, `breakthrough`, `guard`,
    CONFIRM_ADMIN_GRANT=daniel965 node scripts/grant-admin.mjs
    ```
 
-   Script từ chối UID chưa xác minh email/bị vô hiệu, chỉ gán claim cho `ADMIN_FIREBASE_UID`. Đăng xuất/đăng nhập lại để refresh ID token. Backend chỉ bật `isAdmin` nếu **claim `admin:true` + UID khớp + email đã xác minh**, không dựa vào tên hiển thị hay dữ liệu client. Demo mode không cấp admin dù tự nhập `daniel965`.
+   Script từ chối UID chưa xác minh email/bị vô hiệu, chỉ gán claim cho `ADMIN_FIREBASE_UID`. Đăng xuất/đăng nhập lại để refresh ID token. Backend chỉ bật `isAdmin` nếu **claim `admin:true` + UID khớp + email đã xác minh**, không dựa vào tên hiển thị hay dữ liệu client.
 4. Admin sau khi đăng nhập thường có HP/MP hiển thị **999.999.999**, bất tử, one-hit boss **nếu đòn thực sự trúng**, tốc độ ×5, model lớn hơn 20%, magic circle/fire trail/bầu trời hoàng hôn. Bật dashboard bằng **Ctrl + Shift + F12** (hoặc nút Thiên Đạo trong HUD). Nhìn vị trí online `x,y,z`, dịch chuyển/triệu hồi/Thiên Phạt, spawn item/Boss. Server kiểm tra quyền trước **mỗi** lệnh và in audit log, không tin thao tác frontend.
 
 Chạy MongoDB/Redis cục bộ tùy chọn: `docker compose up -d`. `compose.yaml` chỉ bind `127.0.0.1`; production nên dùng dịch vụ có authentication/TLS. Để chạy bản build: `npm run build && NODE_ENV=production npm run start -w @van-thuong/server` (trước đó **phải** cấu hình các biến thật và `DEMO_MODE=false`). Express tự phục vụ `apps/client/dist` khi đã build. `DEMO_MODE=true` trong production làm server **dừng khởi động**.
