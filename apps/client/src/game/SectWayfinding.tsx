@@ -54,7 +54,7 @@ export function SectWayfinding({ character, playerPosition, onEnterHome, onEnter
       {[-1, 1].map((sign) => <mesh key={sign} castShadow position={[sign * 2.7, 2.15, 2.4]} rotation={[0.12, sign * 0.2, sign * 0.18]}>
         <dodecahedronGeometry args={[2.5, 0]} /><meshStandardMaterial color="#69766e" roughness={0.91} flatShading /></mesh>)}
       <mesh castShadow position={[0, 4, 2.7]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.9, 1.3, 5.5, 8]} /><meshStandardMaterial color="#7b8580" roughness={0.9} flatShading /></mesh>
+        <cylinderGeometry args={[0.9, 1.3, 5.5, 16]} /><meshStandardMaterial color="#7b8580" roughness={0.9} flatShading /></mesh>
       {unlocked && <>
         <mesh position={[0, 1.85, 2.3]}><planeGeometry args={[3.7, 3.5]} />
           <meshBasicMaterial color="#8a71bf" transparent opacity={0.29} side={THREE.DoubleSide} depthWrite={false} /></mesh>

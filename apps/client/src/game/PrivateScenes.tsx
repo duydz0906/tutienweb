@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { ASCENDANT_GATE, HOME_CHEST, HOME_EXIT, REBIRTH_ALTAR, SANCTUM_EXIT,
   type Vector3 } from '@van-thuong/shared';
 import { BillboardLabel } from './Billboard';
+import { Rounded } from './models';
 
 function NearRing({ position, active, color }: { position: Vector3; active: boolean; color: string }) {
   return <mesh position={[position.x, 0.135, position.z]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -41,7 +42,7 @@ function Room({ children, dark = false, level = 1 }: { children: React.ReactNode
       <mesh receiveShadow position={[side * 8.55, 2.75, 0]}><boxGeometry args={[0.42, 5.5, 17.2]} />
         <meshStandardMaterial color={wall} roughness={0.9} /></mesh>
       {[-7.7, 7.7].map((z) => <mesh key={z} castShadow position={[side * 7.8, 2.9, z]}>
-        <cylinderGeometry args={[0.24, 0.33, 5.8, 8]} /><meshStandardMaterial color={dark ? '#60466f' : '#6e5643'} roughness={0.82} />
+        <cylinderGeometry args={[0.24, 0.33, 5.8, 16]} /><meshStandardMaterial color={dark ? '#60466f' : '#6e5643'} roughness={0.82} />
       </mesh>)}
       <mesh position={[side * 8.3, 4.98, 0]}><boxGeometry args={[0.17, 0.13, 17.2]} />
         <meshStandardMaterial color={dark ? '#b495da' : '#dbc18c'} metalness={0.34} roughness={0.49} /></mesh>
@@ -55,14 +56,14 @@ function Chest({ position, onOpen, near, level }: { position: Vector3; onOpen: (
   return <group position={[position.x, 0, position.z]} onClick={(event) => { event.stopPropagation(); onOpen(); }}
     onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
     onPointerOut={() => { document.body.style.cursor = ''; }}>
-    <mesh castShadow position={[0, 0.52, 0]}><boxGeometry args={[1.9, 0.95, 1.2]} />
-      <meshStandardMaterial color={material} roughness={0.74} metalness={0.13} /></mesh>
-    <mesh castShadow position={[0, 1.08, -0.04]}><boxGeometry args={[2.05, 0.25, 1.35]} />
-      <meshStandardMaterial color={material} roughness={0.68} /></mesh>
-    {[-0.76, 0.76].map((x) => <mesh key={x} position={[x, 0.6, 0.61]}>
-      <boxGeometry args={[0.11, 0.92, 0.08]} /><meshStandardMaterial color="#dfc486" metalness={0.72} roughness={0.35} /></mesh>)}
-    <mesh position={[0, 0.66, 0.646]}><boxGeometry args={[0.27, 0.35, 0.09]} />
-      <meshStandardMaterial color="#e6d4a2" emissive="#ad8648" emissiveIntensity={near ? 0.75 : 0.32} /></mesh>
+    <Rounded castShadow position={[0, 0.52, 0]} size={[1.9, 0.95, 1.2]} radius={0.12} smooth={4}>
+      <meshStandardMaterial color={material} roughness={0.74} metalness={0.13} /></Rounded>
+    <Rounded castShadow position={[0, 1.08, -0.04]} size={[2.05, 0.3, 1.35]} radius={0.14} smooth={4}>
+      <meshStandardMaterial color={material} roughness={0.68} /></Rounded>
+    {[-0.76, 0.76].map((x) => <Rounded key={x} position={[x, 0.6, 0.61]} size={[0.11, 0.92, 0.09]} radius={0.035}>
+      <meshStandardMaterial color="#dfc486" metalness={0.72} roughness={0.35} /></Rounded>)}
+    <Rounded position={[0, 0.66, 0.63]} size={[0.27, 0.35, 0.12]} radius={0.05}>
+      <meshStandardMaterial color="#e6d4a2" emissive="#ad8648" emissiveIntensity={near ? 0.75 : 0.32} /></Rounded>
     {!near && <BillboardLabel text="RƯƠNG CÁ NHÂN · E" position={[0, 2.58, 0]} width={4.2} color="#fce3ab" />}
     <NearRing position={{ x: 0, y: 0, z: 0 }} active={near} color="#d9bc81" />
   </group>;
@@ -81,12 +82,12 @@ export function ResidenceInterior({ name, level, playerPosition, onOpenStorage, 
     <Chest position={HOME_CHEST.position} onOpen={onOpenStorage} near={near(HOME_CHEST.position) <= HOME_CHEST.radius} level={level} />
     <ExitDoor position={HOME_EXIT.position} onExit={onExit} near={near(HOME_EXIT.position) <= HOME_EXIT.radius} />
     <group position={[-5.5, 0, -4.3]}>
-      <mesh castShadow position={[0, 0.62, 0]}><boxGeometry args={[3.1, 0.75, 4.3]} />
-        <meshStandardMaterial color="#6e5748" roughness={0.86} /></mesh>
-      <mesh position={[0, 1.03, 0]}><boxGeometry args={[2.9, 0.18, 3.9]} />
-        <meshStandardMaterial color={level > 5 ? '#a6c1ba' : '#e2c9ac'} roughness={0.91} /></mesh>
-      <mesh position={[0, 1.16, -1.3]}><boxGeometry args={[2.7, 0.24, 0.68]} />
-        <meshStandardMaterial color="#e8dcbe" roughness={0.93} /></mesh>
+      <Rounded castShadow position={[0, 0.62, 0]} size={[3.1, 0.75, 4.3]} radius={0.12}>
+        <meshStandardMaterial color="#6e5748" roughness={0.86} /></Rounded>
+      <Rounded position={[0, 1.03, 0]} size={[2.9, 0.2, 3.9]} radius={0.1}>
+        <meshStandardMaterial color={level > 5 ? '#a6c1ba' : '#e2c9ac'} roughness={0.91} /></Rounded>
+      <Rounded position={[0, 1.16, -1.3]} size={[2.7, 0.26, 0.68]} radius={0.11}>
+        <meshStandardMaterial color="#e8dcbe" roughness={0.93} /></Rounded>
     </group>
     {[-1, 1].map((sign) => <group key={sign} position={[sign * 6.4, 0, 1.4]}>
       <mesh castShadow position={[0, 1.2, 0]}><boxGeometry args={[1.5, 2.35, 3.6]} />
@@ -95,7 +96,7 @@ export function ResidenceInterior({ name, level, playerPosition, onOpenStorage, 
         <meshStandardMaterial color="#c2a879" roughness={0.76} /></mesh>)}
     </group>)}
     {level > 3 && [-1, 1].map((sign) => <group key={sign} position={[sign * 4.7, 0, -7.2]}>
-      <mesh castShadow position={[0, 1.7, 0]}><cylinderGeometry args={[0.1, 0.19, 3.4, 8]} /><meshStandardMaterial color="#b69b66" /></mesh>
+      <mesh castShadow position={[0, 1.7, 0]}><cylinderGeometry args={[0.1, 0.19, 3.4, 16]} /><meshStandardMaterial color="#b69b66" /></mesh>
       <mesh position={[0, 3.4, 0]}><icosahedronGeometry args={[0.39, 1]} />
         <meshStandardMaterial color={level > 8 ? '#e7d6a1' : '#8bd0b1'} emissive="#6aab93" emissiveIntensity={1.1} metalness={0.44} /></mesh>
     </group>)}
@@ -110,9 +111,9 @@ function RebirthAltar({ onOpen, active }: { onOpen: () => void; active: boolean 
     onClick={(event) => { event.stopPropagation(); onOpen(); }}
     onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
     onPointerOut={() => { document.body.style.cursor = ''; }}>
-    <mesh castShadow position={[0, 0.22, 0]}><cylinderGeometry args={[1.55, 1.7, 0.45, 12]} />
+    <mesh castShadow position={[0, 0.22, 0]}><cylinderGeometry args={[1.55, 1.7, 0.45, 16]} />
       <meshStandardMaterial color="#594b63" metalness={0.38} roughness={0.6} /></mesh>
-    <mesh position={[0, 0.48, 0]}><cylinderGeometry args={[1.35, 1.42, 0.1, 12]} />
+    <mesh position={[0, 0.48, 0]}><cylinderGeometry args={[1.35, 1.42, 0.1, 16]} />
       <meshStandardMaterial color="#bd9dda" emissive="#72539d" emissiveIntensity={0.6} metalness={0.58} /></mesh>
     <group ref={crown} position={[0, 2.1, 0]}>
       <mesh castShadow><icosahedronGeometry args={[0.72, 1]} />

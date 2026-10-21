@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { ELEMENT_COLOR, ITEMS, type PublicPlayer } from '@van-thuong/shared';
 import { toHumanConfig } from './humanAppearance';
 import { RealmAura } from './RealmAura';
+import { Rounded, SpiritBeast } from './models';
 
 // One cached human base for the whole scene, but each player gets an independent skeleton,
 // fitted robe, face morphs, materials and equipment. Assets ship with the app (no CDN).
@@ -35,22 +36,47 @@ function disposeMesh(object: THREE.Object3D): void {
 function makeWeapon(itemId: string): THREE.Group {
   const red = itemId === 'immortal_sword';
   const jade = itemId === 'jade_blade';
-  const metal = new THREE.MeshStandardMaterial({ color: red ? '#f3675e' : jade ? '#a2fae3' : '#d9e5da', metalness: 0.65, roughness: 0.3, emissive: red ? '#ff2929' : jade ? '#3a8c75' : '#64766b', emissiveIntensity: red ? 2.2 : jade ? 0.7 : 0.3 });
-  const gold = new THREE.MeshStandardMaterial({ color: '#d7ae72', metalness: 0.8, roughness: 0.25 });
+  const metal = new THREE.MeshStandardMaterial({ color: red ? '#f3675e' : jade ? '#a2fae3' : '#d9e5da', metalness: 0.72, roughness: 0.24,
+    emissive: red ? '#ff2929' : jade ? '#3a8c75' : '#64766b', emissiveIntensity: red ? 2.2 : jade ? 0.7 : 0.3 });
+  const gold = new THREE.MeshStandardMaterial({ color: '#d7ae72', metalness: 0.82, roughness: 0.22 });
+  const leather = new THREE.MeshStandardMaterial({ color: '#3c2a22', roughness: 0.78 });
   const weapon = new THREE.Group();
   weapon.name = 'WeaponSocketMesh';
+  const length = red ? 0.92 : 0.78;
   // The Mixamo palm's local +Y faces down/forward: the blade points at the ground,
   // rather than the oversized black cone that previously stuck through the shoulder.
-  const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.047, red ? 0.85 : 0.72, 6), metal);
-  blade.position.y = red ? 0.63 : 0.56;
+  // A 24-sided cylinder squashed on Z gives a lens-shaped blade instead of a faceted spike.
+  const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.048, length, 24, 3), metal);
+  blade.scale.z = 0.4;
+  blade.position.y = 0.26 + length / 2;
   blade.castShadow = true;
   weapon.add(blade);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.023, 0.023, 0.31, 10), gold);
-  grip.position.y = -0.07;
+  // Fuller: a slim inset ridge that catches the light along the spine of the blade.
+  const fuller = new THREE.Mesh(new THREE.CylinderGeometry(0.0016, 0.012, length * 0.82, 16), metal);
+  fuller.scale.z = 0.28;
+  fuller.position.set(0, 0.26 + length / 2, 0.006);
+  weapon.add(fuller);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.011, 10, 24), gold);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 0.27;
+  weapon.add(collar);
+  const grip = new THREE.Mesh(new THREE.CapsuleGeometry(0.022, 0.2, 6, 18), leather);
+  grip.position.y = 0.12;
+  grip.castShadow = true;
   weapon.add(grip);
-  const guard = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.025, 12), gold);
-  guard.position.y = 0.19;
+  // Guard: an oval plate, not a cylinder stack.
+  const guard = new THREE.Mesh(new THREE.SphereGeometry(0.085, 28, 20), gold);
+  guard.scale.set(1.35, 0.16, 0.66);
+  guard.position.y = 0.28;
+  guard.castShadow = true;
   weapon.add(guard);
+  const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.028, 20, 16), gold);
+  pommel.position.y = 0.005;
+  weapon.add(pommel);
+  const tassel = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.12, 14), red ? metal : gold);
+  tassel.position.set(0, -0.07, 0.014);
+  tassel.rotation.z = 0.12;
+  weapon.add(tassel);
   weapon.rotation.z = -0.08;
   weapon.position.set(0, -0.04, 0);
   return weapon;
@@ -65,26 +91,52 @@ function addEquipment(human: HumanAvatar, player: PublicPlayer): () => void {
   };
   if (player.equipment.weapon) add(bone('RightHand'), makeWeapon(player.equipment.weapon));
   if (player.equipment.head) {
-    const crown = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.017, 8, 36),
-      new THREE.MeshStandardMaterial({ color: '#b4e7c8', metalness: 0.7, roughness: 0.25 }));
+    const head = bone('Head');
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(0.113, 0.015, 16, 64),
+      new THREE.MeshStandardMaterial({ color: '#b4e7c8', metalness: 0.78, roughness: 0.2, emissive: '#2f6b56', emissiveIntensity: 0.35 }));
     crown.rotation.x = Math.PI / 2;
-    crown.position.set(0, 0.12, 0);
-    add(bone('Head'), crown);
+    crown.position.set(0, 0.115, 0);
+    add(head, crown);
+    // Three jade beads float above the circlet so the headpiece reads as jewellery, not a ring.
+    for (const [index, angle] of [-0.5, 0, 0.5].entries()) {
+      const bead = new THREE.Mesh(new THREE.SphereGeometry(0.016, 18, 14),
+        new THREE.MeshStandardMaterial({ color: '#d8fff1', emissive: '#57e0bb', emissiveIntensity: 1.1, metalness: 0.4, roughness: 0.25 }));
+      bead.position.set(Math.sin(angle) * 0.113, 0.13 + (index === 1 ? 0.014 : 0), Math.cos(angle) * 0.113);
+      add(head, bead);
+    }
   }
   if (player.equipment.shoulder) {
     for (const name of ['LeftArm', 'RightArm']) {
-      const plate = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12),
-        new THREE.MeshStandardMaterial({ color: '#ad9a7c', metalness: 0.68, roughness: 0.33 }));
-      plate.scale.set(1.25, 0.52, 1.1);
+      const plate = new THREE.Mesh(new THREE.SphereGeometry(0.108, 32, 22),
+        new THREE.MeshStandardMaterial({ color: '#ad9a7c', metalness: 0.72, roughness: 0.3 }));
+      plate.scale.set(1.22, 0.56, 1.08);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.104, 0.011, 12, 40),
+        new THREE.MeshStandardMaterial({ color: '#e5cf9c', metalness: 0.86, roughness: 0.22 }));
+      rim.rotation.x = Math.PI / 2;
+      rim.scale.set(1.16, 1.02, 1);
+      rim.position.y = -0.012;
+      plate.add(rim);
       add(bone(name), plate);
     }
   }
   // Boots, ring, necklace and talisman used to be invisible even when equipped.
   if (player.equipment.boots) {
     for (const name of ['LeftFoot', 'RightFoot']) {
-      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.28),
-        new THREE.MeshStandardMaterial({ color: '#6f7f83', metalness: 0.35, roughness: 0.5 }));
-      boot.position.set(0, 0.01, 0.05);
+      // Rounded, tapered boot with a metal toe cap instead of a hard cube on the ankle.
+      const boot = new THREE.Group();
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(0.075, 26, 20),
+        new THREE.MeshStandardMaterial({ color: '#6f7f83', metalness: 0.42, roughness: 0.44 }));
+      shell.scale.set(0.95, 0.82, 1.9);
+      shell.castShadow = true;
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.052, 0.1, 22),
+        new THREE.MeshStandardMaterial({ color: '#5b6a6e', roughness: 0.68 }));
+      cuff.position.set(0, 0.075, -0.03);
+      const toe = new THREE.Mesh(new THREE.SphereGeometry(0.056, 22, 16),
+        new THREE.MeshStandardMaterial({ color: '#cfd8c8', metalness: 0.6, roughness: 0.32 }));
+      toe.scale.set(0.9, 0.55, 0.8);
+      toe.position.set(0, -0.014, 0.088);
+      boot.add(shell, cuff, toe);
+      boot.position.set(0, 0.012, 0.045);
       add(bone(name), boot);
     }
   }
@@ -96,7 +148,7 @@ function addEquipment(human: HumanAvatar, player: PublicPlayer): () => void {
     add(bone('RightHand'), ring);
   }
   if (player.equipment.necklace) {
-    const chain = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.007, 6, 24),
+    const chain = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.007, 12, 48),
       new THREE.MeshStandardMaterial({ color: '#e9dcae', metalness: 0.8, roughness: 0.28 }));
     chain.rotation.x = Math.PI / 2.4;
     chain.position.set(0, 0.12, 0.06);
@@ -146,11 +198,9 @@ function SwordHalo() {
 function FlightMount({ itemId }: { itemId: string }) {
   const style = ITEMS[itemId]?.flight?.style ?? 'cloud';
   const group = useRef<THREE.Group>(null);
-  const wings = useRef<THREE.Group>(null);
   useFrame(({ clock }, delta) => {
     const time = clock.elapsedTime;
     if (group.current) group.current.position.y = Math.sin(time * 2.4) * 0.07;
-    if (wings.current) wings.current.rotation.z = Math.sin(time * 5.2) * 0.35;
     if (style === 'wheel' && group.current) group.current.rotation.y += delta * 3.2;
   });
   return <group ref={group} position={[0, -0.08, 0]}>
@@ -185,25 +235,9 @@ function FlightMount({ itemId }: { itemId: string }) {
       </mesh>
       <pointLight color="#ff9a55" intensity={2.4} distance={5} position={[0, 0.35, 0]} />
     </>}
-    {style === 'beast' && <group position={[0, 0.05, 0]}>
-      <mesh castShadow position={[0, 0.08, 0]} scale={[0.78, 0.34, 1.25]}>
-        <sphereGeometry args={[0.62, 16, 12]} /><meshStandardMaterial color="#eef7f1" roughness={0.7} />
-      </mesh>
-      <mesh castShadow position={[0, 0.34, 0.72]} scale={[0.36, 0.34, 0.5]}>
-        <sphereGeometry args={[0.42, 14, 10]} /><meshStandardMaterial color="#f7fffb" roughness={0.66} />
-      </mesh>
-      <mesh position={[0, 0.34, 1.04]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.07, 0.3, 6]} /><meshStandardMaterial color="#e6bd86" />
-      </mesh>
-      <group ref={wings} position={[0, 0.26, -0.05]}>
-        {[-1, 1].map((sign) => <mesh key={sign} castShadow position={[sign * 0.66, 0, 0]} rotation={[0, 0, sign * 0.28]} scale={[0.9, 0.08, 0.5]}>
-          <sphereGeometry args={[0.62, 12, 8]} /><meshStandardMaterial color="#dcefe7" roughness={0.75} />
-        </mesh>)}
-      </group>
-      <mesh position={[0, 0.18, -0.72]} rotation={[0.3, 0, 0]}>
-        <coneGeometry args={[0.22, 0.7, 7]} /><meshStandardMaterial color="#d9eadf" />
-      </mesh>
-      <pointLight color="#c8f6e6" intensity={1.6} distance={4.5} position={[0, 0.5, 0]} />
+    {/* The rider stands on the back, so the beast hangs below the feet: its saddle sits at y≈0. */}
+    {style === 'beast' && <group position={[0, -1.06, 0]}>
+      <SpiritBeast kind="stag" color="#eef7f1" glow="#c8f6e6" wings floating saddle scale={1.12} />
     </group>}
     {style === 'cloud' && <>
       {[[-0.5, 0.02, 0.1, 0.52], [0.35, 0.06, -0.18, 0.6], [0, 0.12, 0.42, 0.45]].map(([x, y, z, scale], index) =>
@@ -403,10 +437,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
       <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.29, 0.012, 4, 24]} /><meshBasicMaterial color="#c2fce7" /></mesh>
     </group>}
     {player.equipment.pet && <group ref={petRef}>
-      <mesh castShadow><sphereGeometry args={[0.3, 12, 9]} /><meshStandardMaterial color="#f0e6d5" /></mesh>
-      <mesh position={[0, 0.21, 0.2]} castShadow><sphereGeometry args={[0.22, 12, 9]} /><meshStandardMaterial color="#fff0df" /></mesh>
-      {[-0.15, 0.15].map((x) => <mesh key={x} position={[x, 0.43, 0.18]} rotation={[0, 0, x]}><coneGeometry args={[0.09, 0.23, 5]} /><meshStandardMaterial color="#eac7b4" /></mesh>)}
-      <mesh position={[0.15, 0.09, -0.32]} rotation={[0.35, 0, -0.5]}><coneGeometry args={[0.11, 0.47, 7]} /><meshStandardMaterial color="#fff0df" /></mesh>
+      <SpiritBeast kind="fox" color="#f3e7d5" glow="#ffd9a6" scale={0.52} floating />
     </group>}
     {player.devMode && <group ref={magicRef} position={[0, 0.08, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
