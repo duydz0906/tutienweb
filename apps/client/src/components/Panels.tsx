@@ -10,9 +10,9 @@ export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'appe
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 
-export function Panels({ panel, onClose, character, leaderboard, roster, onAction, onLogout,
+export function Panels({ panel, onClose, onNavigate, character, leaderboard, roster, onAction, onLogout,
   appearanceDraft, onAppearanceChange, onSaveAppearance, connected, editorView, onEditorView }: {
-  panel: ActivePanel; onClose: () => void; character: OwnCharacter;
+  panel: ActivePanel; onClose: () => void; onNavigate: (panel: ActivePanel) => void; character: OwnCharacter;
   leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
   onAction: (event: string, payload?: object) => void; onLogout: () => void;
   appearanceDraft: Appearance | null; onAppearanceChange: (next: Appearance) => void;
@@ -127,19 +127,29 @@ export function Panels({ panel, onClose, character, leaderboard, roster, onActio
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
           <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
           <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay góc nhìn · cuộn để thu phóng</span></div>
-          <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><span>Xuất chiêu · cooldown tính trên server</span></div>
-          <div className="help-row"><kbd>I</kbd><span>Mở / đóng túi Càn Khôn</span></div></div>
-        <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> CON ĐƯỜNG TU TIÊN</div>
-          <div className="help-tip"><strong>01 / Tĩnh tọa</strong><p>Tu vi tích lũy ngay cả lúc rời game, tối đa 8 giờ. Nhấn “Thu linh khí” để nhận.</p></div>
-          <div className="help-tip"><strong>02 / Độ kiếp</strong><p>Đủ tu vi hãy bước vào lôi kiếp. Né đủ 9 đạo sét bằng WASD để đột phá.</p></div>
-          <div className="help-tip"><strong>03 / Chọn đạo</strong><p>Đến Trúc Cơ, chọn Kiếm Tu, Pháp Tu hoặc Thể Tu để mở bí kỹ và thần thông.</p></div>
-          <div className="help-tip"><strong>04 / Cộng chiến</strong><p>Đến gần Huyền Thiên Cổ Long, nhắm hướng để ra đòn. Cùng hạ boss để nhận thưởng.</p></div>
+          <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · chỉ ngoài Tông Môn</span></div>
+          <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><span>Công pháp gán trên hotbar; cooldown do server quyết định</span></div>
+          <div className="help-row"><kbd>I</kbd><kbd>Q</kbd><kbd>K</kbd><span>Túi đồ · Nhiệm vụ · Công pháp</span></div></div>
+        <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> TÔNG MÔN & CON ĐƯỜNG TU TIÊN</div>
+          <div className="help-tip"><strong>01 / Tĩnh tọa & thăng tầng</strong><p>Thu EXP tích lũy ngay cả lúc rời game (tối đa 8 giờ). Luyện Khí trở lên có 9 tầng, chi phí tăng ×5 mỗi tầng.</p></div>
+          <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đến Trưởng Lão Chấp Sự ở X −8, Z 14 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>
+          <div className="help-tip"><strong>03 / Độ kiếp & đạo tu</strong><p>Đạt tầng 9 và đủ EXP để vượt 9 đạo lôi. Trúc Cơ Đan tăng 20% cơ hội thành công; đến Trúc Cơ được chọn Kiếm/Pháp/Thể Tu.</p></div>
+          <div className="help-tip"><strong>04 / Hoang Vực</strong><p>Ra phía nam cổng Tông Môn hái thảo, săn quái, đánh Boss. Nhấp chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
+        </div>
+        <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐI ĐẾN</div>
+          <div className="help-links">
+            <button onClick={() => onNavigate('sect')}><Crown size={16} /> Chính Điện</button>
+            <button onClick={() => onNavigate('quests')}><BookOpen size={16} /> Nhiệm vụ</button>
+            <button onClick={() => onNavigate('shop')}><Gem size={16} /> Cửa hàng</button>
+            <button onClick={() => onNavigate('craft')}><FlaskConical size={16} /> Chế tạo</button>
+            <button onClick={() => onNavigate('leaderboard')}><Trophy size={16} /> Xếp hạng</button>
+          </div>
         </div>
         <button className="btn btn-quiet btn-full logout-button" onClick={onLogout}>Rời khỏi thế giới <ArrowRight size={15} /></button>
       </div>}
 
       {panel === 'admin' && <div className="drawer-scroll admin-layout">
-        <div className="admin-status"><Crown size={18} /> QUYỀN NĂNG THIÊN ĐẠO <span>CHỈ FIREBASE UID + CUSTOM CLAIM</span></div>
+        <div className="admin-status"><Crown size={18} /> QUYỀN NĂNG THIÊN ĐẠO <span>FIREBASE UID + CLAIM + ROLE DATABASE</span></div>
         <div className="admin-columns">
           <div className="admin-column">
             <div className="drawer-section-heading"><Users size={16} /> ĐẠO HỮU TRỰC TUYẾN <span>{roster.length}</span></div>

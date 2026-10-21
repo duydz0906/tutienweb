@@ -295,7 +295,7 @@ export function App() {
       <GameHUD character={character} world={world} trial={trial} connected={connected} cooldowns={cooldowns} messages={messages} panel={panel} selectedTarget={selectedTarget}
         onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onAttack={basicAttack} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
-      <Panels panel={panel} onClose={() => openPanel(null)} character={character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
+      <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} character={character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
         appearanceDraft={appearanceDraft} onAppearanceChange={setAppearanceDraft} onSaveAppearance={() => { void saveAppearance(); }} connected={connected}
         editorView={editorView} onEditorView={setEditorView} />
       {pathModal && character.realm >= 2 && !character.path && <PathModal onClose={() => setPathModal(false)} onSelect={selectPath} />}

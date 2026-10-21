@@ -126,6 +126,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <button className={`utility-slot ${panel === 'shop' ? 'selected' : ''}`} onClick={() => onPanel(panel === 'shop' ? null : 'shop')} title="Cửa hàng (gần NPC)"><Store size={20} /><span>Cửa hàng</span></button>
         <button className={`utility-slot auxiliary-slot ${panel === 'craft' ? 'selected' : ''}`} onClick={() => onPanel(panel === 'craft' ? null : 'craft')} title="Chế tạo"><FlaskConical size={20} /><span>Chế tạo</span></button>
         <button className={`utility-slot auxiliary-slot ${panel === 'leaderboard' ? 'selected' : ''}`} onClick={() => onPanel(panel === 'leaderboard' ? null : 'leaderboard')} title="Xếp hạng"><Trophy size={20} /><span>Xếp hạng</span></button>
+        <button className={`utility-slot ${panel === 'help' ? 'selected' : ''}`} onClick={() => onPanel(panel === 'help' ? null : 'help')} title="Menu đầy đủ: chế tạo, xếp hạng và hướng dẫn"><CircleHelp size={20} /><span>Menu</span></button>
       </div></section>
       <div className="hud-corner"><div className="corner-controls"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Di chuyển <span>·</span> Kéo chuột: xoay</div>{character.isAdmin && <button className="admin-shortcut" onClick={() => onPanel(panel === 'admin' ? null : 'admin')}><Crown size={14} /> THIÊN ĐẠO <kbd>Ctrl Shift F12</kbd></button>}</div>
     </div>
