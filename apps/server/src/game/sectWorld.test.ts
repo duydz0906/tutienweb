@@ -177,7 +177,7 @@ describe('sect Socket.IO integration (server-owned progress and NPC transactions
       const demoted = await nextEvent<OwnCharacter>(admin, 'character');
       expect([demoted.devMode, demoted.isAdmin, demoted.realm, demoted.root.tier, demoted.maxHp]).toEqual([false, false, 0, c.root.tier, 120]);
       expect([demoted.path, demoted.gender, demoted.appearance, demoted.learnedSkills, demoted.hotbar])
-        .toEqual([null, 'nam', DEFAULT_APPEARANCE, ['spirit_cut'], ['spirit_cut', null, null, null]]);
+        .toEqual([null, 'nam', DEFAULT_APPEARANCE, ['spirit_cut'], ['spirit_cut', null, null, null, null, null, null, null, null]]);
       expect(demoted.inventory).toEqual(c.inventory); // dev purchases, pills and forged owner never leak
       expect((await store.get(identity.uid))?.ownerUid).toBe(identity.uid);
       expect((await store.get(identity.uid))?.devMode).toBe(false);

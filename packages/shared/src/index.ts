@@ -4,10 +4,14 @@ export type Vector3 = { x: number; y: number; z: number };
 /** One map boundary for authoritative movement, rendering and minimap. */
 export const WORLD_RADIUS = 68;
 export const SECT_RADIUS = 58;
-export type WorldZone = 'overworld' | 'wilderness' | 'ascendant';
+/** A small valley village below the mountain gate; safe like the sect but a separate map. */
+export const VILLAGE_RADIUS = 34;
+export type WorldZone = 'overworld' | 'wilderness' | 'ascendant' | 'village';
 export type GameScene = WorldZone | 'residence' | 'sanctum' | 'tribulation';
-export const PUBLIC_ZONES: readonly WorldZone[] = ['overworld', 'wilderness', 'ascendant'];
+export const PUBLIC_ZONES: readonly WorldZone[] = ['overworld', 'wilderness', 'ascendant', 'village'];
 export function isWorldZone(scene: GameScene): scene is WorldZone { return PUBLIC_ZONES.includes(scene as WorldZone); }
+/** No hostile casts and no monster spawns: the sect plateau and the village valley. */
+export function isSafeScene(scene: GameScene): boolean { return scene === 'overworld' || scene === 'village'; }
 /** Both ends of the gate, their arrival pads and interaction distance are shared by client and server. */
 export const PORTALS = {
   overworld: { scene: 'overworld', destination: 'wilderness', name: 'Cổng Hoang Vực',
@@ -16,8 +20,13 @@ export const PORTALS = {
     position: { x: 0, y: 0, z: 34 }, arrival: { x: 0, y: 0, z: 10 }, radius: 4.2 },
   ascendant: { scene: 'ascendant', destination: 'overworld', name: 'Cổng Quy Sơn',
     position: { x: 0, y: 0, z: 34 }, arrival: { x: 32, y: 0, z: 19 }, radius: 4.2 },
+  village: { scene: 'village', destination: 'overworld', name: 'Cổng Về Tông Môn',
+    position: { x: 0, y: 0, z: -24 }, arrival: { x: 0, y: 0, z: -43 }, radius: 4.2 },
 } as const satisfies Record<WorldZone, { scene: WorldZone; destination: WorldZone; name: string;
   position: Vector3; arrival: Vector3; radius: number }>;
+/** Mountain path at the south edge of the sect: walk down to Vân Cốc village. */
+export const VILLAGE_GATE = { position: { x: 0, y: 0, z: -50 }, radius: 3.8,
+  arrival: { x: 0, y: 0, z: 18 }, exit: { x: 0, y: 0, z: -46 } } as const;
 /** Private instances: the server decides entry, exit and proximity, never client coordinates. */
 export const HOME_GATE = { position: { x: -33, y: 0, z: 12 }, radius: 3.2,
   arrival: { x: 0, y: 0, z: 5 }, exit: { x: -33, y: 0, z: 10 } } as const;
@@ -123,16 +132,38 @@ export function normalizeAppearance(raw: unknown): Appearance {
   };
 }
 export type Resources = { stones: number; herbs: number; ore: number; ink: number };
-export const EQUIPMENT_SLOTS = ['weapon', 'robe', 'head', 'shoulder', 'boots', 'ring', 'necklace', 'artifact', 'pet', 'talisman'] as const;
+export const EQUIPMENT_SLOTS = ['weapon', 'robe', 'head', 'shoulder', 'boots', 'ring', 'necklace', 'artifact', 'pet', 'mount', 'talisman'] as const;
 export type EquipmentSlot = (typeof EQUIPMENT_SLOTS)[number];
 export const SLOT_LABEL: Record<EquipmentSlot, string> = {
   weapon: 'Vũ khí', robe: 'Pháp y', head: 'Mũ', shoulder: 'Hộ vai', boots: 'Giày',
-  ring: 'Nhẫn', necklace: 'Dây chuyền', artifact: 'Pháp bảo', pet: 'Linh thú', talisman: 'Bùa hộ mệnh',
+  ring: 'Nhẫn', necklace: 'Dây chuyền', artifact: 'Pháp bảo', pet: 'Linh thú', mount: 'Phi hành', talisman: 'Bùa hộ mệnh',
 };
+/** Nine shortcuts, matching the Digit1…Digit9 keys. */
+export const HOTBAR_SLOTS = 9;
+/** Old four-slot saves are padded (never reordered) so learned techniques stay on their key. */
+export function normalizeHotbar(raw: unknown): (string | null)[] {
+  const source = Array.isArray(raw) ? raw : [];
+  return Array.from({ length: HOTBAR_SLOTS }, (_, index) => {
+    const value = source[index];
+    return typeof value === 'string' && Object.hasOwn(SKILLS, value) ? value : null;
+  });
+}
 export type ItemRarity = 'common' | 'rare' | 'epic' | 'immortal';
+/** How a mount carries its owner. Body cultivators ride wheels, sword cultivators ride swords. */
+export type FlightStyle = 'sword' | 'disc' | 'wheel' | 'beast' | 'cloud';
+export type FlightInfo = {
+  style: FlightStyle;
+  /** Paths allowed to ride; omitted means every path. Ma Tu may always ride any mount. */
+  paths?: readonly Path[];
+  /** Visual altitude above the server-owned ground position. */
+  altitude: number;
+  /** A flying spirit beast also counts as a companion for the Ngự Thú bonus. */
+  beast?: boolean;
+};
 export type ItemDefinition = {
   id: string; name: string; slot: EquipmentSlot; rarity: ItemRarity;
   description: string; attack: number; defense: number; icon: string;
+  flight?: FlightInfo;
 };
 export const ITEMS: Record<string, ItemDefinition> = {
   wooden_sword: { id: 'wooden_sword', name: 'Thanh Trúc Kiếm', slot: 'weapon', rarity: 'common', description: 'Thanh kiếm đồng hành từ ngày đầu tu luyện.', attack: 4, defense: 0, icon: '⚔' },
@@ -154,6 +185,20 @@ export const ITEMS: Record<string, ItemDefinition> = {
   spirit_serpent: { id: 'spirit_serpent', name: 'Thanh Lân Linh Xà', slot: 'pet', rarity: 'epic', description: 'Rắn linh hộ pháp từ Hoang Vực hoặc Thượng Giới.', attack: 16, defense: 4, icon: '☯' },
   shadow_raven: { id: 'shadow_raven', name: 'Ám Nha', slot: 'pet', rarity: 'epic', description: 'Linh thú Ám hệ thuần phục bên rìa Hoang Vực.', attack: 13, defense: 4, icon: '◆' },
   lotus_talisman: { id: 'lotus_talisman', name: 'Liên Hoa Phù', slot: 'talisman', rarity: 'rare', description: 'Phù văn bảo vệ thần hồn.', attack: 2, defense: 7, icon: '✦' },
+  flying_sword: { id: 'flying_sword', name: 'Ngự Kiếm · Thanh Phong', slot: 'mount', rarity: 'epic', description: 'Đạp kiếm quang bay giữa tầng mây. Kiếm Tu chuyên dụng.', attack: 8, defense: 2, icon: '⚔',
+    flight: { style: 'sword', paths: ['kiem'], altitude: 2.1 } },
+  cloud_disc: { id: 'cloud_disc', name: 'Linh Vân Phi Đĩa', slot: 'mount', rarity: 'epic', description: 'Pháp trận xoay tròn nâng chủ nhân lên không. Pháp Tu chuyên dụng.', attack: 2, defense: 6, icon: '☁',
+    flight: { style: 'disc', paths: ['phap'], altitude: 2.0 } },
+  wind_fire_wheel: { id: 'wind_fire_wheel', name: 'Phong Hỏa Luân', slot: 'mount', rarity: 'epic', description: 'Bánh xe lửa cuộn gió, Thể Tu đứng trên mà bay.', attack: 4, defense: 8, icon: '✺',
+    flight: { style: 'wheel', paths: ['the'], altitude: 1.8 } },
+  cloud_crane_mount: { id: 'cloud_crane_mount', name: 'Vân Hạc Tọa Kỵ', slot: 'mount', rarity: 'epic', description: 'Linh thú phi hành: chở chủ nhân và cùng ra trận như một linh thú đồng hành.', attack: 14, defense: 7, icon: '❖',
+    flight: { style: 'beast', paths: ['thu'], altitude: 2.4, beast: true } },
+  jade_stag_mount: { id: 'jade_stag_mount', name: 'Ngọc Giác Lộc Tọa Kỵ', slot: 'mount', rarity: 'epic', description: 'Linh lộc ngọc giác phi hành; tăng uy lực Ngự Thú khi đồng hành.', attack: 11, defense: 11, icon: '✥',
+    flight: { style: 'beast', paths: ['thu'], altitude: 2.2, beast: true } },
+  ink_cloud: { id: 'ink_cloud', name: 'Huyết Vân Xa', slot: 'mount', rarity: 'rare', description: 'Mây đen cuộn máu chỉ Ma Tu cưỡi được; đạo tu khác phải tìm vật phẩm hợp mệnh.', attack: 5, defense: 4, icon: '◆',
+    flight: { style: 'cloud', paths: ['ma'], altitude: 2.0 } },
+  spirit_cloud: { id: 'spirit_cloud', name: 'Đằng Vân Tọa', slot: 'mount', rarity: 'rare', description: 'Đám mây linh khí lành, đạo tu nào cũng cưỡi được.', attack: 3, defense: 5, icon: '☁',
+    flight: { style: 'cloud', altitude: 1.9 } },
 };
 export const CONSUMABLES = {
   heal_pill: { id: 'heal_pill', name: 'Hồi Huyết Đan', icon: '♥', description: 'Hồi 70 sinh lực. Chỉ dùng khi bị thương.' },
@@ -171,8 +216,19 @@ export const NPCS = {
   shop: { id: 'shop', name: 'Trưởng Lão Hậu Cần', role: 'Tàng Bảo Các · Cửa hàng tông môn', position: { x: 17, y: 0, z: 18.5 } },
   beast: { id: 'beast', name: 'Ngự Thú Sư', role: 'Ngự Thú Viện · Thuần hóa linh thú', position: { x: -17, y: 0, z: -4 } },
   alchemist: { id: 'alchemist', name: 'Đan Sư', role: 'Phòng Luyện Đan · Luyện đan dược', position: { x: 17, y: 0, z: -8 } },
+  // Vân Cốc village, reached by the mountain path at the south edge of the sect.
+  village_shop: { id: 'village_shop', name: 'Lão Trương · Tạp Hóa', role: 'Chợ Vân Cốc · Trang bị và vật phẩm phi hành',
+    position: { x: -8, y: 0, z: -6 }, scene: 'village' },
+  village_elder: { id: 'village_elder', name: 'Lý Trưởng Vân Cốc', role: 'Chợ Vân Cốc · Tin tức sơn môn',
+    position: { x: 8, y: 0, z: -2 }, scene: 'village' },
 } as const;
 export type NpcId = keyof typeof NPCS;
+/** Sect NPCs live on the plateau; the village has its own two residents. */
+export function npcScene(id: NpcId): GameScene {
+  return (NPCS[id] as { scene?: GameScene }).scene ?? 'overworld';
+}
+export const VILLAGE_NPCS: readonly NpcId[] = (Object.keys(NPCS) as NpcId[]).filter((id) => npcScene(id) === 'village');
+export const SECT_NPCS: readonly NpcId[] = (Object.keys(NPCS) as NpcId[]).filter((id) => npcScene(id) === 'overworld');
 /** Herbs in the wilderness: positions are public, availability and rewards are server-owned. */
 export const HERB_NODES = [
   { id: 'herb-1', position: { x: -10, y: 0, z: -8 } }, { id: 'herb-2', position: { x: 12, y: 0, z: -9 } },
@@ -226,7 +282,40 @@ export const SHOP_STOCK: ShopOffer[] = [
   { id: 'myriad_beasts_book', skillId: 'myriad_beasts', stones: 130, contribution: 120 },
   { id: 'blood_moon_book', skillId: 'blood_moon', stones: 65, contribution: 60 },
   { id: 'abyss_reap_book', skillId: 'abyss_reap', stones: 130, contribution: 120 },
+  // Every equipment slot is now available, so nothing sits in the world data without a way to wear it.
+  { id: 'shoulder_guard', itemId: 'shoulder_guard', stones: 18, contribution: 4 },
+  { id: 'cloud_boots', itemId: 'cloud_boots', stones: 16, contribution: 3 },
+  { id: 'spirit_ring', itemId: 'spirit_ring', stones: 26, contribution: 8 },
+  { id: 'jade_necklace', itemId: 'jade_necklace', stones: 24, contribution: 8 },
+  { id: 'lotus_talisman', itemId: 'lotus_talisman', stones: 20, contribution: 6 },
+  { id: 'immortal_sword', itemId: 'immortal_sword', stones: 160, contribution: 140 },
+  { id: 'spirit_cloud', itemId: 'spirit_cloud', stones: 34, contribution: 8 },
+  { id: 'flying_sword', itemId: 'flying_sword', stones: 42, contribution: 12 },
+  { id: 'cloud_disc', itemId: 'cloud_disc', stones: 42, contribution: 12 },
+  { id: 'wind_fire_wheel', itemId: 'wind_fire_wheel', stones: 42, contribution: 12 },
+  { id: 'ink_cloud', itemId: 'ink_cloud', stones: 46, contribution: 14 },
+  { id: 'cloud_crane_mount', itemId: 'cloud_crane_mount', stones: 58, contribution: 20 },
+  { id: 'jade_stag_mount', itemId: 'jade_stag_mount', stones: 62, contribution: 22 },
 ];
+/** Dev-mode teleport targets. The server owns the list; a client can only send one of these ids. */
+export const DEV_TELEPORTS = [
+  { id: 'sect-square', name: 'Quảng trường Tông Môn', scene: 'overworld', position: { x: 0, y: 0, z: 10 } },
+  { id: 'master-hall', name: 'Chính Điện · Chưởng Môn', scene: 'overworld', position: { x: 0, y: 0, z: 26 } },
+  { id: 'quest-hall', name: 'Nhiệm Vụ Các', scene: 'overworld', position: { x: -17, y: 0, z: 16 } },
+  { id: 'shop-hall', name: 'Tàng Bảo Các', scene: 'overworld', position: { x: 17, y: 0, z: 16 } },
+  { id: 'beast-hall', name: 'Ngự Thú Viện', scene: 'overworld', position: { x: -17, y: 0, z: -2 } },
+  { id: 'alchemy-hall', name: 'Phòng Luyện Đan', scene: 'overworld', position: { x: 17, y: 0, z: -6 } },
+  { id: 'spirit-lake', name: 'Hồ Tụ Linh', scene: 'overworld', position: { x: -10, y: 0, z: -24 } },
+  { id: 'home-gate', name: 'Đệ Tử Xá (nhà riêng)', scene: 'overworld', position: { x: -33, y: 0, z: 13 } },
+  { id: 'secret-gate', name: 'Mật Thất Tái Sinh', scene: 'overworld', position: { x: 32, y: 0, z: 19 } },
+  { id: 'wild-portal', name: 'Cổng Hoang Vực', scene: 'overworld', position: { x: 0, y: 0, z: 4 } },
+  { id: 'village-gate', name: 'Sơn đạo xuống làng', scene: 'overworld', position: { x: 0, y: 0, z: -47 } },
+  { id: 'village-market', name: 'Chợ Vân Cốc', scene: 'village', position: { x: 0, y: 0, z: 4 } },
+  { id: 'wild-arrival', name: 'Hoang Vực · Bãi nhập cảnh', scene: 'wilderness', position: { x: 0, y: 0, z: 23 } },
+  { id: 'wild-boss', name: 'Hoang Vực · Long Vực Boss', scene: 'wilderness', position: { x: 0, y: 0, z: -46 } },
+  { id: 'ascendant', name: 'Thượng Giới', scene: 'ascendant', position: { x: 0, y: 0, z: 23 } },
+] as const;
+export type DevTeleportId = (typeof DEV_TELEPORTS)[number]['id'];
 export type DevModeBackup = {
   root: SpiritRoot; realm: number; minorStage: number; cultivation: number; totalCultivation: number;
   hp: number; mp: number; maxHp: number; maxMp: number;
@@ -251,6 +340,8 @@ export type CharacterState = {
   contribution: number; sectRank: SectRank; storyStep: number; storyKills: number; bossKills: number;
   dailyDay: string; dailyQuests: DailyQuestProgress[];
   learnedSkills: string[]; hotbar: (string | null)[];
+  /** Server-owned flight state, only true while a valid mount carries the character. */
+  flying?: boolean;
   devMode: boolean; devModeBackup?: DevModeBackup;
   createdAt: number;
 };
@@ -260,13 +351,35 @@ export type PublicPlayer = {
   hp: number; maxHp: number; realm: number; minorStage: number; path: Path | null;
   root: SpiritRoot; gender: Gender; appearance: Appearance;
   equipment: Partial<Record<EquipmentSlot, string>>; isAdmin: boolean; devMode: boolean; shieldUntil?: number;
+  flying?: boolean;
 };
+/**
+ * A mount may only be used by the paths it was forged for. Ma Tu steals techniques from every
+ * school, so they can ride any mount; path-less mounts (Đằng Vân Tọa) are open to everyone.
+ */
+export function canRideMount(path: Path | null, item: ItemDefinition, realm: number, devMode = false): boolean {
+  if (!item.flight) return false;
+  if (devMode) return true;
+  if (realm < 2) return false;
+  const allowed = item.flight.paths;
+  if (!allowed) return true;
+  return path === 'ma' || (path !== null && allowed.includes(path));
+}
+export function flightItemOf(equipment: Partial<Record<EquipmentSlot, string>>, inventory: readonly OwnedItem[]): ItemDefinition | null {
+  const instanceId = equipment.mount;
+  if (!instanceId) return null;
+  const owned = inventory.find((item) => item.instanceId === instanceId);
+  const definition = owned ? ITEMS[owned.itemId] : undefined;
+  return definition?.flight ? definition : null;
+}
 export const MONSTER_KINDS = ['wolf', 'boar', 'shade', 'forest_serpent', 'stone_golem',
-  'spirit_stag', 'sky_wraith', 'cloud_crane', 'void_serpent', 'star_guardian'] as const;
+  'spirit_stag', 'sky_wraith', 'cloud_crane', 'void_serpent', 'star_guardian', 'thunder_bird'] as const;
 export type MonsterKind = (typeof MONSTER_KINDS)[number];
 export const TAMEABLE_BEASTS: Partial<Record<MonsterKind, keyof typeof ITEMS>> = {
   wolf: 'spirit_wolf', boar: 'iron_boar', shade: 'shadow_raven', forest_serpent: 'spirit_serpent',
   spirit_stag: 'spirit_stag_pet', cloud_crane: 'cloud_crane_pet', sky_wraith: 'shadow_raven', void_serpent: 'spirit_serpent',
+  // Flying beasts are tamed as mounts: they carry the owner and still fight as a spirit companion.
+  thunder_bird: 'cloud_crane_mount',
 };
 /** One biome per level: server spawns here, client renders matching terrain and wayfinding. */
 export type Habitat = { id: string; scene: 'wilderness' | 'ascendant'; kind: MonsterKind; name: string;
@@ -281,6 +394,13 @@ export const HABITATS: readonly Habitat[] = [
   { id: 'shade-marsh', scene: 'wilderness', kind: 'shade', name: 'Huyết Ảnh', level: 6, center: { x: 36, z: -50 }, radius: 7, color: '#ed9fc7', biome: 'swamp', hp: 420 },
   { id: 'serpent-thicket', scene: 'wilderness', kind: 'forest_serpent', name: 'Thanh Lân Xà', level: 7, center: { x: -19, z: -44 }, radius: 7, color: '#75d5a0', biome: 'swamp', hp: 505 },
   { id: 'golem-ruins', scene: 'wilderness', kind: 'stone_golem', name: 'Cổ Thạch Khôi', level: 8, center: { x: 7, z: -26 }, radius: 7, color: '#d8c298', biome: 'ruins', hp: 640 },
+  // More hunting grounds per level band so Hoang Vực always has several camps at the player's level.
+  { id: 'wolf-fang', scene: 'wilderness', kind: 'wolf', name: 'Nanh Sói Hoang', level: 2, center: { x: 44, z: 10 }, radius: 7, color: '#9fc7dc', biome: 'pine', hp: 112 },
+  { id: 'boar-mud', scene: 'wilderness', kind: 'boar', name: 'Nham Trư Lầy', level: 4, center: { x: 55, z: -14 }, radius: 7, color: '#e3a27f', biome: 'rock', hp: 248 },
+  { id: 'shade-hollow', scene: 'wilderness', kind: 'shade', name: 'Mộng Ảnh', level: 5, center: { x: -14, z: 40 }, radius: 7, color: '#bda6ef', biome: 'mist', hp: 352 },
+  { id: 'serpent-pine', scene: 'wilderness', kind: 'forest_serpent', name: 'Tùng Lâm Xà', level: 6, center: { x: -48, z: 28 }, radius: 7, color: '#74d29d', biome: 'pine', hp: 438 },
+  { id: 'crane-wild', scene: 'wilderness', kind: 'thunder_bird', name: 'Lôi Vũ Điêu', level: 7, center: { x: 30, z: 44 }, radius: 7, color: '#cfe4ff', biome: 'cloud', hp: 530 },
+  { id: 'golem-barrow', scene: 'wilderness', kind: 'stone_golem', name: 'Bia Mộ Thạch Khôi', level: 8, center: { x: 14, z: -56 }, radius: 7, color: '#d3bd94', biome: 'ruins', hp: 668 },
   { id: 'stag-grove', scene: 'ascendant', kind: 'spirit_stag', name: 'Linh Lộc Thượng Giới', level: 9, center: { x: -17, z: 1 }, radius: 7, color: '#b3f4db', biome: 'grove', hp: 520 },
   { id: 'stag-spring', scene: 'ascendant', kind: 'spirit_stag', name: 'Ngọc Giác Linh Lộc', level: 10, center: { x: -30, z: -28 }, radius: 7, color: '#a1f5db', biome: 'grove', hp: 620 },
   { id: 'crane-peak', scene: 'ascendant', kind: 'cloud_crane', name: 'Vân Hạc', level: 11, center: { x: 15, z: -9 }, radius: 7, color: '#c1e8ff', biome: 'cloud', hp: 770 },

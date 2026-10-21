@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
-import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Flame, FlaskConical,
-  Gem, Hammer, House, MapPin, RotateCcw, Shield, Sparkles, Swords, Target, Trophy, Users, Warehouse, WandSparkles, X, Zap } from 'lucide-react';
-import { CONSUMABLES, EQUIPMENT_SLOTS, HOME_CHEST, ITEMS, MAX_REALM, NPCS, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
-  houseAbsorptionBonus, houseLevel, storageCapacity, type Appearance, type ConsumableId, type Gender, type LeaderboardEntry, type OwnCharacter, type Path } from '@van-thuong/shared';
+import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Feather, Flame, FlaskConical,
+  Compass, Gem, Hammer, House, MapPin, Menu, MessageCircle, RotateCcw, Settings2, Shield, Sparkles, Swords, Target, Trophy, Users, Warehouse, WandSparkles, X, Zap } from 'lucide-react';
+import { CONSUMABLES, DEV_TELEPORTS, EQUIPMENT_SLOTS, HOME_CHEST, HOTBAR_SLOTS, ITEMS, MAX_REALM, NPCS, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
+  canRideMount, flightItemOf, houseAbsorptionBonus, houseLevel, storageCapacity, type Appearance, type ConsumableId, type Gender, type LeaderboardEntry, type OwnCharacter, type Path } from '@van-thuong/shared';
 import { AppearanceControls } from './AppearanceControls';
 import { AlchemyPanel, BeastPanel, QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
+import type { HudPrefs } from '../lib/uiPrefs';
 
-export type ActivePanel = 'inventory' | 'craft' | 'alchemy' | 'beast' | 'dev' | 'leaderboard' | 'help' | 'home' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
+export type ActivePanel = 'inventory' | 'craft' | 'alchemy' | 'beast' | 'dev' | 'leaderboard' | 'help' | 'home' | 'menu' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 
-export function Panels({ panel, onClose, onNavigate, onOpenPath, character, leaderboard, roster, onAction, onLogout, connected }: {
+export function Panels({ panel, onClose, onNavigate, onOpenPath, character, leaderboard, roster, onAction, onLogout, connected,
+  hudPrefs, onHudPrefs }: {
   panel: ActivePanel; onClose: () => void; onNavigate: (panel: ActivePanel) => void; onOpenPath: () => void; character: OwnCharacter;
   leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
   onAction: (event: string, payload?: object) => void; onLogout: () => void;
-  connected: boolean;
+  connected: boolean; hudPrefs: HudPrefs; onHudPrefs: (patch: Partial<HudPrefs>) => void;
 }) {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [profession, setProfession] = useState<'dan' | 'khi' | 'tran'>('dan');
@@ -46,9 +48,31 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
     Math.hypot(character.position.x - HOME_CHEST.position.x, character.position.z - HOME_CHEST.position.z) <= HOME_CHEST.radius;
   const altarNear = character.scene === 'sanctum' &&
     Math.hypot(character.position.x - REBIRTH_ALTAR.position.x, character.position.z - REBIRTH_ALTAR.position.z) <= REBIRTH_ALTAR.radius;
-  const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', alchemy: 'Phòng Luyện Đan', beast: 'Ngự Thú Viện', dev: 'Đổi Nhân Vật · Dev Mode', leaderboard: 'Thiên Kiêu Bảng',
-    help: 'Thiên Đạo Chỉ Dẫn', home: 'Nhà Riêng & Rương Đồ', rebirth: 'Mật Thất Tái Sinh', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
+  const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', alchemy: 'Phòng Luyện Đan', beast: 'Ngự Thú Viện', dev: 'Đổi Nhân Vật · Dev Tools', leaderboard: 'Thiên Kiêu Bảng',
+    help: 'Thiên Đạo Chỉ Dẫn', home: 'Nhà Riêng & Rương Đồ', menu: 'Menu · Hành Trang & Cài Đặt', rebirth: 'Mật Thất Tái Sinh', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
     shop: 'Cửa Hàng Tông Môn', skills: 'Công Pháp & Hotbar', admin: 'Thiên Đạo · God Mode' }[panel];
+  const mount = flightItemOf(character.equipment, character.inventory);
+  const togglePrefs: { key: keyof HudPrefs; label: string; hint: string; icon: React.ReactNode }[] = [
+    { key: 'chatOpen', label: 'Khung chat', hint: 'Bật / ẩn chat thế giới (phím C)', icon: <MessageCircle size={16} /> },
+    { key: 'cultivateOpen', label: 'Bảng tu luyện', hint: 'Hiện đầy đủ hoặc rút gọn bảng tu luyện (phím T)', icon: <Sparkles size={16} /> },
+    { key: 'questCard', label: 'Bảng Tông Môn cũ', hint: 'Bảng nhiệm vụ bên phải (mặc định ẩn)', icon: <BookOpen size={16} /> },
+    { key: 'minimap', label: 'Bản đồ nhỏ', hint: 'Hiện / ẩn bản đồ khu vực', icon: <Compass size={16} /> },
+    { key: 'skillLabels', label: 'Tên kỹ năng', hint: 'Hiện tên dưới ô công pháp trong hotbar', icon: <Swords size={16} /> },
+  ];
+  const menuLinks: { id: ActivePanel; label: string; icon: React.ReactNode }[] = [
+    { id: 'home', label: 'Nhà riêng', icon: <House size={18} /> },
+    { id: 'skills', label: 'Công pháp', icon: <BookOpen size={18} /> },
+    { id: 'quests', label: 'Nhiệm vụ', icon: <BookOpen size={18} /> },
+    { id: 'shop', label: 'Cửa hàng', icon: <Gem size={18} /> },
+    { id: 'inventory', label: 'Túi đồ', icon: <Backpack size={18} /> },
+    { id: 'alchemy', label: 'Luyện đan', icon: <FlaskConical size={18} /> },
+    { id: 'craft', label: 'Chế tạo', icon: <Hammer size={18} /> },
+    { id: 'beast', label: 'Ngự thú', icon: <Sparkles size={18} /> },
+    { id: 'sect', label: 'Chính Điện', icon: <Crown size={18} /> },
+    { id: 'leaderboard', label: 'Xếp hạng', icon: <Trophy size={18} /> },
+    { id: 'help', label: 'Hướng dẫn', icon: <BookOpen size={18} /> },
+    ...(character.devMode ? [{ id: 'dev' as ActivePanel, label: 'Dev tools', icon: <Settings2 size={18} /> }] : []),
+  ];
 
   return <div className="panel-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
@@ -57,13 +81,49 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
       {panel === 'dev' && <div className="drawer-scroll dev-customizer">
         <div className="rounded border border-jade/30 bg-jade/10 p-4 text-xs leading-6 text-slate-300"><strong className="text-jade">Thế giới thử nghiệm</strong><p>Thay đổi đạo tu, hình dáng và nam/nữ ngay trên nhân vật {character.name}. Lưu riêng theo UID; không đổi chủ kho, không cấp quyền quản trị, thoát dev mode sẽ khôi phục nguyên trạng.</p></div>
         <button className="btn btn-gold btn-full" onClick={onOpenPath}><Swords size={16} /> Đổi đạo tu: {character.path ? { kiem: 'Kiếm Tu', phap: 'Pháp Tu', the: 'Thể Tu', thu: 'Ngự Thú', ma: 'Ma Tu' }[character.path] : 'Chưa chọn'} <ArrowRight size={16} /></button>
-        <button className="btn btn-quiet btn-full" onClick={() => onNavigate('skills')}><BookOpen size={16} /> Sắp xếp công pháp & Hotbar</button>
+        <button className="btn btn-quiet btn-full" onClick={() => onNavigate('skills')}><BookOpen size={16} /> Sắp xếp công pháp & Hotbar (1–{HOTBAR_SLOTS})</button>
+        <div className="drawer-section-heading margin-top"><MapPin size={16} /> TELEPORT DEV MODE</div>
+        <div className="teleport-grid">{DEV_TELEPORTS.map((point) => <button key={point.id} onClick={() => onAction('dev:teleport', { id: point.id })}>
+          <MapPin size={13} /><span>{point.name}</span></button>)}</div>
         <div className="form-label margin-top">CHỌN CHÂN THÂN · NAM / NỮ</div>
         <div className="appearance-choice-grid" role="group" aria-label="Chọn nhân vật">
           {(['nam', 'nu'] as const).map((gender) => <button type="button" key={gender} className={`appearance-choice ${devGender === gender ? 'selected' : ''}`} aria-pressed={devGender === gender} onClick={() => setDevGender(gender)}>{gender === 'nam' ? 'Nam tu sĩ' : 'Nữ tu sĩ'}</button>)}
         </div>
         <AppearanceControls value={devAppearance} onChange={setDevAppearance} />
         <button className="btn btn-gold btn-full" disabled={!connected || character.scene === 'tribulation'} onClick={() => onAction('appearance:update', { gender: devGender, appearance: devAppearance })}><Sparkles size={16} /> Lưu chân thân</button>
+      </div>}
+      {panel === 'menu' && <div className="drawer-scroll menu-panel">
+        <div className="menu-hero"><span className="menu-seal">雲</span><div><span className="eyebrow">HÀNH TRANG · THIÊN ĐẠO</span>
+          <h3>{character.name}</h3><p>Toàn bộ chức năng cũ ở thanh dưới đã gộp vào Menu này: nhà riêng, công pháp, nhiệm vụ và cửa hàng.</p></div></div>
+        <div className="drawer-section-heading"><Menu size={16} /> CHỨC NĂNG</div>
+        <div className="menu-grid">{menuLinks.map((link) => <button key={link.id} className={panel === link.id ? 'active' : ''}
+          onClick={() => onNavigate(link.id)} disabled={link.id !== 'help' && !connected && link.id !== 'inventory'}>
+          {link.icon}<span>{link.label}</span><ChevronRight size={13} />
+        </button>)}</div>
+
+        <div className="drawer-section-heading"><Settings2 size={16} /> GIAO DIỆN & TÍNH NĂNG</div>
+        <div className="pref-list">{togglePrefs.map((pref) => <button key={pref.key} className="pref-row" role="switch" aria-checked={hudPrefs[pref.key]}
+          onClick={() => onHudPrefs({ [pref.key]: !hudPrefs[pref.key] } as Partial<HudPrefs>)}>
+          <span className="pref-icon">{pref.icon}</span>
+          <span className="pref-text"><strong>{pref.label}</strong><small>{pref.hint}</small></span>
+          <span className={`pref-switch ${hudPrefs[pref.key] ? 'on' : ''}`} aria-hidden="true"><span /></span>
+        </button>)}</div>
+
+        <div className="drawer-section-heading"><Feather size={16} /> PHI HÀNH</div>
+        <div className="flight-info">
+          <span className="flight-info-icon">{mount?.icon ?? '✈'}</span>
+          <div><strong>{mount?.name ?? 'Chưa trang bị vật phẩm phi hành'}</strong>
+            <small>{mount ? (canRideMount(character.path, mount, character.realm, character.devMode)
+              ? 'Nhấn R hoặc nút Phi hành để cất cánh ngoài trời.'
+              : character.realm < 2 ? 'Cần đạt Trúc Cơ để bay.' : 'Vật phẩm này không hợp đạo tu của bạn.') : 'Mua ở cửa hàng hoặc thuần hóa linh thú bay (Lôi Vũ Điêu ở Hoang Vực).'}</small></div>
+        </div>
+        {character.devMode && <>
+          <div className="drawer-section-heading"><MapPin size={16} /> DEV · DỊCH CHUYỂN NHANH <span>whitelist server</span></div>
+          <div className="teleport-grid">{DEV_TELEPORTS.map((point) => <button key={point.id} onClick={() => onAction('dev:teleport', { id: point.id })}>
+            <MapPin size={13} /><span>{point.name}</span></button>)}</div>
+          <p className="drawer-description">Chỉ tài khoản dev mode đã xác thực dùng được. Server kiểm tra id trong danh sách, không nhận tọa độ từ trình duyệt.</p>
+        </>}
+        <button className="btn btn-quiet btn-full logout-button" onClick={onLogout}>Rời khỏi thế giới <ArrowRight size={15} /></button>
       </div>}
       {panel === 'beast' && <BeastPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'alchemy' && <AlchemyPanel character={character} connected={connected} onAction={onAction} />}
@@ -115,7 +175,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
 
       {panel === 'inventory' && <div className="drawer-scroll">
         <button className="home-shortcut" onClick={() => onNavigate('home')}><House size={19} /> Nhà riêng · Rương đồ <span>{character.stash.length}/{capacity}</span> <ArrowRight size={16} /></button>
-        <div className="drawer-section-heading"><Shield size={15} /> MƯỜI Ô TRANG BỊ <span>{Object.keys(character.equipment).length}/10</span></div>
+        <div className="drawer-section-heading"><Shield size={15} /> CÁC Ô TRANG BỊ <span>{Object.keys(character.equipment).length}/{EQUIPMENT_SLOTS.length}</span></div>
         <div className="equipment-grid">{EQUIPMENT_SLOTS.map((slot) => {
           const owned = equipped(slot);
           const item = owned && ITEMS[owned.itemId];
@@ -138,6 +198,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
           <div className="item-detail-name">{selectionDefinition?.icon ?? selectedPill?.icon} {selectionDefinition?.name ?? selectedPill?.name} <span>{selectionDefinition ? rarityLabel[selectionDefinition.rarity] : 'Đan dược'}</span></div>
           <p>{selectionDefinition?.description ?? selectedPill?.description}</p>
           {selectionDefinition && <><div className="item-stats">{selectionDefinition.attack > 0 && <span><Swords size={14} /> Công +{selectionDefinition.attack}</span>}{selectionDefinition.defense > 0 && <span><Shield size={14} /> Thủ +{selectionDefinition.defense}</span>}</div>
+            {selectionDefinition.flight && <div className="item-flight"><Feather size={14} /> Phi hành · {selectionDefinition.flight.paths ? selectionDefinition.flight.paths.map((path) => ({ kiem: 'Kiếm Tu', phap: 'Pháp Tu', the: 'Thể Tu', thu: 'Ngự Thú', ma: 'Ma Tu' })[path]).join(' / ') : 'Mọi đạo tu'} · Ma Tu dùng được mọi vật phẩm{selectionDefinition.flight.beast ? ' · cũng là linh thú đồng hành' : ''}</div>}
             {character.equipment[selectionDefinition.slot] !== selectedItem && <button className="btn btn-gold btn-full" onClick={() => onAction('equip', { instanceId: selectedItem })}>Trang bị vào {SLOT_LABEL[selectionDefinition.slot]} <ArrowRight size={15} /></button>}
           </>}
           {selectedPill && selection?.itemId !== 'foundation_pill' && <button className="btn btn-gold btn-full" disabled={!connected} onClick={() => onAction('use-item', { instanceId: selectedItem })}>Sử dụng đan dược <ArrowRight size={15} /></button>}
@@ -185,17 +246,21 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐIỀU KHIỂN</div>
           <div className="help-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Di chuyển · camera theo sau</span></div>
           <div className="help-row"><kbd>↔</kbd><span>Kéo chuột xoay / ngước lên nhìn bầu trời · cuộn để thu phóng</span></div>
-          <div className="help-row"><kbd>E</kbd><span>Đứng gần cổng Tông Môn / Hoang Vực để dịch chuyển qua lại</span></div>
-          <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · chỉ ở Hoang Vực</span></div>
-          <div className="help-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><span>Công pháp gán trên hotbar; cooldown do server quyết định</span></div>
+          <div className="help-row"><kbd>E</kbd><span>Đứng gần cổng Tông Môn / Hoang Vực / sơn đạo / làng để dịch chuyển</span></div>
+          <div className="help-row"><kbd>J</kbd><span>Chém thường (hoặc Space) · Hoang Vực và Thượng Giới</span></div>
+          <div className="help-row"><kbd>1</kbd><kbd>…</kbd><kbd>9</kbd><span>Công pháp gán trên chín ô hotbar; cooldown hiện số ngay trong ô</span></div>
+          <div className="help-row"><kbd>R</kbd><span>Phi hành bằng vật phẩm / linh thú đang trang bị ở ô Phi hành</span></div>
+          <div className="help-row"><kbd>C</kbd><kbd>T</kbd><kbd>M</kbd><span>Ẩn chat · rút gọn bảng tu luyện · mở Menu</span></div>
           <div className="help-row"><kbd>I</kbd><kbd>Q</kbd><kbd>K</kbd><span>Túi đồ · Nhiệm vụ · Công pháp</span></div></div>
         <div className="help-group"><div className="drawer-section-heading"><Sparkles size={16} /> TÔNG MÔN & CON ĐƯỜNG TU TIÊN</div>
           <div className="help-tip"><strong>01 / Tĩnh tọa & thăng tầng</strong><p>Thu EXP tích lũy ngay cả lúc rời game (tối đa 8 giờ). Luyện Khí trở lên có 9 tầng, chi phí tăng ×5 mỗi tầng.</p></div>
           <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đi qua cửa Nhiệm Vụ Các tới Trưởng Lão Chấp Sự ở X −17, Z 18.5 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>
           <div className="help-tip"><strong>03 / Độ kiếp & đạo tu</strong><p>Đạt tầng 9 và đủ EXP để vượt 9 đạo lôi. Trúc Cơ Đan tăng 20% cơ hội thành công; từ Trúc Cơ chọn Kiếm, Pháp, Thể, Ngự Thú hoặc Ma Tu. Kỹ năng cấp cao chỉ dùng được khi đạt đúng đại cảnh giới.</p></div>
           <div className="help-tip"><strong>04 / Nhà riêng, hồ và Thượng Giới</strong><p>Nhà riêng Đệ Tử Xá tại X −33, Z 12: rương theo UID, nâng cấp khi thăng đại cảnh giới (+5–20% hấp thụ). Hồ Tụ Linh X −10, Z −24 thêm 15% khi AFK tại hồ. Đạt Tiên Đế tầng 9, tìm mật thất X 32, Z 20 để tái sinh một lần, +50% vĩnh viễn và mở Thượng Giới (+35% linh khí).</p></div>
-          <div className="help-tip"><strong>05 / Hoang Vực · 14 sinh cảnh</strong><p>Đến Cổng Hoang Vực (X 0, Z 2), nhấn E hoặc chạm cổng để dịch chuyển. Quái từ cấp 1–8 ở 8 bãi riêng; 6 bãi cấp 9–16 thuộc Thượng Giới. Nhấp quái để chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
+          <div className="help-tip"><strong>05 / Hoang Vực · 20 sinh cảnh</strong><p>Đến Cổng Hoang Vực (X 0, Z 2), nhấn E hoặc chạm cổng để dịch chuyển. Hoang Vực có 14 bãi cấp 1–8 (4 quái mỗi bãi); Thượng Giới có 6 bãi cấp 9–16. Nhấp quái để chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
           <div className="help-tip"><strong>06 / Linh thú & luyện đan</strong><p>Ngự Thú Viện (X −17, Z −4) hướng dẫn thuần hóa: làm yếu quái còn dưới 35% HP, đứng gần và nhấn Thuần hóa trên HUD. Phòng Luyện Đan (X 17, Z −8) có ba công thức đan, yêu cầu đứng gần Đan Sư.</p></div>
+          <div className="help-tip"><strong>07 / Phi hành</strong><p>Kiếm Tu ngự kiếm, Pháp Tu dùng phi đĩa, Thể Tu đứng Phong Hỏa Luân, Ngự Thú cưỡi linh thú (Lôi Vũ Điêu thuần hóa được thành Vân Hạc Tọa Kỵ). Ma Tu dùng được mọi loại. Trang bị ở ô <b>Phi hành</b> rồi nhấn <b>R</b>; bay tốn chân khí và nhanh hơn đi bộ.</p></div>
+          <div className="help-tip"><strong>08 / Làng Vân Cốc</strong><p>Đi tới sơn đạo phía nam Tông Môn (X 0, Z −50) để xuống làng an toàn: Lão Trương bán trang bị còn thiếu và vật phẩm phi hành, Lý trưởng chỉ đường về. Cổng về Tông Môn ở X 0, Z −24.</p></div>
         </div>
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐI ĐẾN</div>
           <div className="help-links">

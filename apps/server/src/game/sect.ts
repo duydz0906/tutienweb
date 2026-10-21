@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { DAILY_QUESTS, MONSTER_KINDS, NPCS, type CharacterState, type DailyQuestId, type NpcId, type Vector3 } from '@van-thuong/shared';
+import { DAILY_QUESTS, MONSTER_KINDS, NPCS, npcScene, type CharacterState, type DailyQuestId, type NpcId, type Vector3 } from '@van-thuong/shared';
 import { distanceXZ } from './rules.js';
 
 /** Daily reset is midnight Vietnam time (UTC+7), independent of the server's timezone. */
@@ -33,8 +33,9 @@ export function advanceDaily(c: CharacterState, kind: string, amount = 1): boole
 
 export function requireNpc(c: CharacterState, npcId: NpcId, radius = 4.2): void {
   const npc = NPCS[npcId];
-  if (c.scene !== 'overworld' || c.hp <= 0 || distanceXZ(c.position, npc.position) > radius)
-    throw new Error(`Hãy đến gần ${npc.name} tại Tông Môn.`);
+  const scene = npcScene(npcId);
+  if (c.scene !== scene || c.hp <= 0 || distanceXZ(c.position, npc.position) > radius)
+    throw new Error(`Hãy đến gần ${npc.name} tại ${scene === 'village' ? 'Vân Cốc' : 'Tông Môn'}.`);
 }
 
 export function nearNpc(position: Vector3, npcId: NpcId, radius = 4.2): boolean {

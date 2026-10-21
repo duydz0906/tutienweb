@@ -9,6 +9,7 @@ import { Overworld, SkillVfx, TrialArena, type VisualEffect } from './WorldDecor
 import { SectScene } from './SectScene';
 import { SectArchitecture } from './SectArchitecture';
 import { Wilderness } from './Wilderness';
+import { VillageScene } from './VillageScene';
 import { ResidenceInterior, SanctumInterior } from './PrivateScenes';
 import { SectWayfinding } from './SectWayfinding';
 import { CombatFeedback } from './CombatEffects';
@@ -30,7 +31,7 @@ function publicFromOwn(c: OwnCharacter): PublicPlayer {
   return {
     id: c.id, name: c.name, gender: c.gender, appearance: c.appearance, root: c.root,
     realm: c.realm, minorStage: c.minorStage, path: c.path, hp: c.hp, maxHp: c.maxHp,
-    position: c.position, rotation: c.rotation, isAdmin: c.isAdmin, devMode: c.devMode, shieldUntil: c.shieldUntil,
+    position: c.position, rotation: c.rotation, isAdmin: c.isAdmin, devMode: c.devMode, shieldUntil: c.shieldUntil, flying: c.flying,
     equipment: Object.fromEntries(Object.entries(c.equipment).map(([slot, instanceId]) => [slot,
       c.inventory.find((item) => item.instanceId === instanceId)?.itemId]).filter(([, item]) => item)) as PublicPlayer['equipment'],
   };
@@ -100,7 +101,8 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const controller = engine.current;
     if (!controller) return;
     controller.setTouchInput(touch.current.right, touch.current.forward);
-    controller.update(delta, avatar.current, serverPosition, 6, Boolean(character));
+    // A mounted rider really moves faster; the server uses the same speed for its own ticks.
+    controller.update(delta, avatar.current, serverPosition, character?.flying ? 10.5 : 6, Boolean(character));
   });
 
   return <>
@@ -109,7 +111,9 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
         playerPosition={serverPosition} onOpenStorage={() => onOpenPanel('home')} onExit={() => onWorldAction('home:exit')} /> :
       character?.scene === 'sanctum' ? <SanctumInterior playerPosition={serverPosition} reborn={character.rebirths > 0}
         onOpenRebirth={() => onOpenPanel('rebirth')} onAscend={() => onWorldAction('sanctum:ascend')}
-        onExit={() => onWorldAction('sanctum:exit')} /> : <>
+        onExit={() => onWorldAction('sanctum:exit')} /> : character?.scene === 'village' ? <>
+      <VillageScene playerPosition={serverPosition} onInteract={onNpc} onTravel={onPortal} />
+    </> : <>
       <Overworld zone={zone} playerPosition={serverPosition} boss={visibleWorld?.boss ?? null}
         drops={visibleWorld?.drops ?? []} formations={visibleWorld?.formations ?? []} onPickup={onPickup} />
       {zone === 'overworld' ? <>
@@ -117,9 +121,10 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
         {character && <>
           <SectScene playerPosition={serverPosition} onInteract={onNpc} onTravel={onPortal} />
           <SectWayfinding character={character} playerPosition={serverPosition}
-            onEnterHome={() => onWorldAction('home:enter')} onEnterSanctum={() => onWorldAction('sanctum:enter')} />
+            onEnterHome={() => onWorldAction('home:enter')} onEnterSanctum={() => onWorldAction('sanctum:enter')}
+            onEnterVillage={() => onWorldAction('village:enter')} />
         </>}
-      </> : character && <Wilderness zone={zone} monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
+      </> : character && <Wilderness zone={zone === 'ascendant' ? 'ascendant' : 'wilderness'} monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
     <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}

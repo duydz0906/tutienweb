@@ -13,7 +13,8 @@ export function PortalGate({ zone, playerPosition, onTravel }: {
   const halo = useRef<THREE.Group>(null);
   const core = useRef<THREE.MeshBasicMaterial>(null);
   const isHome = zone === 'overworld';
-  const glow = isHome ? '#9de8d4' : zone === 'ascendant' ? '#9eeaf1' : '#e1b7f4';
+  const isVillage = zone === 'village';
+  const glow = isHome ? '#9de8d4' : zone === 'ascendant' ? '#9eeaf1' : isVillage ? '#ffd9a0' : '#e1b7f4';
   useFrame(({ clock }, delta) => {
     if (halo.current) halo.current.rotation.z += delta * 0.22;
     if (core.current) core.current.opacity = 0.24 + Math.sin(clock.elapsedTime * 2.5) * 0.07;
@@ -50,7 +51,7 @@ export function PortalGate({ zone, playerPosition, onTravel }: {
       </mesh>
       <pointLight color={glow} intensity={3.8} distance={11} decay={2} position={[0, 0, 0.5]} />
     </group>
-    {showLabel && <BillboardLabel text={isHome ? 'HOANG VỰC · E' : zone === 'ascendant' ? 'QUY SƠN · E' : 'HỒI TÔNG · E'}
+    {showLabel && <BillboardLabel text={isHome ? 'HOANG VỰC · E' : zone === 'ascendant' ? 'QUY SƠN · E' : isVillage ? 'VỀ TÔNG MÔN · E' : 'HỒI TÔNG · E'}
       position={[0, 5.25, 0]} width={3.3} color={glow} />}
   </group>;
 }

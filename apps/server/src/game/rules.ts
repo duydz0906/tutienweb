@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  CONSUMABLES, DEFAULT_APPEARANCE, EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS,
+  CONSUMABLES, DEFAULT_APPEARANCE, EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS, HOTBAR_SLOTS,
   HAIR_STYLES, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, ROBE_COLORS, ROOT_MULTIPLIER, SKIN_TONES, expForStage,
   HOME_CHEST, REBIRTH_ALTAR, absorptionMultiplier, inSpiritLake, storageCapacity,
   type Appearance, type CharacterState, type Element, type EquipmentSlot,
@@ -84,7 +84,8 @@ export function newCharacter(ownerUid: string, data: ReturnType<typeof parseCrea
     resources: { stones: 24, herbs: 6, ore: 4, ink: 3 },
     contribution: 0, sectRank: 'outer', storyStep: 0, storyKills: 0, bossKills: 0,
     dailyDay: '', dailyQuests: [], learnedSkills: ['spirit_cut'],
-    hotbar: ['spirit_cut', null, null, null], devMode: false, createdAt: now,
+    hotbar: Array.from({ length: HOTBAR_SLOTS }, (_, index) => index === 0 ? 'spirit_cut' : null),
+    flying: false, devMode: false, createdAt: now,
   };
 }
 

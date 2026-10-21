@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { DAILY_QUESTS, ITEMS, SKILLS, skillsForPath, normalizeAppearance, type CharacterState, type DailyQuestId } from '@van-thuong/shared';
+import { DAILY_QUESTS, ITEMS, SKILLS, skillsForPath, normalizeAppearance, normalizeHotbar, type CharacterState, type DailyQuestId } from '@van-thuong/shared';
 import { type Identity } from '../auth.js';
 import { CharacterModel, EquipmentModel, UserModel } from './models.js';
 
@@ -58,8 +58,11 @@ function fromMongo(doc: Record<string, any>): CharacterState {
     dailyQuests: (doc.dailyQuests ?? []).filter((q: { id: string }) => Object.hasOwn(DAILY_QUESTS, q.id))
       .map((q: { id: DailyQuestId; progress: number; claimed: boolean }) => ({ id: q.id, progress: q.progress, claimed: q.claimed })),
     learnedSkills: Array.isArray(doc.learnedSkills) ? doc.learnedSkills.filter((id: string) => Object.hasOwn(SKILLS, id)) : skillsForPath(doc.path).map((skill) => skill.id),
-    hotbar: Array.isArray(doc.hotbar) && doc.hotbar.length === 4 ? doc.hotbar.map((id: unknown) => typeof id === 'string' && Object.hasOwn(SKILLS, id) ? id : null) :
-      [...skillsForPath(doc.path).map((skill) => skill.id), null].slice(0, 4),
+    hotbar: (() => {
+      const saved = normalizeHotbar(doc.hotbar);
+      return saved.some(Boolean) ? saved : normalizeHotbar(skillsForPath(doc.path).map((skill) => skill.id));
+    })(),
+    flying: doc.flying === true,
     devMode: doc.devMode === true, devModeBackup: doc.devModeBackup,
     createdAt: doc.createdAt,
   };

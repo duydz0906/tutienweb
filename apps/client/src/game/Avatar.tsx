@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { HumanAvatar, loadHumanPackage, type HumanPackage } from 'humanforge/human';
 import * as THREE from 'three';
-import { ELEMENT_COLOR, type PublicPlayer } from '@van-thuong/shared';
+import { ELEMENT_COLOR, ITEMS, type PublicPlayer } from '@van-thuong/shared';
 import { toHumanConfig } from './humanAppearance';
 import { RealmAura } from './RealmAura';
 
@@ -79,6 +79,40 @@ function addEquipment(human: HumanAvatar, player: PublicPlayer): () => void {
       add(bone(name), plate);
     }
   }
+  // Boots, ring, necklace and talisman used to be invisible even when equipped.
+  if (player.equipment.boots) {
+    for (const name of ['LeftFoot', 'RightFoot']) {
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.28),
+        new THREE.MeshStandardMaterial({ color: '#6f7f83', metalness: 0.35, roughness: 0.5 }));
+      boot.position.set(0, 0.01, 0.05);
+      add(bone(name), boot);
+    }
+  }
+  if (player.equipment.ring) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.008, 6, 18),
+      new THREE.MeshStandardMaterial({ color: '#ffe6a6', metalness: 0.9, roughness: 0.2 }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(0, 0.02, 0);
+    add(bone('RightHand'), ring);
+  }
+  if (player.equipment.necklace) {
+    const chain = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.007, 6, 24),
+      new THREE.MeshStandardMaterial({ color: '#e9dcae', metalness: 0.8, roughness: 0.28 }));
+    chain.rotation.x = Math.PI / 2.4;
+    chain.position.set(0, 0.12, 0.06);
+    add(bone('Spine2') ?? bone('Spine1'), chain);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.026),
+      new THREE.MeshStandardMaterial({ color: '#8ff0d8', emissive: '#3ed3b4', emissiveIntensity: 0.6, roughness: 0.2 }));
+    gem.position.set(0, 0.02, 0.1);
+    add(bone('Spine2') ?? bone('Spine1'), gem);
+  }
+  if (player.equipment.talisman) {
+    const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.16),
+      new THREE.MeshStandardMaterial({ color: '#ffe9b0', emissive: '#e0b45c', emissiveIntensity: 0.35, side: THREE.DoubleSide }));
+    tag.position.set(0.16, 0.14, -0.1);
+    tag.rotation.z = 0.2;
+    add(bone('Spine2') ?? bone('Spine1'), tag);
+  }
   return () => { for (const object of added) { object.removeFromParent(); disposeMesh(object); } };
 }
 
@@ -105,6 +139,83 @@ function SwordHalo() {
   </instancedMesh>;
 }
 
+/**
+ * Visible mount under the rider. The server owns altitude-less XZ movement; this mesh only adds
+ * the flying look (and matches the mount item that allowed take-off).
+ */
+function FlightMount({ itemId }: { itemId: string }) {
+  const style = ITEMS[itemId]?.flight?.style ?? 'cloud';
+  const group = useRef<THREE.Group>(null);
+  const wings = useRef<THREE.Group>(null);
+  useFrame(({ clock }, delta) => {
+    const time = clock.elapsedTime;
+    if (group.current) group.current.position.y = Math.sin(time * 2.4) * 0.07;
+    if (wings.current) wings.current.rotation.z = Math.sin(time * 5.2) * 0.35;
+    if (style === 'wheel' && group.current) group.current.rotation.y += delta * 3.2;
+  });
+  return <group ref={group} position={[0, -0.08, 0]}>
+    {style === 'sword' && <>
+      <mesh castShadow rotation={[Math.PI / 2, 0, 0]} position={[0, -0.02, 0.18]}>
+        <boxGeometry args={[0.12, 2.6, 0.3]} />
+        <meshStandardMaterial color="#cdeee6" emissive="#4fd6c0" emissiveIntensity={1.2} metalness={0.85} roughness={0.18} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, 0.1]}>
+        <planeGeometry args={[1.1, 3.2]} />
+        <meshBasicMaterial color="#9df5e6" transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      <pointLight color="#8df2e0" intensity={1.8} distance={4} />
+    </>}
+    {style === 'disc' && <>
+      <mesh castShadow rotation={[-Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.82, 0.9, 0.09, 32]} />
+        <meshStandardMaterial color="#bfe6f2" emissive="#67b8d8" emissiveIntensity={0.8} metalness={0.7} roughness={0.24} />
+      </mesh>
+      {[0.55, 0.86].map((r) => <mesh key={r} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.07, 0]}>
+        <ringGeometry args={[r, r + 0.035, 48]} /><meshBasicMaterial color="#d8fbff" transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>)}
+      <pointLight color="#8cd8f5" intensity={2} distance={5} position={[0, 0.4, 0]} />
+    </>}
+    {style === 'wheel' && <>
+      {[-0.42, 0.42].map((x) => <mesh key={x} castShadow rotation={[Math.PI / 2, 0, 0]} position={[x, 0.12, 0]}>
+        <torusGeometry args={[0.34, 0.07, 10, 28]} />
+        <meshStandardMaterial color="#ffbe6d" emissive="#ff6a2a" emissiveIntensity={1.7} metalness={0.5} roughness={0.3} />
+      </mesh>)}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
+        <circleGeometry args={[0.95, 28]} /><meshBasicMaterial color="#ff9a52" transparent opacity={0.26} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      <pointLight color="#ff9a55" intensity={2.4} distance={5} position={[0, 0.35, 0]} />
+    </>}
+    {style === 'beast' && <group position={[0, 0.05, 0]}>
+      <mesh castShadow position={[0, 0.08, 0]} scale={[0.78, 0.34, 1.25]}>
+        <sphereGeometry args={[0.62, 16, 12]} /><meshStandardMaterial color="#eef7f1" roughness={0.7} />
+      </mesh>
+      <mesh castShadow position={[0, 0.34, 0.72]} scale={[0.36, 0.34, 0.5]}>
+        <sphereGeometry args={[0.42, 14, 10]} /><meshStandardMaterial color="#f7fffb" roughness={0.66} />
+      </mesh>
+      <mesh position={[0, 0.34, 1.04]} rotation={[Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[0.07, 0.3, 6]} /><meshStandardMaterial color="#e6bd86" />
+      </mesh>
+      <group ref={wings} position={[0, 0.26, -0.05]}>
+        {[-1, 1].map((sign) => <mesh key={sign} castShadow position={[sign * 0.66, 0, 0]} rotation={[0, 0, sign * 0.28]} scale={[0.9, 0.08, 0.5]}>
+          <sphereGeometry args={[0.62, 12, 8]} /><meshStandardMaterial color="#dcefe7" roughness={0.75} />
+        </mesh>)}
+      </group>
+      <mesh position={[0, 0.18, -0.72]} rotation={[0.3, 0, 0]}>
+        <coneGeometry args={[0.22, 0.7, 7]} /><meshStandardMaterial color="#d9eadf" />
+      </mesh>
+      <pointLight color="#c8f6e6" intensity={1.6} distance={4.5} position={[0, 0.5, 0]} />
+    </group>}
+    {style === 'cloud' && <>
+      {[[-0.5, 0.02, 0.1, 0.52], [0.35, 0.06, -0.18, 0.6], [0, 0.12, 0.42, 0.45]].map(([x, y, z, scale], index) =>
+        <mesh key={index} castShadow position={[x, y, z]} scale={[scale * 1.4, scale * 0.55, scale]}>
+          <icosahedronGeometry args={[1, 1]} />
+          <meshStandardMaterial color={index % 2 ? '#e9f4ef' : '#cfdfe9'} transparent opacity={0.92} roughness={0.9} flatShading />
+        </mesh>)}
+      <pointLight color="#e2f4ff" intensity={1.4} distance={4} position={[0, 0.4, 0]} />
+    </>}
+  </group>;
+}
+
 function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering = false, meditating = false }: {
   player: PublicPlayer; local: boolean; preview: boolean; attackAt?: number;
   wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
@@ -119,6 +230,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
   const lastPosition = useRef(new THREE.Vector3(player.position.x, player.position.y, player.position.z));
   const lastMoveAt = useRef(0);
   const internalRef = useRef<THREE.Group>(null);
+  const bodyRef = useRef<THREE.Group>(null);
   const artifactRef = useRef<THREE.Group>(null);
   const auraRef = useRef<THREE.ShaderMaterial>(null);
   const petRef = useRef<THREE.Group>(null);
@@ -193,13 +305,19 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     }, 120);
     return () => { active = false; window.clearTimeout(timer); };
   }, [human, player.gender, appearanceKey]);
-  useEffect(() => human ? addEquipment(human, player) : undefined, [human, player.equipment.weapon, player.equipment.head, player.equipment.shoulder]);
+  useEffect(() => human ? addEquipment(human, player) : undefined, [human, player.equipment.weapon, player.equipment.head, player.equipment.shoulder,
+    player.equipment.boots, player.equipment.ring, player.equipment.necklace, player.equipment.talisman, player.equipment.robe]);
   useEffect(() => () => { aura.dispose(); }, [aura]);
 
+  const flying = Boolean(player.flying) && !preview;
+  const mountId = player.equipment.mount;
+  const altitude = mountId ? ITEMS[mountId]?.flight?.altitude ?? 1.9 : 1.9;
   useFrame(({ clock }, dt) => {
     const time = clock.elapsedTime;
     const outer = groupRef?.current ?? internalRef.current;
     if (!outer) return;
+    // Altitude is visual only: the server position stays on the ground plane for collision.
+    if (bodyRef.current) bodyRef.current.position.y = flying ? altitude + Math.sin(time * 2.1) * 0.09 : 0;
     if (!local && !preview) {
       outer.position.lerp(new THREE.Vector3(player.position.x, player.position.y, player.position.z), Math.min(1, dt * 9));
       outer.rotation.y += Math.atan2(Math.sin(player.rotation - outer.rotation.y), Math.cos(player.rotation - outer.rotation.y)) * Math.min(1, dt * 8);
@@ -208,7 +326,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     if (human && ready) {
       if (outer.position.distanceTo(lastPosition.current) > 0.002) lastMoveAt.current = time;
       lastPosition.current.copy(outer.position);
-      const walking = !preview && !meditating && (wandering || time - lastMoveAt.current < 0.22) ? 0.25 : 0;
+      const walking = !preview && !meditating && !flying && (wandering || time - lastMoveAt.current < 0.22) ? 0.25 : 0;
       for (const [name, phase] of [['LeftUpLeg', 0], ['RightUpLeg', Math.PI], ['LeftArm', Math.PI], ['RightArm', 0]] as const) {
         const bone = human.bones.find((b) => b.name.endsWith(`:${name}`));
         const rest = bone && pose.current.get(bone.name);
@@ -262,6 +380,8 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
   const immortal = player.equipment.weapon === 'immortal_sword';
   return <group ref={groupRef ?? internalRef} position={[player.position.x, player.position.y, player.position.z]}
     rotation={[0, player.rotation, 0]} scale={player.devMode ? 1.2 : 1}>
+    <group ref={bodyRef}>
+    {flying && mountId && <FlightMount itemId={mountId} />}
     {human && ready && <primitive object={human.group} position={meditating ? [0, -0.51, 0] : [0, 0, 0]} />}
     {loadError && preview && <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[0.4, 0.43, 32]} /><meshBasicMaterial color="#ff847e" />
@@ -303,6 +423,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
       </mesh>)}
       <pointLight color="#ff9b59" intensity={2.5} distance={7} position={[0, 1, 0]} />
     </group>}
+    </group>
   </group>;
 }
 

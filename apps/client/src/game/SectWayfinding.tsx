@@ -1,4 +1,4 @@
-import { HOME_GATE, MAX_REALM, SECRET_GATE, type OwnCharacter, type Vector3 } from '@van-thuong/shared';
+import { HOME_GATE, MAX_REALM, SECRET_GATE, VILLAGE_GATE, type OwnCharacter, type Vector3 } from '@van-thuong/shared';
 import * as THREE from 'three';
 import { BillboardLabel } from './Billboard';
 
@@ -6,9 +6,11 @@ const near = (player: Vector3, position: Vector3, radius: number) =>
   Math.hypot(player.x - position.x, player.z - position.z) <= radius;
 
 /** Each disciple sees their own room behind this shared lodge; the interior is server-instanced. */
-export function SectWayfinding({ character, playerPosition, onEnterHome, onEnterSanctum }: {
+export function SectWayfinding({ character, playerPosition, onEnterHome, onEnterSanctum, onEnterVillage }: {
   character: OwnCharacter; playerPosition: Vector3; onEnterHome: () => void; onEnterSanctum: () => void;
+  onEnterVillage: () => void;
 }) {
+  if (character.scene !== 'overworld') return null;
   const unlocked = character.rebirths > 0 || character.realm === MAX_REALM && character.minorStage === 9;
   const homeNear = near(playerPosition, HOME_GATE.position, HOME_GATE.radius);
   const secretNear = near(playerPosition, SECRET_GATE.position, SECRET_GATE.radius);
@@ -23,6 +25,26 @@ export function SectWayfinding({ character, playerPosition, onEnterHome, onEnter
       <mesh position={[0, 0.48, 0]}><octahedronGeometry args={[0.3, 0]} />
         <meshStandardMaterial color="#e4c58f" emissive="#b3925b" emissiveIntensity={0.88} metalness={0.6} /></mesh>
       <BillboardLabel text={`NHÀ ${character.name.toUpperCase()} · E`} position={[0, 2.7, 0]} width={5.7} color="#ffe2aa" />
+    </group>
+    {/* South mountain path: a real gate down to Vân Cốc village. */}
+    <group position={[VILLAGE_GATE.position.x, 0, VILLAGE_GATE.position.z]}
+      onClick={(event) => { event.stopPropagation(); onEnterVillage(); }}
+      onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+      onPointerOut={() => { document.body.style.cursor = ''; }}>
+      {[-1, 1].map((sign) => <mesh key={sign} castShadow position={[sign * 2.1, 2.2, 0]}>
+        <cylinderGeometry args={[0.36, 0.5, 4.4, 8] } /><meshStandardMaterial color="#697a70" roughness={0.9} flatShading /></mesh>)}
+      <mesh castShadow position={[0, 4.5, 0]}><boxGeometry args={[5.2, 0.6, 0.7]} />
+        <meshStandardMaterial color="#7d8c7d" roughness={0.82} flatShading /></mesh>
+      <mesh position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.5, 1.68, 44]} />
+        <meshBasicMaterial color={Math.hypot(playerPosition.x - VILLAGE_GATE.position.x, playerPosition.z - VILLAGE_GATE.position.z) <= VILLAGE_GATE.radius ? '#ffe0a4' : '#d3b483'}
+          transparent opacity={0.8} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Steps descend south, away from the sect, matching where the gate leads. */}
+      {[0, 1, 2, 3, 4].map((step) => <mesh key={step} receiveShadow position={[0, -0.02 - step * 0.16, -1.5 - step * 0.8]}>
+        <boxGeometry args={[3.4 - step * 0.16, 0.16, 0.8]} /><meshStandardMaterial color={step % 2 ? '#9a9d88' : '#8b9084'} roughness={1} />
+      </mesh>)}
+      <BillboardLabel text="SƠN ĐẠO · VÂN CỐC · E" position={[0, 5.55, 0]} width={5.2} color="#ffe6b4" />
     </group>
     {/* The mountain face opens only at Tiên Đế tầng 9 or after rebirth. */}
     <group position={[SECRET_GATE.position.x, 0, SECRET_GATE.position.z]}
