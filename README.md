@@ -45,7 +45,8 @@ Một **vertical slice MMORPG 3D chơi được trên trình duyệt**: tạo nh
 ├── packages/shared/src/index.ts        # Wire types, 10 slot, item, NPC, quest, skill, shop
 ├── packages/shared/src/level_config.json # 12 cảnh giới, 9 tầng, EXP ×5, thưởng HP/MP
 ├── scripts/sync-human-assets.mjs       # Đồng bộ subset CC0 từ HumanForge nếu muốn tái tạo asset
-├── scripts/grant-admin.mjs             # Gán claim qua Firebase Admin SDK
+├── scripts/prepare-dev.mjs             # Kiểm tra/cài lại dependency dev bị thiếu sau khi pull
+├── scripts/grant-admin.mjs             # Gán claim Firebase + role MongoDB
 ├── compose.yaml                        # MongoDB/Redis chỉ bind localhost
 └── .env.example                        # Mẫu biến môi trường, KHÔNG có bí mật
 ```
@@ -60,6 +61,15 @@ Yêu cầu **Node.js >= 20**, npm. Từ thư mục gốc:
 npm install
 npm run dev
 ```
+
+Sau khi `git pull`/đổi nhánh, thư mục `node_modules` cũ có thể **chưa có `tailwindcss`/`postcss`**, dù chúng đã được khai báo trong `apps/client/package.json` và `package-lock.json`. `npm run dev` nay kiểm tra và tự chạy `npm install --include=dev` **trước khi khởi động Vite** nếu thiếu dependency; bạn cũng có thể cài lại thủ công (Windows CMD/PowerShell đều chạy được):
+
+```bash
+npm ci --include=dev
+npm run dev
+```
+
+Nếu npm không có Internet hoặc quá trình cài thất bại, sửa lỗi npm được in ở bước cài rồi chạy lại hai lệnh trên. Không cần cài Tailwind global, không cần sửa PostCSS config, và không xóa source hoặc `.git`.
 
 Mở **http://localhost:5173** (trong Arena dùng live preview cổng **5173**). Vite proxy `/api` và `/socket.io` về Express cổng **3001**, trình duyệt chỉ dùng đường dẫn tương đối, không gọi `localhost` để tới backend. Khi không có `.env` và không phải `NODE_ENV=production`, server tự mở demo; hoặc `cp .env.example .env` và giữ `DEMO_MODE=true`. Bấm **Bước vào chơi thử**, chọn nam/nữ, 7 kiểu tóc, 8 màu tóc, 4 khuôn mặt, sắc da, chiều cao/vóc dáng rồi rút Linh Căn. Nút **Xem cận khuôn mặt** cho phép xem thay đổi trực tiếp. Nhấn **Bước vào Vân Thượng** và đợi kết nối world; có nút thử lại khi mất kết nối. Dữ liệu demo nằm trong RAM và **mất khi restart**; phiên demo **không bao giờ có quyền admin**. Trong demo có thể đặt tên `Daniel965` để chơi, nhưng đó chỉ là tên hiển thị, hoàn toàn không cấp quyền admin; ở production tên này chỉ dành cho UID đã được xác thực.
 
