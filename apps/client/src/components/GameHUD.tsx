@@ -287,7 +287,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
             <Feather size={20} /><span>Phi hành</span><kbd>R</kbd>
           </button>
           <button className={`utility-slot camera-slot ${hudPrefs.cameraLock ? 'selected' : ''}`} onClick={() => onHudPrefs({ cameraLock: !hudPrefs.cameraLock })}
-            aria-pressed={hudPrefs.cameraLock} title={hudPrefs.cameraLock ? 'Đang khóa góc nhìn TPP · nhấn Y để xoay tự do' : 'Khóa góc nhìn thứ 3 bám sau lưng (Y)'}>
+            aria-pressed={hudPrefs.cameraLock} title={hudPrefs.cameraLock ? 'Đang khóa TPP: lia chuột để camera xoay quanh, luôn nhìn từ sau lưng · nhấn Y để mở khóa' : 'Khóa góc nhìn thứ 3 sau lưng nhân vật (Y)'}>
             <Camera size={20} /><span>{hudPrefs.cameraLock ? 'TPP khóa' : 'TPP'}</span><kbd>Y</kbd>
           </button>
           <button className={`utility-slot ${panel === 'menu' ? 'selected' : ''}`} onClick={() => onPanel(panel === 'menu' ? null : 'menu')} title="Menu: nhà riêng, công pháp, nhiệm vụ, cửa hàng, cài đặt (M)"><Menu size={20} /><span>Menu</span><kbd>M</kbd></button>
