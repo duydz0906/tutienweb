@@ -372,7 +372,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 @media (max-height: 720px) and (min-width: 721px) {
   .splash-copy h1 { font-size: 64px; }.entrance-card { padding-top: 22px; padding-bottom: 17px; }.entrance-icon { margin: 12px auto; }.entrance-card > p { margin-bottom: 10px; }
   .creation-side { top: 78px; }.creation-side h1 { font-size: 49px; margin: 7px 0; }.creation-intro { margin-bottom: 10px; line-height: 1.4; }.creation-form { padding: 13px; }.form-label.margin-top { margin-top: 9px; margin-bottom: 6px; }.create-button { margin-top: 10px; }.creation-probability { bottom: 20px; }
-  .hud-left { top: 91px; }.hero-card { padding: 10px; }.hero-card-top { margin-bottom: 9px; }.root-banner { margin-top: 9px; }.cultivate-card { padding: 10px; }.cultivate-title { margin: 9px 0; }.cultivate-info { margin: 8px 0; }.hud-right { top: 91px; }.minimap { width: 131px; height: 131px; margin: 7px auto; }.quest-card { display: none; }.chat-card { height: 133px; }
+  .hud-left { top: 91px; }.hero-card { padding: 10px; }.hero-card-top { margin-bottom: 9px; }.root-banner { margin-top: 9px; }.cultivate-card { padding: 10px; }.cultivate-title { margin: 9px 0; }.cultivate-info { margin: 8px 0; }.hud-right { top: 91px; bottom: auto; }.minimap { width: 131px; height: 131px; margin: 7px auto; }.quest-card { display: none; }.chat-card { height: 133px; }
 }
 
 /* Optional touch-only virtual joystick. Its vector is still validated by the server. */
@@ -523,3 +523,48 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .help-links button:hover { border-color: var(--gold); background: rgba(231,196,136,.16); }
 @media (min-width: 1251px) and (max-width: 1600px) { .skill-slot { width: 70px; }.utility-slot { width: 50px; } }
 @media (min-width: 721px) and (max-width: 800px) { .skill-slot { width: 45px; }.utility-slot { width: 35px; } }
+
+/* Server-owned disciple rooms, stored items and prestige choice. */
+.lake-bonus, .rebirth-bonus { display: flex; align-items: center; gap: 7px; margin: 8px 0 0; padding: 7px 8px; font-size: 9px; font-weight: 750; line-height: 1.5; color: #bbf7e5; background: rgba(77, 169, 152, .13); border-left: 2px solid rgba(145, 244, 210, .65); }
+.rebirth-bonus { color: #e4d2ff; background: rgba(129, 90, 160, .15); border-color: #c49ce8; }
+.lake-bonus svg, .rebirth-bonus svg { flex: none; }
+.home-shortcut { display: flex; align-items: center; gap: 9px; width: 100%; padding: 12px; margin: 0 0 17px; text-align: left; color: #f9e7c5; background: linear-gradient(110deg, rgba(192, 158, 100, .15), rgba(68, 118, 106, .11)); border: 1px solid rgba(234, 192, 137, .32); border-radius: 4px; font-size: 11px; font-weight: 700; }
+.home-shortcut:hover { border-color: var(--gold); background: rgba(192, 158, 100, .2); }
+.home-shortcut span { margin-left: auto; font-size: 9px; color: var(--muted); }
+.housing-banner { display: flex; gap: 13px; align-items: center; padding: 17px; border: 1px solid rgba(225, 192, 129, .4); border-radius: 4px; background: radial-gradient(circle at 15% 10%, rgba(200, 168, 108, .2), transparent 66%), #233737; }
+.housing-banner > svg { flex: none; color: var(--gold); }
+.housing-banner h3, .rebirth-panel h3 { font: 500 22px 'Literata', Georgia, serif; color: var(--cream); margin: 8px 0; }
+.housing-banner p, .rebirth-panel p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.85; }
+.housing-stats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin: 11px 0 16px; }
+.housing-stats > span { display: grid; justify-items: start; gap: 5px; min-height: 78px; padding: 10px; border: 1px solid rgba(185, 222, 203, .19); background: rgba(164, 212, 188, .055); color: var(--muted); font-size: 10px; }
+.housing-stats svg { color: var(--jade); }
+.housing-stats b { color: var(--gold-bright); font-size: 16px; }
+.housing-panel .drawer-section-heading { margin: 17px 0 11px; }
+.storage-list { display: grid; gap: 6px; margin: 0 0 12px; }
+.storage-item { display: flex; align-items: center; gap: 10px; min-height: 53px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 3px; background: rgba(255,255,255,.025); }
+.storage-item .item-visual { flex: none; }
+.storage-item > div { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.storage-item strong { color: var(--cream); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.storage-item small { color: var(--faint); font-size: 8px; }
+.storage-item button { flex: none; min-width: 61px; padding: 7px; color: var(--gold-bright); border: 1px solid rgba(227, 193, 134, .4); background: rgba(226,193,132,.07); border-radius: 3px; font-size: 9px; font-weight: 700; }
+.storage-item button:not(:disabled):hover { background: rgba(226,193,132,.22); }
+.housing-hint { margin: 12px 0; padding: 10px 12px; color: #e5d4ad; border: 1px solid rgba(230, 202, 149, .26); background: rgba(190, 151, 96, .08); font-size: 10px; line-height: 1.7; }
+.rebirth-panel { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.rebirth-panel > p { margin: 0; font-size: 11px; }
+.rebirth-panel .housing-stats { width: 100%; }
+.rebirth-panel .housing-hint, .rebirth-panel .btn { width: 100%; }
+.rebirth-orb { display: grid; place-items: center; width: 83px; height: 83px; margin: 5px auto 12px; align-self: center; border: 1px solid rgba(216, 168, 244, .48); border-radius: 50%; color: #e6bcfa; background: radial-gradient(circle, rgba(159, 95, 198, .3), transparent 72%); box-shadow: 0 0 39px rgba(194, 112, 235, .15); }
+.rebirth-confirm { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; padding: 13px; color: #f5e4c8; border: 1px solid var(--line); background: rgba(255,255,255,.035); font-size: 10px; line-height: 1.6; cursor: pointer; }
+.rebirth-confirm input { margin: 2px 0 0; accent-color: #d6b388; }
+@media (max-width: 720px) {
+  .lake-bonus, .rebirth-bonus { margin-top: 4px; padding: 4px; font-size: 7px; }
+  .rebirth-panel h3 { font-size: 18px; }
+  .housing-stats { gap: 5px; }.housing-stats > span { min-height: 65px; padding: 7px; font-size: 9px; }
+  .storage-item { min-height: 49px; }
+}
+/* On compact landscape screens, chat must not cover the AFK buttons or lake buff. */
+@media (min-width: 721px) and (max-width: 980px) and (max-height: 720px) {
+  .hud-bottom { grid-template-columns: minmax(0,1fr); }
+  .hud-bottom .chat-card { position: absolute; right: 0; bottom: 145px; width: min(245px, calc(100vw - 535px)); height: 133px; }
+  .hotbar { grid-column: 1; justify-self: end; }
+}

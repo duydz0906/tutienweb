@@ -1,0 +1,5 @@
+# Human-readable CI settings consumed by scripts/verify-human-assets.ts.
+# GitHub Actions does NOT load .ysl files. The runnable workflow is .github/workflows/deno.yml.
+assets_dir: apps/client/public/human
+minimum_vertices: 19000
+skin_tiers: 1k,2k

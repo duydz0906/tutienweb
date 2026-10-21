@@ -89,6 +89,32 @@ describe('per-user local saves', () => {
     await restarted.close();
   });
 
+  it('migrates old JSON saves and persists the private room, vault and rebirth fields across restarts', async () => {
+    const path = await directory();
+    const store = new FileStore(path);
+    const created = make(LOCAL_DEV_UID, 'Daniel965');
+    created.realm = 4; created.minorStage = 3;
+    await store.create(created);
+    const file = join(path, 'players', 'Daniel965', 'character.json');
+    const legacy = JSON.parse(await readFile(file, 'utf8'));
+    delete legacy.highestRealm; delete legacy.cultivationBank; delete legacy.rebirths; delete legacy.stash;
+    await writeFile(file, JSON.stringify(legacy));
+    const migrated = await store.get(LOCAL_DEV_UID);
+    expect(migrated).toMatchObject({ highestRealm: 4, cultivationBank: 0, rebirths: 0, stash: [] });
+    if (!migrated) throw new Error('Missing migrated character');
+    migrated.highestRealm = 11;
+    migrated.rebirths = 1;
+    migrated.cultivationBank = 543;
+    migrated.scene = 'ascendant';
+    migrated.stash.push({ instanceId: 'owned-1', itemId: 'jade_blade', acquiredAt: Date.now() });
+    await store.save(migrated);
+    await store.close();
+    const resumed = new FileStore(path);
+    expect(await resumed.get(LOCAL_DEV_UID)).toMatchObject({ scene: 'ascendant', rebirths: 1,
+      highestRealm: 11, cultivationBank: 543, stash: [{ instanceId: 'owned-1', itemId: 'jade_blade' }] });
+    await resumed.close();
+  });
+
   it('creates once under concurrent requests and refuses to overwrite a corrupt save with a new character', async () => {
     const path = await directory();
     const store = new FileStore(path);

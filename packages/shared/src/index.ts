@@ -1,21 +1,57 @@
 /* Wire contracts and public game data. Never put secrets or admin credentials here. */
 import levelConfig from './level_config.json' with { type: 'json' };
 export type Vector3 = { x: number; y: number; z: number };
-export type WorldZone = 'overworld' | 'wilderness';
-export type GameScene = WorldZone | 'tribulation';
+export type WorldZone = 'overworld' | 'wilderness' | 'ascendant';
+export type GameScene = WorldZone | 'residence' | 'sanctum' | 'tribulation';
+export const PUBLIC_ZONES: readonly WorldZone[] = ['overworld', 'wilderness', 'ascendant'];
+export function isWorldZone(scene: GameScene): scene is WorldZone { return PUBLIC_ZONES.includes(scene as WorldZone); }
 /** Both ends of the gate, their arrival pads and interaction distance are shared by client and server. */
 export const PORTALS = {
   overworld: { scene: 'overworld', destination: 'wilderness', name: 'Cổng Hoang Vực',
-    position: { x: 0, y: 0, z: 2 }, arrival: { x: 0, y: 0, z: 27 }, radius: 4.2 },
+    position: { x: 0, y: 0, z: 2 }, arrival: { x: 0, y: 0, z: 23 }, radius: 4.2 },
   wilderness: { scene: 'wilderness', destination: 'overworld', name: 'Cổng Hồi Tông',
     position: { x: 0, y: 0, z: 34 }, arrival: { x: 0, y: 0, z: 10 }, radius: 4.2 },
+  ascendant: { scene: 'ascendant', destination: 'overworld', name: 'Cổng Quy Sơn',
+    position: { x: 0, y: 0, z: 34 }, arrival: { x: 32, y: 0, z: 19 }, radius: 4.2 },
 } as const satisfies Record<WorldZone, { scene: WorldZone; destination: WorldZone; name: string;
   position: Vector3; arrival: Vector3; radius: number }>;
+/** Private instances: the server decides entry, exit and proximity, never client coordinates. */
+export const HOME_GATE = { position: { x: -33, y: 0, z: 12 }, radius: 3.2,
+  arrival: { x: 0, y: 0, z: 5 }, exit: { x: -33, y: 0, z: 10 } } as const;
+export const HOME_CHEST = { position: { x: 4, y: 0, z: -2 }, radius: 2.8 } as const;
+export const HOME_EXIT = { position: { x: 0, y: 0, z: 7 }, radius: 2.8 } as const;
+export const SECRET_GATE = { position: { x: 32, y: 0, z: 20 }, radius: 3.2,
+  arrival: { x: 0, y: 0, z: 5 }, exit: { x: 32, y: 0, z: 18 } } as const;
+export const SANCTUM_EXIT = { position: { x: 0, y: 0, z: 7 }, radius: 2.8 } as const;
+export const REBIRTH_ALTAR = { position: { x: 0, y: 0, z: -3 }, radius: 3.3 } as const;
+export const ASCENDANT_GATE = { position: { x: 5, y: 0, z: -3 }, radius: 3.2,
+    arrival: { x: 0, y: 0, z: 23 } } as const;
+export const SPIRIT_LAKE = { position: { x: -10, y: 0, z: -24 }, radius: 7.2, bonus: 0.15 } as const;
+export const REBIRTH_BONUS = 0.5;
+export const ASCENDANT_BONUS = 0.35;
+/** One house level per major realm, including Phàm Nhân. Highest attained realm survives rebirth. */
+export function houseLevel(realm: number): number { return Math.max(0, Math.min(MAX_REALM, Math.floor(realm))) + 1; }
+export function storageCapacity(realm: number): number { return 12 + (houseLevel(realm) - 1) * 6; }
+export function houseAbsorptionBonus(realm: number): number { return (5 + Math.round((houseLevel(realm) - 1) * 15 / MAX_REALM)) / 100; }
+export function inSpiritLake(scene: GameScene, position: Vector3): boolean {
+  return scene === 'overworld' && Math.hypot(position.x - SPIRIT_LAKE.position.x, position.z - SPIRIT_LAKE.position.z) <= SPIRIT_LAKE.radius;
+}
+/** Shared display and server formula; server always supplies its own persisted position and scene. */
+export function absorptionMultiplier(c: { scene: GameScene; position: Vector3; realm: number;
+  highestRealm: number; rebirths: number; devMode: boolean }): number {
+  const houseRealm = c.devMode ? MAX_REALM : Math.max(c.realm, c.highestRealm);
+  return 1 + houseAbsorptionBonus(houseRealm) + (c.rebirths ? REBIRTH_BONUS : 0) +
+    (inSpiritLake(c.scene, c.position) ? SPIRIT_LAKE.bonus : 0) +
+    (c.scene === 'ascendant' && c.rebirths ? ASCENDANT_BONUS : 0);
+}
 /** Open-fronted rooms: width, depth and doorway are also used for authoritative wall collision. */
 export const SECT_BUILDINGS = [
   { id: 'master', name: 'CHÍNH ĐIỆN', x: 0, z: 30, width: 19, depth: 13, doorway: 5.5, height: 5.6 },
   { id: 'quest', name: 'NHIỆM VỤ CÁC', x: -17, z: 18.5, width: 12, depth: 10, doorway: 4.2, height: 4.8 },
   { id: 'shop', name: 'TÀNG BẢO CÁC', x: 17, z: 18.5, width: 12, depth: 10, doorway: 4.2, height: 4.8 },
+  { id: 'disciples', name: 'ĐỆ TỬ XÁ', x: -33, z: 18, width: 9, depth: 9, doorway: 3.4, height: 4.2 },
+  { id: 'disciples-west', name: 'ĐỆ TỬ XÁ · TÂY', x: -32, z: -5, width: 9, depth: 8, doorway: 3.2, height: 4.0 },
+  { id: 'disciples-south', name: 'ĐỆ TỬ XÁ · NAM', x: -31, z: -16, width: 9, depth: 8, doorway: 3.2, height: 4.0 },
 ] as const;
 export const LEVEL_CONFIG = levelConfig;
 export const REALMS = levelConfig.realms;
@@ -127,6 +163,12 @@ export const HERB_NODES = [
   { id: 'herb-3', position: { x: -21, y: 0, z: -17 } }, { id: 'herb-4', position: { x: 22, y: 0, z: -18 } },
   { id: 'herb-5', position: { x: -12, y: 0, z: -29 } }, { id: 'herb-6', position: { x: 14, y: 0, z: -31 } },
 ] as const;
+/** Reborn players can gather denser spirit herbs in the Ascendant world. */
+export const ASCENDANT_HERBS = [
+  { id: 'asc-herb-1', position: { x: -11, y: 0, z: -13 } }, { id: 'asc-herb-2', position: { x: 13, y: 0, z: -11 } },
+  { id: 'asc-herb-3', position: { x: -20, y: 0, z: -22 } }, { id: 'asc-herb-4', position: { x: 22, y: 0, z: -20 } },
+  { id: 'asc-herb-5', position: { x: -7, y: 0, z: -31 } }, { id: 'asc-herb-6', position: { x: 10, y: 0, z: -33 } },
+] as const;
 export type HerbState = { id: string; position: Vector3; availableAt: number };
 export const DAILY_QUESTS = {
   gather_herbs: { id: 'gather_herbs', title: 'Hái 10 Linh thảo', description: 'Thu thập linh thảo ngoài Tông Môn.', kind: 'gather', target: 10, reward: { contribution: 25, exp: 100, stones: 12 } },
@@ -164,6 +206,10 @@ export type CharacterState = {
   id: string; ownerUid: string; name: string; gender: Gender; appearance: Appearance;
   root: SpiritRoot; path: Path | null; realm: number; minorStage: number;
   cultivation: number; totalCultivation: number; lastCultivatedAt: number;
+  /** Unclaimed EXP already calculated at the rate of the location where it was earned. */
+  cultivationBank: number;
+  /** Permanent maximum house level and capacity (never shrinks on rebirth). */
+  highestRealm: number; rebirths: number; stash: OwnedItem[];
   hp: number; mp: number; maxHp: number; maxMp: number;
   position: Vector3; rotation: number; scene: GameScene; worldVersion: number;
   equipment: Partial<Record<EquipmentSlot, string>>; inventory: OwnedItem[]; resources: Resources;
@@ -180,8 +226,8 @@ export type PublicPlayer = {
   root: SpiritRoot; gender: Gender; appearance: Appearance;
   equipment: Partial<Record<EquipmentSlot, string>>; isAdmin: boolean; devMode: boolean; shieldUntil?: number;
 };
-export type MonsterKind = 'wolf' | 'boar' | 'shade';
-export type MonsterState = { id: string; kind: MonsterKind; name: string; level: number;
+export type MonsterKind = 'wolf' | 'boar' | 'shade' | 'spirit_stag' | 'sky_wraith';
+export type MonsterState = { id: string; scene: 'wilderness' | 'ascendant'; kind: MonsterKind; name: string; level: number;
   position: Vector3; hp: number; maxHp: number; radius: number; respawnAt: number | null };
 export type BossState = { id: string; name: string; position: Vector3; hp: number; maxHp: number; respawnAt: number | null };
 export type WorldDrop = { id: string; itemId: string; scene: WorldZone; position: Vector3; expiresAt: number };

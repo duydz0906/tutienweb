@@ -40,6 +40,10 @@ function fromMongo(doc: Record<string, any>): CharacterState {
     path: doc.path ?? null, realm: doc.realm,
     minorStage: Number.isInteger(doc.minorStage) && doc.minorStage >= 1 && doc.minorStage <= 9 ? doc.minorStage : doc.realm > 0 ? 1 : 0,
     cultivation: doc.cultivation, totalCultivation: doc.totalCultivation,
+    cultivationBank: doc.cultivationBank ?? 0, highestRealm: Math.max(doc.highestRealm ?? 0, doc.devMode ? doc.devModeBackup?.realm ?? 0 : doc.realm),
+    rebirths: doc.rebirths ?? 0,
+    stash: (doc.stash ?? []).map((item: { instanceId: string; itemId: string; acquiredAt: number }) =>
+      ({ instanceId: item.instanceId, itemId: item.itemId, acquiredAt: item.acquiredAt })),
     lastCultivatedAt: doc.lastCultivatedAt, hp: doc.hp, mp: doc.mp, maxHp: doc.maxHp, maxMp: doc.maxMp,
     position: { x: doc.position.x, y: doc.position.y, z: doc.position.z },
     rotation: doc.rotation,
@@ -109,7 +113,7 @@ export class MongoStore implements CharacterStore {
     await this.syncEquipment(character);
   }
   private async syncEquipment(character: CharacterState): Promise<void> {
-    const equipment = character.inventory.filter((owned) => Object.hasOwn(ITEMS, owned.itemId));
+    const equipment = [...character.inventory, ...character.stash].filter((owned) => Object.hasOwn(ITEMS, owned.itemId));
     if (!equipment.length) return;
     await EquipmentModel.bulkWrite(equipment.map((owned) => {
       const definition = ITEMS[owned.itemId];

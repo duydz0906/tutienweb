@@ -1,29 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, Flame, FlaskConical,
-  Gem, Hammer, MapPin, ScanFace, Shield, Sparkles, Swords, Target, Trophy, UserRound, Users, WandSparkles, X, Zap } from 'lucide-react';
-import { CONSUMABLES, EQUIPMENT_SLOTS, ITEMS, REALMS, RECIPES, SLOT_LABEL,
-  type Appearance, type ConsumableId, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
-import { AppearanceControls } from './AppearanceControls';
+  Gem, Hammer, House, MapPin, RotateCcw, Shield, Sparkles, Swords, Target, Trophy, Users, Warehouse, WandSparkles, X, Zap } from 'lucide-react';
+import { CONSUMABLES, EQUIPMENT_SLOTS, HOME_CHEST, ITEMS, MAX_REALM, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
+  houseAbsorptionBonus, houseLevel, storageCapacity, type ConsumableId, type LeaderboardEntry, type OwnCharacter } from '@van-thuong/shared';
 import { QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
 
-export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'appearance' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
+export type ActivePanel = 'inventory' | 'craft' | 'leaderboard' | 'help' | 'home' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 
-export function Panels({ panel, onClose, onNavigate, character, leaderboard, roster, onAction, onLogout,
-  appearanceDraft, onAppearanceChange, onSaveAppearance, connected, editorView, onEditorView }: {
+export function Panels({ panel, onClose, onNavigate, character, leaderboard, roster, onAction, onLogout, connected }: {
   panel: ActivePanel; onClose: () => void; onNavigate: (panel: ActivePanel) => void; character: OwnCharacter;
   leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
   onAction: (event: string, payload?: object) => void; onLogout: () => void;
-  appearanceDraft: Appearance | null; onAppearanceChange: (next: Appearance) => void;
-  onSaveAppearance: () => void; connected: boolean;
-  editorView: 'body' | 'face'; onEditorView: (view: 'body' | 'face') => void;
+  connected: boolean;
 }) {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [profession, setProfession] = useState<'dan' | 'khi' | 'tran'>('dan');
   const [targetId, setTargetId] = useState<string>('');
   const [itemId, setItemId] = useState('immortal_sword');
   const [bossId, setBossId] = useState('world-boss');
+  const [reincarnationConfirmed, setReincarnationConfirmed] = useState(false);
+  // An irreversible choice must require a fresh acknowledgement each time the dialog opens.
+  useEffect(() => { if (panel !== 'rebirth') setReincarnationConfirmed(false); }, [panel]);
   if (!panel || (panel === 'admin' && !character.isAdmin)) return null;
   const available = (amount: number) => character.devMode ? '∞' : amount.toLocaleString('vi-VN');
 
@@ -35,11 +34,17 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
   const selectionDefinition = selection && ITEMS[selection.itemId];
   const selectedPill = selection && Object.hasOwn(CONSUMABLES, selection.itemId) ? CONSUMABLES[selection.itemId as ConsumableId] : null;
   const selectedPlayer = roster.find((player) => player.id === targetId);
+  const tier = houseLevel(character.devMode ? MAX_REALM : character.highestRealm);
+  const capacity = storageCapacity(character.devMode ? MAX_REALM : character.highestRealm);
+  const chestNear = character.scene === 'residence' &&
+    Math.hypot(character.position.x - HOME_CHEST.position.x, character.position.z - HOME_CHEST.position.z) <= HOME_CHEST.radius;
+  const altarNear = character.scene === 'sanctum' &&
+    Math.hypot(character.position.x - REBIRTH_ALTAR.position.x, character.position.z - REBIRTH_ALTAR.position.z) <= REBIRTH_ALTAR.radius;
   const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', leaderboard: 'Thiên Kiêu Bảng',
-    help: 'Thiên Đạo Chỉ Dẫn', appearance: 'Dung Mạo Tiên Gia', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
+    help: 'Thiên Đạo Chỉ Dẫn', home: 'Nhà Riêng & Rương Đồ', rebirth: 'Mật Thất Tái Sinh', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
     shop: 'Cửa Hàng Tông Môn', skills: 'Công Pháp & Hotbar', admin: 'Thiên Đạo · God Mode' }[panel];
 
-  return <div className={`panel-scrim ${panel === 'appearance' ? 'appearance-scrim' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return <div className="panel-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
       <div className="drawer-head"><div><span className="eyebrow">VÂN THƯỢNG · {panel === 'admin' ? 'ADMIN' : 'HÀNH TRANG'}</span><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={19} /></button></div>
 
@@ -47,19 +52,50 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
       {panel === 'sect' && <SectPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'shop' && <ShopPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'skills' && <SkillsPanel character={character} connected={connected} onAction={onAction} />}
-      {panel === 'appearance' && <div className="drawer-scroll appearance-drawer">
-        <p className="drawer-description">Đổi tóc, màu sắc, khuôn mặt và vóc dáng ngay trong thế giới. Bên ngoài cửa sổ này, nhân vật đang hiển thị bản xem trước; chỉ lưu khi bạn xác nhận.</p>
-        <AppearanceControls value={appearanceDraft ?? character.appearance} onChange={onAppearanceChange} />
-        <button type="button" className="preview-toggle" onClick={() => onEditorView(editorView === 'face' ? 'body' : 'face')}>
-          {editorView === 'face' ? <UserRound size={15} /> : <ScanFace size={15} />}
-          {editorView === 'face' ? 'Xem toàn thân' : 'Xem cận khuôn mặt'}
-        </button>
-        <button className="btn btn-gold btn-full appearance-save" disabled={!connected || character.scene === 'tribulation'} onClick={onSaveAppearance}>
-          Lưu ngoại hình <ArrowRight size={16} />
-        </button>
+      {panel === 'home' && <div className="drawer-scroll housing-panel">
+        <div className="housing-banner"><House size={32} /><div><span className="eyebrow">PHÒNG RIÊNG · {character.name.toUpperCase()}</span>
+          <h3>Đệ tử xá · Cấp {tier}</h3><p>Nhà nâng theo đại cảnh giới cao nhất, không bị mất khi tái sinh.</p></div></div>
+        <div className="housing-stats"><span><Sparkles size={17} /> Hấp thụ linh khí <b>+{Math.round(houseAbsorptionBonus(tier - 1) * 100)}%</b></span>
+          <span><Warehouse size={17} /> Sức chứa <b>{character.stash.length}/{capacity}</b></span></div>
+        <p className="drawer-description">Rương ở trong nhà riêng tại Đệ Tử Xá (X −33, Z 12). Chỉ chủ nhân thấy vật phẩm trong rương. Cần đứng sát rương mới được cất hoặc lấy đồ; tháo trang bị trước khi cất.</p>
+        <div className="drawer-section-heading"><Warehouse size={16} /> TRONG RƯƠNG <span>{character.stash.length}/{capacity}</span></div>
+        {character.stash.length ? <div className="storage-list">{character.stash.map((owned) => {
+          const item = ITEMS[owned.itemId] ?? CONSUMABLES[owned.itemId as ConsumableId];
+          return <div key={owned.instanceId} className="storage-item"><span className="item-visual">{item?.icon ?? '✦'}</span>
+            <div><strong>{item?.name ?? owned.itemId}</strong><small>{'rarity' in (item ?? {}) ? rarityLabel[(item as typeof ITEMS[string]).rarity] : 'Đan dược'}</small></div>
+            <button disabled={!connected || !chestNear || character.inventory.length >= 80}
+              onClick={() => onAction('home:transfer', { direction: 'withdraw', instanceId: owned.instanceId })}>Lấy ra</button></div>;
+        })}</div> : <div className="empty-state"><Warehouse size={25} /> Rương đang trống. Mang đồ đến gần rương để cất giữ.</div>}
+        <div className="drawer-section-heading section-separator"><Backpack size={16} /> TÚI ĐỒ <span>{character.inventory.length}/80</span></div>
+        <div className="storage-list">{character.inventory.map((owned) => {
+          const item = ITEMS[owned.itemId] ?? CONSUMABLES[owned.itemId as ConsumableId];
+          const equipped = Object.values(character.equipment).includes(owned.instanceId);
+          return <div key={owned.instanceId} className="storage-item"><span className="item-visual">{item?.icon ?? '✦'}</span>
+            <div><strong>{item?.name ?? owned.itemId}</strong><small>{equipped ? 'Đang trang bị · không thể cất' : 'Có thể cất vào rương'}</small></div>
+            <button disabled={!connected || !chestNear || equipped || character.stash.length >= capacity}
+              onClick={() => onAction('home:transfer', { direction: 'deposit', instanceId: owned.instanceId })}>Cất đồ</button></div>;
+        })}</div>
+        {!chestNear && <div className="housing-hint">Đến sát rương trong phòng riêng để mở khóa thao tác cất / lấy vật phẩm.</div>}
+      </div>}
+
+      {panel === 'rebirth' && <div className="drawer-scroll rebirth-panel">
+        <div className="rebirth-orb"><RotateCcw size={43} /></div>
+        <span className="eyebrow">TIÊN ĐẾ TẦNG 9 · MẬT THẤT TRÊN NÚI</span><h3>Một lần tái sinh. Một thiên mệnh mới.</h3>
+        <p>Tái sinh đưa cảnh giới, EXP hiện tại và HP/MP cơ bản về Phàm Nhân. Linh Căn, đạo tu, công pháp, trang bị, kho riêng, nhà cấp cao nhất và tổng tu vi vẫn giữ nguyên.</p>
+        <div className="housing-stats"><span><Sparkles size={17} /> Hấp thụ vĩnh viễn <b>+50%</b></span>
+          <span><Gem size={17} /> Thượng Giới <b>+35% linh khí</b></span></div>
+        <p>Sau khi tái sinh, cổng Thượng Giới trong mật thất mở ra: quái cấp cao, EXP lớn hơn và tỉ lệ pháp bảo hiếm tăng mạnh. Chỉ tái sinh <b>một lần</b> trên mỗi nhân vật.</p>
+        {character.rebirths ? <div className="housing-hint">Bạn đã tái sinh. Hãy đến Cổng Thượng Giới ở phía đông mật thất.</div> : <>
+          <label className="rebirth-confirm"><input type="checkbox" checked={reincarnationConfirmed} onChange={(event) => setReincarnationConfirmed(event.target.checked)} />
+            Tôi hiểu cảnh giới, EXP và HP/MP sẽ bắt đầu lại từ Phàm Nhân.</label>
+          <button className="btn btn-gold btn-full" disabled={!connected || !altarNear || character.realm !== MAX_REALM || character.minorStage !== 9 || !reincarnationConfirmed}
+            onClick={() => { onAction('rebirth:choose'); setReincarnationConfirmed(false); }}>Lựa chọn tái sinh <ArrowRight size={16} /></button>
+          {!altarNear && <div className="housing-hint">Đứng trước Tái Sinh Đài trong mật thất để thực hiện.</div>}
+        </>}
       </div>}
 
       {panel === 'inventory' && <div className="drawer-scroll">
+        <button className="home-shortcut" onClick={() => onNavigate('home')}><House size={19} /> Nhà riêng · Rương đồ <span>{character.stash.length}/{capacity}</span> <ArrowRight size={16} /></button>
         <div className="drawer-section-heading"><Shield size={15} /> MƯỜI Ô TRANG BỊ <span>{Object.keys(character.equipment).length}/10</span></div>
         <div className="equipment-grid">{EQUIPMENT_SLOTS.map((slot) => {
           const owned = equipped(slot);
@@ -136,11 +172,13 @@ export function Panels({ panel, onClose, onNavigate, character, leaderboard, ros
           <div className="help-tip"><strong>01 / Tĩnh tọa & thăng tầng</strong><p>Thu EXP tích lũy ngay cả lúc rời game (tối đa 8 giờ). Luyện Khí trở lên có 9 tầng, chi phí tăng ×5 mỗi tầng.</p></div>
           <div className="help-tip"><strong>02 / Nhiệm vụ ngày</strong><p>Đi qua cửa Nhiệm Vụ Các tới Trưởng Lão Chấp Sự ở X −17, Z 18.5 để nhận 5 nhiệm vụ mỗi ngày. Thư cần chuyển tại Chưởng Môn hoặc Cửa hàng.</p></div>
           <div className="help-tip"><strong>03 / Độ kiếp & đạo tu</strong><p>Đạt tầng 9 và đủ EXP để vượt 9 đạo lôi. Trúc Cơ Đan tăng 20% cơ hội thành công; đến Trúc Cơ được chọn Kiếm/Pháp/Thể Tu.</p></div>
-          <div className="help-tip"><strong>04 / Hoang Vực</strong><p>Đến Cổng Hoang Vực (X 0, Z 2), nhấn E hoặc chạm cổng để dịch chuyển đến bãi quái. Cổng Hồi Tông (X 0, Z 34) đưa bạn về nhà. Nhấp chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
+          <div className="help-tip"><strong>04 / Nhà riêng, hồ và Thượng Giới</strong><p>Nhà riêng Đệ Tử Xá tại X −33, Z 12: rương theo UID, nâng cấp khi thăng đại cảnh giới (+5–20% hấp thụ). Hồ Tụ Linh X −10, Z −24 thêm 15% khi AFK tại hồ. Đạt Tiên Đế tầng 9, tìm mật thất X 32, Z 20 để tái sinh một lần, +50% vĩnh viễn và mở Thượng Giới (+35% linh khí).</p></div>
+          <div className="help-tip"><strong>05 / Hoang Vực</strong><p>Đến Cổng Hoang Vực (X 0, Z 2), nhấn E hoặc chạm cổng để dịch chuyển đến bãi quái. Cổng Hồi Tông (X 0, Z 34) đưa bạn về nhà. Nhấp chọn mục tiêu, xoay người rồi chém hoặc dùng công pháp.</p></div>
         </div>
         <div className="help-group"><div className="drawer-section-heading"><BookOpen size={16} /> ĐI ĐẾN</div>
           <div className="help-links">
             <button onClick={() => onNavigate('sect')}><Crown size={16} /> Chính Điện</button>
+            <button onClick={() => onNavigate('home')}><House size={16} /> Nhà riêng</button>
             <button onClick={() => onNavigate('quests')}><BookOpen size={16} /> Nhiệm vụ</button>
             <button onClick={() => onNavigate('shop')}><Gem size={16} /> Cửa hàng</button>
             <button onClick={() => onNavigate('craft')}><FlaskConical size={16} /> Chế tạo</button>

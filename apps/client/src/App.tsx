@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { AlertCircle, CheckCircle2, LoaderCircle, Sparkles, X } from 'lucide-react';
-import { DEFAULT_APPEARANCE, PORTALS, type ActionResult, type Appearance, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
+import { DEFAULT_APPEARANCE, ASCENDANT_GATE, HOME_CHEST, HOME_EXIT, HOME_GATE, MAX_REALM, PORTALS, REBIRTH_ALTAR, SANCTUM_EXIT, SECRET_GATE, isWorldZone, type ActionResult, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
   type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { WorldScene, type PreviewOptions } from './game/WorldScene';
 import { type VisualEffect } from './game/WorldDecor';
@@ -39,8 +39,6 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [panel, setPanel] = useState<ActivePanel>(null);
-  const [appearanceDraft, setAppearanceDraft] = useState<Appearance | null>(null);
-  const [editorView, setEditorView] = useState<'body' | 'face'>('body');
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [pathModal, setPathModal] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -233,7 +231,7 @@ export function App() {
     socketRef.current?.disconnect();
     sessionStorage.removeItem(DEMO_KEY);
     if (session?.kind === 'firebase') await logoutFirebase().catch(() => {});
-    setSession(null); setCharacter(null); setWorld(null); setTrial(null); setMessages([]); setPanel(null); setAppearanceDraft(null); setSelectedTarget(null);
+    setSession(null); setCharacter(null); setWorld(null); setTrial(null); setMessages([]); setPanel(null); setSelectedTarget(null);
     setPhase('login'); setError(null);
   };
 
@@ -254,15 +252,7 @@ export function App() {
     } catch (e) { notify(e instanceof Error ? e.message : 'Thao tác thất bại.', 'bad'); return false; }
   }, [notify]);
 
-  const openPanel = (next: ActivePanel) => {
-    if (next === 'appearance' && character) { setAppearanceDraft({ ...character.appearance }); setEditorView('body'); }
-    if (panel === 'appearance' && next !== 'appearance') setAppearanceDraft(null);
-    setPanel(next);
-  };
-  const saveAppearance = async () => {
-    if (!appearanceDraft || !character) return;
-    if (await action('appearance:update', { appearance: appearanceDraft })) openPanel(null);
-  };
+  const openPanel = (next: ActivePanel) => setPanel(next);
   const retryWorld = () => {
     setError(null);
     setWorld(null);
@@ -303,13 +293,24 @@ export function App() {
       if (event.code === 'KeyQ') openPanel(panel === 'quests' ? null : 'quests');
       if (event.code === 'KeyK') openPanel(panel === 'skills' ? null : 'skills');
       if (event.code === 'KeyF' && character.scene === 'tribulation' && !panel) void action('guard');
-      const gate = character.scene === 'tribulation' ? null : PORTALS[character.scene];
       const position = livePositionRef.current ?? character.position;
-      if (event.code === 'KeyE' && gate && !panel && !pathModal &&
-        Math.hypot(position.x - gate.position.x, position.z - gate.position.z) <= gate.radius) {
-        event.preventDefault(); travel();
+      const near = (target: { position: { x: number; z: number }; radius: number }) =>
+        Math.hypot(position.x - target.position.x, position.z - target.position.z) <= target.radius;
+      if (event.code === 'KeyE' && !panel && !pathModal) {
+        const gate = isWorldZone(character.scene) ? PORTALS[character.scene] : null;
+        if (gate && near(gate)) { event.preventDefault(); travel(); }
+        else if (character.scene === 'overworld' && near(HOME_GATE)) { event.preventDefault(); void action('home:enter'); }
+        else if (character.scene === 'overworld' && (character.rebirths > 0 || character.realm === MAX_REALM && character.minorStage === 9) && near(SECRET_GATE)) {
+          event.preventDefault(); void action('sanctum:enter');
+        }
+        else if (character.scene === 'residence' && near(HOME_CHEST)) { event.preventDefault(); openPanel('home'); }
+        else if (character.scene === 'residence' && near(HOME_EXIT)) { event.preventDefault(); void action('home:exit'); }
+        else if (character.scene === 'sanctum' && character.rebirths > 0 && near(ASCENDANT_GATE)) { event.preventDefault(); void action('sanctum:ascend'); }
+        else if (character.scene === 'sanctum' && !character.rebirths && near(REBIRTH_ALTAR)) { event.preventDefault(); openPanel('rebirth'); }
+        else if (character.scene === 'sanctum' && near(SANCTUM_EXIT)) { event.preventDefault(); void action('sanctum:exit'); }
       }
-      if ((event.code === 'KeyJ' || event.code === 'Space') && !panel && !pathModal && character.scene === 'wilderness') {
+      if ((event.code === 'KeyJ' || event.code === 'Space') && !panel && !pathModal &&
+          (character.scene === 'wilderness' || character.scene === 'ascendant')) {
         event.preventDefault(); basicAttack();
       }
       if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(event.code) && !panel && !pathModal) {
@@ -319,7 +320,7 @@ export function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [character?.isAdmin, character?.hotbar, character?.scene,
+  }, [character?.isAdmin, character?.hotbar, character?.scene, character?.rebirths, character?.realm, character?.minorStage,
     phase, panel, pathModal, skill, basicAttack, action, travel]);
 
   const showCharacter = inWorld ? character : null;
@@ -328,9 +329,10 @@ export function App() {
   const scenePreview = phase === 'reveal' && character ? { ...preview, root: character.root } : preview;
   return <div className="app-shell">
     <WorldScene character={showCharacter} world={phase === 'game' ? world : null} trial={trial} preview={scenePreview}
-      appearanceDraft={panel === 'appearance' ? appearanceDraft : null} editorView={panel === 'appearance' ? editorView : null} effects={effects}
+      effects={effects}
       touch={touchMovement} onInput={input} onPickup={pickup} onGather={gather} onPortal={travel} onNpc={interactNpc}
-      onTarget={setSelectedTarget} selectedTarget={selectedTarget} />
+      onTarget={setSelectedTarget} selectedTarget={selectedTarget}
+      onWorldAction={(event) => { void action(event); }} onOpenPanel={openPanel} />
     <div className="vignette" aria-hidden="true" />
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}
     {phase === 'login' && <LoginScreen demoAvailable={demoAvailable} firebaseAvailable={firebaseEnabled && !demoAvailable} busy={busy} error={error}
@@ -351,8 +353,7 @@ export function App() {
         onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onAttack={basicAttack} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
       <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} character={panelCharacter ?? character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
-        appearanceDraft={appearanceDraft} onAppearanceChange={setAppearanceDraft} onSaveAppearance={() => { void saveAppearance(); }} connected={connected}
-        editorView={editorView} onEditorView={setEditorView} />
+        connected={connected} />
       {pathModal && character.realm >= 2 && !character.path && <PathModal onClose={() => setPathModal(false)} onSelect={selectPath} />}
     </>}
     <div className="toast-stack" aria-live="polite">{toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.kind === 'bad' ? <AlertCircle size={18} /> : toast.kind === 'good' ? <CheckCircle2 size={18} /> : <Sparkles size={18} />}<span>{toast.text}</span><button aria-label="Đóng thông báo" onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}><X size={14} /></button></div>)}</div>

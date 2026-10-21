@@ -49,11 +49,15 @@ export const CharacterModel = mongoose.model('Character', new Schema({
   cultivation: { type: Number, default: 0, min: 0 },
   totalCultivation: { type: Number, default: 0, min: 0 },
   lastCultivatedAt: { type: Number, required: true },
+  cultivationBank: { type: Number, min: 0, default: 0 },
+  highestRealm: { type: Number, min: 0, max: MAX_REALM, default: 0 },
+  rebirths: { type: Number, min: 0, max: 1, default: 0 },
+  stash: { type: [inventoryItemSchema], default: [] },
   hp: { type: Number, required: true }, mp: { type: Number, required: true },
   maxHp: { type: Number, required: true }, maxMp: { type: Number, required: true },
   position: { type: vectorSchema, required: true },
   rotation: { type: Number, required: true },
-  scene: { type: String, enum: ['overworld', 'wilderness', 'tribulation'], default: 'overworld' },
+  scene: { type: String, enum: ['overworld', 'wilderness', 'ascendant', 'residence', 'sanctum', 'tribulation'], default: 'overworld' },
   worldVersion: { type: Number, default: 1 }, // legacy single-map records migrate once on join
   equipment: { type: new Schema(equipmentSlots, { _id: false }), default: () => ({}) },
   // Canonical ownership list. EquipmentModel is a queryable materialized view of it.

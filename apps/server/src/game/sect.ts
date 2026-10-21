@@ -24,7 +24,7 @@ export function advanceDaily(c: CharacterState, kind: string, amount = 1): boole
   let changed = false;
   for (const entry of c.dailyQuests) {
     const quest = DAILY_QUESTS[entry.id];
-    if (!quest || entry.claimed || (quest.kind !== kind && !(kind === 'wolf' || kind === 'boar' || kind === 'shade' ? quest.kind === 'kill' : false))) continue;
+    if (!quest || entry.claimed || (quest.kind !== kind && !(kind === 'wolf' || kind === 'boar' || kind === 'shade' || kind === 'spirit_stag' || kind === 'sky_wraith' ? quest.kind === 'kill' : false))) continue;
     const next = Math.min(quest.target, entry.progress + amount);
     if (next > entry.progress) { entry.progress = next; changed = true; }
   }

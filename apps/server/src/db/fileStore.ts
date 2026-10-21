@@ -31,9 +31,11 @@ export class FileStore implements CharacterStore {
       !character.root || !character.position || !character.resources || !character.equipment ||
       !Array.isArray(character.inventory) || !Array.isArray(character.dailyQuests) ||
       !Array.isArray(character.learnedSkills) || !Array.isArray(character.hotbar) ||
-      !['overworld', 'wilderness', 'tribulation'].includes(character.scene ?? ''))
+      !['overworld', 'wilderness', 'ascendant', 'residence', 'sanctum', 'tribulation'].includes(character.scene ?? ''))
       throw new Error(`Invalid character save: ${file}`);
-    return { ...character, appearance: normalizeAppearance(character.appearance) } as CharacterState;
+    return { ...character, appearance: normalizeAppearance(character.appearance),
+      cultivationBank: character.cultivationBank ?? 0, highestRealm: Math.max(character.highestRealm ?? 0, character.devMode ? character.devModeBackup?.realm ?? 0 : character.realm ?? 0),
+      rebirths: character.rebirths ?? 0, stash: Array.isArray(character.stash) ? character.stash : [] } as CharacterState;
   }
 
   private async write(character: CharacterState): Promise<void> {

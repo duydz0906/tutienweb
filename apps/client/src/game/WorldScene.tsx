@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SKILLS, type Appearance, type Gender, type NpcId, type OwnCharacter, type PublicPlayer, type SpiritRoot,
+import { SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type NpcId, type OwnCharacter, type PublicPlayer, type SpiritRoot,
   type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { AdminFireTrail, Avatar } from './Avatar';
 import { SceneEngine } from './SceneEngine';
@@ -9,6 +9,8 @@ import { Overworld, SkillVfx, TrialArena, type VisualEffect } from './WorldDecor
 import { SectScene } from './SectScene';
 import { SectArchitecture } from './SectArchitecture';
 import { Wilderness } from './Wilderness';
+import { ResidenceInterior, SanctumInterior } from './PrivateScenes';
+import { SectWayfinding } from './SectWayfinding';
 import { CombatFeedback } from './CombatEffects';
 
 const BloomEffects = lazy(() => import('./BloomEffects'));
@@ -16,11 +18,12 @@ const BloomEffects = lazy(() => import('./BloomEffects'));
 export type PreviewOptions = { name: string; gender: Gender; appearance: Appearance; view: 'body' | 'face'; root?: SpiritRoot };
 type Props = {
   character: OwnCharacter | null; world: WorldSnapshot | null; trial: TribulationState | null;
-  preview: PreviewOptions; appearanceDraft?: Appearance | null; editorView?: 'body' | 'face' | null; effects: VisualEffect[];
+  preview: PreviewOptions; effects: VisualEffect[];
   touch: React.RefObject<{ right: number; forward: number }>;
   onInput: (input: { x: number; z: number; rotation: number }) => void;
   onPickup: (id: string) => void; onGather: (id: string) => void; onPortal: () => void;
   onNpc: (id: NpcId) => void; onTarget: (id: string) => void; selectedTarget: string | null;
+  onWorldAction: (event: string) => void; onOpenPanel: (panel: 'home' | 'rebirth') => void;
 };
 
 function publicFromOwn(c: OwnCharacter): PublicPlayer {
@@ -33,14 +36,14 @@ function publicFromOwn(c: OwnCharacter): PublicPlayer {
   };
 }
 
-function SceneContent({ character, world, trial, preview, appearanceDraft, editorView, effects, touch, onInput, onPickup,
-  onGather, onPortal, onNpc, onTarget, selectedTarget }: Props) {
+function SceneContent({ character, world, trial, preview, effects, touch, onInput, onPickup,
+  onGather, onPortal, onNpc, onTarget, selectedTarget, onWorldAction, onOpenPanel }: Props) {
   const { scene, camera, gl } = useThree();
   const engine = useRef<SceneEngine | null>(null);
   const avatar = useRef<THREE.Group>(null);
   const lastCinematic = useRef('');
   const inTrial = character?.scene === 'tribulation';
-  const zone = character?.scene === 'wilderness' ? 'wilderness' : 'overworld';
+  const zone = character && isWorldZone(character.scene) ? character.scene : 'overworld';
   // Snapshot packets from the previous zone must never be rendered after a teleport.
   const visibleWorld = !character || world?.scene === character.scene ? world : null;
   useEffect(() => {
@@ -48,7 +51,8 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
     engine.current = controller;
     return () => { controller.dispose(); engine.current = null; };
   }, [scene, camera, gl]);
-  useEffect(() => { engine.current?.setAtmosphere(Boolean(inTrial), Boolean(character?.isAdmin), zone === 'wilderness'); }, [inTrial, character?.isAdmin, zone]);
+  useEffect(() => { engine.current?.setAtmosphere(Boolean(inTrial), Boolean(character?.isAdmin), zone === 'wilderness',
+    zone === 'ascendant', character?.scene === 'residence' || character?.scene === 'sanctum'); }, [inTrial, character?.isAdmin, character?.scene, zone]);
   useEffect(() => {
     if (!character) return;
     document.body.style.cursor = '';
@@ -57,9 +61,8 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
     engine.current?.enterZone(character.scene, character.position);
   }, [character?.id, character?.scene]);
   useEffect(() => {
-    engine.current?.setPreviewView(character ? editorView ?? null : preview.view,
-      character && editorView ? avatar.current?.rotation.y ?? character.rotation : undefined);
-  }, [character?.id, preview.view, editorView]);
+    engine.current?.setPreviewView(character ? null : preview.view);
+  }, [character?.id, preview.view]);
   useEffect(() => {
     const latest = effects.at(-1);
     if (!latest || latest.visualId === lastCinematic.current || !character) return;
@@ -71,14 +74,12 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
     }
   }, [effects, character?.id]);
 
-  const local = useMemo<PublicPlayer>(() => character ? { ...publicFromOwn(character),
-    appearance: appearanceDraft ?? character.appearance,
-  } : {
+  const local = useMemo<PublicPlayer>(() => character ? publicFromOwn(character) : {
     id: 'preview', name: preview.name || 'Tân đệ tử', position: { x: 0, y: 0, z: 10 },
     rotation: 0, hp: 120, maxHp: 120, realm: 0, minorStage: 0, path: null, gender: preview.gender,
     appearance: preview.appearance, root: preview.root ?? { tier: 'chan', elements: ['moc', 'thuy'], multiplier: 1 },
     equipment: { robe: 'novice_robe' }, isAdmin: false, devMode: false,
-  }, [character, preview, appearanceDraft]);
+  }, [character, preview]);
   const others = useMemo(() => (visibleWorld?.players ?? []).filter((player) => player.id !== character?.id), [visibleWorld?.players, character?.id]);
   const serverPosition = character && visibleWorld?.players.find((player) => player.id === character.id)?.position || local.position;
 
@@ -89,26 +90,36 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
       const controller = engine.current;
       if (!controller) return;
       controller.setTouchInput(touch.current.right, touch.current.forward);
-      onInput(editorView ? { x: 0, z: 0, rotation: avatar.current?.rotation.y ?? character.rotation } : controller.getMovement());
+      onInput(controller.getMovement());
     };
     const timer = window.setInterval(send, 50);
     return () => window.clearInterval(timer);
-  }, [character?.id, character?.scene, editorView, onInput, touch]);
+  }, [character?.id, character?.scene, onInput, touch]);
 
   useFrame((_, delta) => {
     const controller = engine.current;
     if (!controller) return;
     controller.setTouchInput(touch.current.right, touch.current.forward);
-    controller.update(delta, avatar.current, serverPosition, character?.devMode ? 30 : 6, Boolean(character) && !editorView);
+    controller.update(delta, avatar.current, serverPosition, character?.devMode ? 30 : 6, Boolean(character));
   });
 
   return <>
-    {inTrial ? <TrialArena trial={trial} playerPosition={serverPosition} /> : <>
-      <Overworld zone={zone} boss={visibleWorld?.boss ?? null} drops={visibleWorld?.drops ?? []} formations={visibleWorld?.formations ?? []} onPickup={onPickup} />
+    {inTrial ? <TrialArena trial={trial} playerPosition={serverPosition} /> : character?.scene === 'residence' ?
+      <ResidenceInterior name={character.name} level={houseLevel(character.devMode ? MAX_REALM : character.highestRealm)}
+        playerPosition={serverPosition} onOpenStorage={() => onOpenPanel('home')} onExit={() => onWorldAction('home:exit')} /> :
+      character?.scene === 'sanctum' ? <SanctumInterior playerPosition={serverPosition} reborn={character.rebirths > 0}
+        onOpenRebirth={() => onOpenPanel('rebirth')} onAscend={() => onWorldAction('sanctum:ascend')}
+        onExit={() => onWorldAction('sanctum:exit')} /> : <>
+      <Overworld zone={zone} playerPosition={serverPosition} boss={visibleWorld?.boss ?? null}
+        drops={visibleWorld?.drops ?? []} formations={visibleWorld?.formations ?? []} onPickup={onPickup} />
       {zone === 'overworld' ? <>
         <SectArchitecture playerPosition={serverPosition} />
-        {character && <SectScene playerPosition={serverPosition} onInteract={onNpc} onTravel={onPortal} />}
-      </> : character && <Wilderness monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
+        {character && <>
+          <SectScene playerPosition={serverPosition} onInteract={onNpc} onTravel={onPortal} />
+          <SectWayfinding character={character} playerPosition={serverPosition}
+            onEnterHome={() => onWorldAction('home:enter')} onEnterSanctum={() => onWorldAction('sanctum:enter')} />
+        </>}
+      </> : character && <Wilderness zone={zone} monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
     <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}
@@ -126,12 +137,25 @@ function SceneContent({ character, world, trial, preview, appearanceDraft, edito
   </>;
 }
 
+function supportsWebGL2(): boolean {
+  try {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('webgl2');
+    if (!context) return false;
+    context.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch { return false; }
+}
+
 export function WorldScene(props: Props) {
+  // R3F's fallback alone does not catch every renderer-construction error (notably
+  // WebGL disabled by policy). Keep login and HUD usable rather than blanking the app.
+  const supported = useMemo(supportsWebGL2, []);
   return <div className="world-canvas" aria-label="Thế giới 3D Vân Thượng">
-    <Canvas shadows dpr={[1, window.matchMedia('(max-width: 720px)').matches ? 1.2 : 1.65]} camera={{ fov: 52, near: 0.1, far: 210, position: [8, 8, 20] }}
+    {supported ? <Canvas shadows dpr={[1, window.matchMedia('(max-width: 720px)').matches ? 1.2 : 1.65]} camera={{ fov: 52, near: 0.1, far: 210, position: [8, 8, 20] }}
       gl={{ antialias: true, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping }}
       fallback={<div className="webgl-fallback">Trình duyệt cần hỗ trợ WebGL để hiển thị thế giới 3D.</div>}>
       <SceneContent {...props} />
-    </Canvas>
+    </Canvas> : <div className="webgl-fallback">Trình duyệt cần hỗ trợ WebGL 2 để hiển thị thế giới 3D.</div>}
   </div>;
 }

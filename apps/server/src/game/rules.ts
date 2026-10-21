@@ -2,8 +2,9 @@ import { randomInt, randomUUID } from 'node:crypto';
 import {
   CONSUMABLES, DEFAULT_APPEARANCE, EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS,
   HAIR_STYLES, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, ROBE_COLORS, ROOT_MULTIPLIER, SKIN_TONES, expForStage,
+  HOME_CHEST, REBIRTH_ALTAR, absorptionMultiplier, inSpiritLake, storageCapacity,
   type Appearance, type CharacterState, type Element, type EquipmentSlot,
-  type Gender, type SpiritRoot, type Vector3,
+  type Gender, type SpiritRoot, type Vector3, type WorldZone,
 } from '@van-thuong/shared';
 
 const COMMON_ELEMENTS: Element[] = ['kim', 'moc', 'thuy', 'hoa', 'tho'];
@@ -12,6 +13,7 @@ export const GOD_STAT = 999_999_999;
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
 export const WORLD_RADIUS = 45;
 export const TRIAL_RADIUS = 17;
+export const PRIVATE_RADIUS = 8.5;
 
 /** Integer draw has no floating-point bias: 6000 + 3000 + 900 + 100 = 10000. */
 export function rollSpiritRoot(draw: (max: number) => number = randomInt): SpiritRoot {
@@ -70,9 +72,10 @@ export function newCharacter(ownerUid: string, data: ReturnType<typeof parseCrea
   return {
     id: randomUUID(), ownerUid, name: data.name, gender: data.gender, appearance: data.appearance,
     root: rollSpiritRoot(), path: null, realm: 0, minorStage: 0,
-    cultivation: 12, totalCultivation: 12, lastCultivatedAt: now,
+    cultivation: 12, totalCultivation: 12, lastCultivatedAt: now, cultivationBank: 0,
+    highestRealm: 0, rebirths: 0, stash: [],
     hp: 120, mp: 100, maxHp: 120, maxMp: 100,
-    position: { x: 0, y: 0, z: 10 }, rotation: Math.PI, scene: 'overworld', worldVersion: 2,
+    position: { x: 0, y: 0, z: 10 }, rotation: 0, scene: 'overworld', worldVersion: 2,
     equipment: { weapon, robe },
     inventory: [
       { instanceId: weapon, itemId: 'wooden_sword', acquiredAt: now },
@@ -85,18 +88,75 @@ export function newCharacter(ownerUid: string, data: ReturnType<typeof parseCrea
   };
 }
 
-export function gainCultivation(character: CharacterState, now = Date.now()): number {
-  const elapsed = Math.max(0, Math.min(now - character.lastCultivatedAt, OFFLINE_CAP_MS));
-  const rate = 2 * character.root.multiplier;
-  const gain = Math.floor((elapsed / 1000) * rate);
+/** Bonus percentages add before the spirit-root multiplier; zone and coordinates are authoritative. */
+export const isAtSpiritLake = inSpiritLake;
+export function cultivationRate(c: CharacterState, at: Pick<CharacterState, 'scene' | 'position'> = c): number {
+  return 2 * c.root.multiplier * absorptionMultiplier({ ...c, scene: at.scene, position: at.position });
+}
+
+/** Freeze earned EXP before a portal, lake crossing or realm change, without claiming it early. */
+export function bankCultivation(c: CharacterState, now = Date.now(), at: Pick<CharacterState, 'scene' | 'position'> = c): number {
+  const elapsed = Math.max(0, Math.min(now - c.lastCultivatedAt, OFFLINE_CAP_MS));
+  const rate = cultivationRate(c, at);
+  const gain = Math.floor(elapsed / 1000 * rate);
   if (gain <= 0) return 0;
+  c.cultivationBank += gain;
+  // Preserve fractional progress, discard time beyond the offline cap.
+  c.lastCultivatedAt = now - (elapsed >= OFFLINE_CAP_MS ? 0 : elapsed - gain / rate * 1000);
+  return gain;
+}
+
+export function gainCultivation(character: CharacterState, now = Date.now()): number {
+  bankCultivation(character, now);
+  const gain = character.cultivationBank;
+  if (gain <= 0) return 0;
+  character.cultivationBank = 0;
   character.cultivation += gain;
   character.totalCultivation += gain;
-  // Preserve sub-second progress; if offline beyond cap, discard the excess.
-  character.lastCultivatedAt = now - (elapsed >= OFFLINE_CAP_MS ? 0 : (elapsed - (gain / rate) * 1000));
   character.hp = Math.min(character.maxHp, character.hp + Math.floor(gain / 3));
   character.mp = Math.min(character.maxMp, character.mp + Math.floor(gain / 2));
   return gain;
+}
+
+export function canEnterSanctum(c: CharacterState): boolean {
+  return c.rebirths > 0 || c.realm === MAX_REALM && c.minorStage === LEVEL_CONFIG.minorStages;
+}
+
+/** A single prestige cycle: house, possessions and lifetime score persist; realm/stats restart. */
+export function reincarnate(c: CharacterState, now = Date.now()): void {
+  if (c.scene !== 'sanctum' || c.hp <= 0 || distanceXZ(c.position, REBIRTH_ALTAR.position) > REBIRTH_ALTAR.radius)
+    throw new Error('Hãy đến trước Tái Sinh Đài trong mật thất.');
+  if (c.rebirths > 0) throw new Error('Bạn đã tái sinh một lần, không thể nhận lại phần thưởng.');
+  if (c.realm !== MAX_REALM || c.minorStage !== LEVEL_CONFIG.minorStages)
+    throw new Error('Chỉ Tiên Đế tầng 9 mới có thể tái sinh.');
+  c.highestRealm = MAX_REALM;
+  c.rebirths = 1;
+  c.realm = 0; c.minorStage = 0; c.cultivation = 12;
+  c.cultivationBank = 0; c.lastCultivatedAt = now;
+  c.maxHp = 120; c.maxMp = 100; c.hp = 120; c.mp = 100;
+  // The spirit root, learned skills, equipment, stash and lifetime cultivation do not reroll.
+}
+
+/** Unique item instances move between two arrays; their IDs and ownership never come from the client. */
+export function moveStoredItem(c: CharacterState, direction: unknown, instanceId: unknown): void {
+  if (c.scene !== 'residence' || c.hp <= 0 || distanceXZ(c.position, HOME_CHEST.position) > HOME_CHEST.radius)
+    throw new Error('Hãy đến gần rương trong nhà riêng để cất hoặc lấy đồ.');
+  if (typeof instanceId !== 'string' || !instanceId || instanceId.length > 100 ||
+      (direction !== 'deposit' && direction !== 'withdraw')) throw new Error('Vật phẩm hoặc thao tác không hợp lệ.');
+  const from = direction === 'deposit' ? c.inventory : c.stash;
+  const to = direction === 'deposit' ? c.stash : c.inventory;
+  const index = from.findIndex((item) => item.instanceId === instanceId);
+  if (index < 0 || to.some((item) => item.instanceId === instanceId)) throw new Error('Vật phẩm không thuộc kho/túi đồ của bạn.');
+  if (direction === 'deposit' && Object.values(c.equipment).includes(instanceId))
+    throw new Error('Tháo trang bị trước khi cất vào rương.');
+  if (to.length >= (direction === 'deposit' ? storageCapacity(Math.max(c.highestRealm, c.devMode ? MAX_REALM : c.realm)) : 80))
+    throw new Error(direction === 'deposit' ? 'Rương đã đầy. Hãy thăng cảnh giới để mở rộng nhà.' : 'Túi đồ đã đầy (80/80).');
+  to.push(from.splice(index, 1)[0]);
+}
+
+/** Base wilderness drops 5%, reborn players 20%; Ascendant world 55% with immortal gear. */
+export function artifactDropChance(scene: WorldZone, reborn: boolean): number {
+  return scene === 'ascendant' && reborn ? 55 : scene === 'wilderness' ? reborn ? 20 : 5 : 0;
 }
 
 export function breakthroughCost(realm: number, minorStage = LEVEL_CONFIG.minorStages): number | null {
@@ -124,6 +184,7 @@ export function completeMajorBreakthrough(c: CharacterState): number {
   if (cost === null || c.cultivation < cost) throw new Error('Chưa đủ điều kiện đột phá Đại cảnh giới.');
   c.cultivation -= cost;
   c.realm++;
+  c.highestRealm = Math.max(c.highestRealm, c.realm);
   c.minorStage = 1;
   c.maxHp += LEVEL_CONFIG.majorReward.maxHp;
   c.maxMp += LEVEL_CONFIG.majorReward.maxMp;

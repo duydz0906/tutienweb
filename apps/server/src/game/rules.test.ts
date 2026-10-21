@@ -59,7 +59,7 @@ describe('characters, AFK and equipment', () => {
     expect(gainCultivation(c, 101_750)).toBe(0);
     const longGone = newCharacter('demo-offline', data, 1000);
     longGone.root.multiplier = 1;
-    expect(gainCultivation(longGone, 1000 + OFFLINE_CAP_MS * 3)).toBe(57_600);
+    expect(gainCultivation(longGone, 1000 + OFFLINE_CAP_MS * 3)).toBe(60_480);
     expect(gainCultivation(longGone, 1000 + OFFLINE_CAP_MS * 3)).toBe(0);
   });
   it('can only equip a genuinely owned inventory instance', () => {
