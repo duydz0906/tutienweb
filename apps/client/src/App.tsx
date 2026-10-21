@@ -49,6 +49,8 @@ export function App() {
   const [now, setNow] = useState(Date.now());
   const [hudPrefs, setHudPrefs] = useState<HudPrefs>(loadHudPrefs);
   const [lastCast, setLastCast] = useState<{ id: number; name: string } | null>(null);
+  /** Timestamp of the last Space press; the avatar turns it into a purely visual hop. */
+  const [jumpAt, setJumpAt] = useState(0);
   const socketRef = useRef<Socket | null>(null);
   const touchMovement = useRef({ right: 0, forward: 0 });
   const previousRealm = useRef(0);
@@ -323,6 +325,9 @@ export function App() {
       if (event.code === 'KeyC' && !panel) updateHudPrefs({ chatOpen: !hudPrefs.chatOpen });
       if (event.code === 'KeyT' && !panel) updateHudPrefs({ cultivateOpen: !hudPrefs.cultivateOpen });
       if (event.code === 'KeyR' && !panel && !pathModal) void action('flight:toggle');
+      // Y pins the camera behind the character (locked third person).
+      if (event.code === 'KeyY' && !panel && !pathModal && !event.ctrlKey && !event.metaKey)
+        updateHudPrefs({ cameraLock: !hudPrefs.cameraLock });
       if (event.code === 'KeyF' && character.scene === 'tribulation' && !panel) void action('guard');
       const position = livePositionRef.current ?? character.position;
       const near = (target: { position: { x: number; z: number }; radius: number }) =>
@@ -341,9 +346,15 @@ export function App() {
         else if (character.scene === 'sanctum' && !character.rebirths && near(REBIRTH_ALTAR)) { event.preventDefault(); openPanel('rebirth'); }
         else if (character.scene === 'sanctum' && near(SANCTUM_EXIT)) { event.preventDefault(); void action('sanctum:exit'); }
       }
-      if ((event.code === 'KeyJ' || event.code === 'Space') && !panel && !pathModal &&
+      if (event.code === 'KeyJ' && !panel && !pathModal &&
           (character.scene === 'wilderness' || character.scene === 'ascendant')) {
         event.preventDefault(); basicAttack();
+      }
+      // Space hops on the spot: presentation only, the server position stays on the ground plane.
+      if (event.code === 'Space' && !panel && !pathModal) {
+        event.preventDefault();
+        if (!character.flying && character.hp > 0 && character.scene !== 'tribulation' &&
+            character.scene !== 'residence' && character.scene !== 'sanctum') setJumpAt(Date.now());
       }
       const digit = /^Digit([1-9])$/.exec(event.code);
       if (digit && !panel && !pathModal) {
@@ -354,7 +365,7 @@ export function App() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [character?.isAdmin, character?.hotbar, character?.scene, character?.rebirths, character?.realm, character?.minorStage,
-    phase, panel, pathModal, skill, basicAttack, action, travel, hudPrefs.chatOpen, hudPrefs.cultivateOpen, updateHudPrefs]);
+    phase, panel, pathModal, skill, basicAttack, action, travel, hudPrefs.chatOpen, hudPrefs.cultivateOpen, hudPrefs.cameraLock, updateHudPrefs]);
 
   const showCharacter = inWorld ? character : null;
   const livePosition = world && character && world.scene === character.scene ? world.players.find((p) => p.id === character.id)?.position : null;
@@ -365,6 +376,7 @@ export function App() {
       effects={effects}
       touch={touchMovement} onInput={input} onPickup={pickup} onGather={gather} onPortal={travel} onNpc={interactNpc}
       onTarget={setSelectedTarget} selectedTarget={selectedTarget}
+      onAttack={basicAttack} cameraLock={hudPrefs.cameraLock} jumpAt={jumpAt}
       onWorldAction={(event) => { void action(event); }} onOpenPanel={openPanel} />
     <div className="vignette" aria-hidden="true" />
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}

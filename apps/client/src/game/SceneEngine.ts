@@ -20,6 +20,14 @@ export class SceneEngine {
   private dragging = false;
   private previousPointerX = 0;
   private previousPointerY = 0;
+  /** Left-button press bookkeeping so a camera drag never fires a stray attack. */
+  private primaryDown = false;
+  private primaryStartX = 0;
+  private primaryStartY = 0;
+  private primaryStartAt = 0;
+  private primaryAction: (() => void) | null = null;
+  /** Y lock: the camera trails the character's facing instead of orbiting manually. */
+  private cameraLocked = false;
   private yaw = 0.27;
   private pitch = 0.31;
   private distance = 14;
@@ -65,6 +73,7 @@ export class SceneEngine {
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onPointerUp);
+    canvas.addEventListener('contextmenu', this.onContextMenu);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
   }
 
@@ -79,6 +88,24 @@ export class SceneEngine {
     });
     return gltf.scene;
   }
+
+  /** Left click attacks; the callback is provided by the scene so it can use the live target. */
+  setPrimaryAction(action: (() => void) | null): void {
+    this.primaryAction = action;
+  }
+
+  /** Y: always third person, camera trails behind the character with no manual orbit. */
+  setCameraLock(locked: boolean): void {
+    if (this.cameraLocked === locked) return;
+    this.cameraLocked = locked;
+    if (locked) {
+      this.dragging = false;
+      this.pitch = 0.27;
+      this.distance = THREE.MathUtils.clamp(this.distance, 5.2, 11);
+    }
+  }
+
+  isCameraLocked(): boolean { return this.cameraLocked; }
 
   setTouchInput(right: number, forward: number): void {
     this.touchInput = { right: THREE.MathUtils.clamp(right, -1, 1), forward: THREE.MathUtils.clamp(forward, -1, 1) };
@@ -163,6 +190,14 @@ export class SceneEngine {
       this.lookAt.set(0, this.previewView === 'face' ? 1.62 : 1.65, 0);
     }
 
+    // Locked camera: chase the avatar's facing so the view stays a stable TPP shot.
+    if (this.cameraLocked && avatar && !this.previewView) {
+      const target = avatar.rotation.y + Math.PI;
+      const delta = Math.atan2(Math.sin(target - this.yaw), Math.cos(target - this.yaw));
+      this.yaw += delta * Math.min(1, dt * 3.4);
+      this.pitch += (0.27 - this.pitch) * Math.min(1, dt * 3);
+    }
+
     const cinematic = performance.now() < this.cinematicUntil;
     if (cinematic !== this.wasCinematic) {
       this.wasCinematic = cinematic;
@@ -240,6 +275,7 @@ export class SceneEngine {
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointercancel', this.onPointerUp);
+    this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     this.canvas.removeEventListener('wheel', this.onWheel);
   }
 
@@ -251,23 +287,52 @@ export class SceneEngine {
     }
   };
   private onKeyUp = (event: KeyboardEvent): void => { this.keys.delete(event.code); };
-  private onBlur = (): void => { this.keys.clear(); this.touchInput = { right: 0, forward: 0 }; this.dragging = false; };
+  private onBlur = (): void => {
+    this.keys.clear(); this.touchInput = { right: 0, forward: 0 };
+    this.dragging = false; this.primaryDown = false;
+  };
+  private onContextMenu = (event: Event): void => { event.preventDefault(); };
   private onPointerDown = (event: PointerEvent): void => {
+    // Right button (or a touch drag) orbits the camera; the left button attacks on release.
+    if (event.button === 2 || event.pointerType === 'touch') {
+      this.dragging = true;
+      this.previousPointerX = event.clientX;
+      this.previousPointerY = event.clientY;
+      this.canvas.setPointerCapture(event.pointerId);
+      return;
+    }
     if (event.button !== 0) return;
-    this.dragging = true;
-    this.previousPointerX = event.clientX;
-    this.previousPointerY = event.clientY;
+    this.primaryDown = true;
+    this.primaryStartX = event.clientX;
+    this.primaryStartY = event.clientY;
+    this.primaryStartAt = performance.now();
     this.canvas.setPointerCapture(event.pointerId);
   };
   private onPointerMove = (event: PointerEvent): void => {
+    // Left button: a click attacks, but dragging past a small threshold turns into a camera orbit.
+    if (!this.dragging && this.primaryDown && event.buttons === 1 &&
+        Math.hypot(event.clientX - this.primaryStartX, event.clientY - this.primaryStartY) > 10) {
+      this.dragging = true;
+      this.previousPointerX = this.primaryStartX;
+      this.previousPointerY = this.primaryStartY;
+    }
     if (!this.dragging) return;
+    // A locked camera ignores orbit input entirely; the character's facing drives the view.
+    if (this.cameraLocked) return;
     this.yaw -= (event.clientX - this.previousPointerX) * 0.006;
     this.pitch = THREE.MathUtils.clamp(this.pitch + (event.clientY - this.previousPointerY) * 0.004,
       this.isInterior || this.previewView ? 0.18 : -1.15, 1.13);
     this.previousPointerX = event.clientX;
     this.previousPointerY = event.clientY;
   };
-  private onPointerUp = (): void => { this.dragging = false; };
+  private onPointerUp = (event: PointerEvent): void => {
+    this.dragging = false;
+    if (!this.primaryDown) return;
+    this.primaryDown = false;
+    // Only a real click counts as an attack: dragging the camera or aiming must not swing.
+    const moved = Math.hypot(event.clientX - this.primaryStartX, event.clientY - this.primaryStartY);
+    if (event.button === 0 && moved <= 9 && performance.now() - this.primaryStartAt <= 420) this.primaryAction?.();
+  };
   private onWheel = (event: WheelEvent): void => {
     event.preventDefault();
     const [min, max] = this.previewView === 'face' ? [1.2, 3.5] : this.previewView ? [3.2, 8]

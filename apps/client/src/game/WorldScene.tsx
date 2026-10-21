@@ -25,6 +25,8 @@ type Props = {
   onPickup: (id: string) => void; onGather: (id: string) => void; onPortal: () => void;
   onNpc: (id: NpcId) => void; onTarget: (id: string) => void; selectedTarget: string | null;
   onWorldAction: (event: string) => void; onOpenPanel: (panel: 'home' | 'rebirth') => void;
+  /** Left click on the 3D world swings the basic attack, exactly like J. */
+  onAttack: () => void; cameraLock: boolean; jumpAt: number;
 };
 
 function publicFromOwn(c: OwnCharacter): PublicPlayer {
@@ -38,7 +40,7 @@ function publicFromOwn(c: OwnCharacter): PublicPlayer {
 }
 
 function SceneContent({ character, world, trial, preview, effects, touch, onInput, onPickup,
-  onGather, onPortal, onNpc, onTarget, selectedTarget, onWorldAction, onOpenPanel }: Props) {
+  onGather, onPortal, onNpc, onTarget, selectedTarget, onWorldAction, onOpenPanel, onAttack, cameraLock, jumpAt }: Props) {
   const { scene, camera, gl } = useThree();
   const engine = useRef<SceneEngine | null>(null);
   const avatar = useRef<THREE.Group>(null);
@@ -127,7 +129,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       </> : character && <Wilderness zone={zone === 'ascendant' ? 'ascendant' : 'wilderness'} monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
-    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}
+    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar} jumpAt={jumpAt}
       attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at} />
     {local.devMode && <AdminFireTrail player={local} avatarRef={avatar} />}
     {!inTrial && others.map((player) => <Avatar key={player.id} player={player}

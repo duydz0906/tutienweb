@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, ArrowRight, Backpack, BookOpen, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Compass, Crown, Feather, Flame,
+import { Activity, ArrowRight, Backpack, BookOpen, Camera, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Compass, Crown, Feather, Flame,
   FlaskConical, Gem, House, MapPin, Menu, MessageCircle, Radio, RotateCcw, ScrollText, Send, Shield, Sparkles, Swords, Trophy, Waves, Wifi, WifiOff, Zap } from 'lucide-react';
 import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HABITATS, HOME_CHEST, HOME_EXIT, HOME_GATE, HOTBAR_SLOTS, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, NPCS, PORTALS, REALMS, REBIRTH_ALTAR, ROOT_LABEL, SANCTUM_EXIT, SECRET_GATE, SECT_NPCS, SECT_RANK_LABEL, SKILLS, SPIRIT_LAKE, TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_NPCS, VILLAGE_RADIUS, WORLD_RADIUS, absorptionMultiplier, canRideMount, houseAbsorptionBonus, houseLevel, inSpiritLake, isWorldZone, skillRealm,
   type ChatMessage, type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
@@ -94,14 +94,23 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
     </header>
 
     <div className="hud-left">
-      <section className="hero-card glass-panel">
+      <section className={`hero-card glass-panel ${hudPrefs.heroOpen ? '' : 'collapsed'}`}>
+        <button className="hero-collapse" title={hudPrefs.heroOpen ? 'Thu gọn bảng nhân vật' : 'Mở rộng bảng nhân vật'}
+          aria-label={hudPrefs.heroOpen ? 'Thu gọn bảng nhân vật' : 'Mở rộng bảng nhân vật'} aria-expanded={hudPrefs.heroOpen}
+          onClick={() => onHudPrefs({ heroOpen: !hudPrefs.heroOpen })}>
+          {hudPrefs.heroOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
         <div className="hero-card-top"><div className="hero-portrait"><span>{character.name.charAt(0).toUpperCase()}</span><div className="portrait-ring" /></div><div className="hero-name-block"><div className="hero-eyebrow">{character.isAdmin ? '✦ THIÊN ĐẠO CHỦ' : character.devMode ? '✦ DEV SANDBOX' : 'ĐỆ TỬ VÂN THƯỢNG'}</div><h2>{character.name}</h2><div className="hero-realm"><span className="realm-diamond" />{REALMS[character.realm]}{character.realm ? ` · Tầng ${character.minorStage}` : ''} <span>·</span> {SECT_RANK_LABEL[character.sectRank]}</div></div></div>
         <div className="vital-row"><div className="vital-label"><span><Activity size={14} /> Sinh lực</span><b>{available(character.hp)} / {available(character.maxHp)}</b></div><div className="vital-track"><span className="vital-fill health" style={{ width: `${Math.max(0, character.hp / character.maxHp * 100)}%` }} /></div></div>
         <div className="vital-row"><div className="vital-label"><span><Sparkles size={14} /> Chân khí</span><b>{available(character.mp)} / {available(character.maxMp)}</b></div><div className="vital-track"><span className="vital-fill mana" style={{ width: `${Math.max(0, character.mp / character.maxMp * 100)}%` }} /></div></div>
-        <div className="root-banner" style={{ '--root-accent': rootColor } as React.CSSProperties}><span className="root-glyph">✥</span><div><small>BẢN MỆNH LINH CĂN</small><strong>{ROOT_LABEL[character.root.tier]}</strong><span>{character.root.elements.map((element) => ELEMENT_LABEL[element]).join(' · ')} · ×{character.root.multiplier.toFixed(1)} hấp thu</span></div></div>
-        <button className="appearance-open" onClick={() => onPanel('home')}><House size={14} /> Nhà cấp {tier} · +{Math.round(houseAbsorptionBonus(tier - 1) * 100)}% hấp thụ <span>✧</span></button>
-        {character.devMode && <button className="appearance-open dev-open" onClick={() => onPanel('dev')}><Sparkles size={14} /> Dev mode · teleport & đổi nhân vật <span>✦</span></button>}
-        <button className="appearance-open" onClick={() => onPanel('menu')}><Menu size={14} /> Menu tính năng · nhà, công pháp, nhiệm vụ, cửa hàng <span>⌘</span></button>
+        {hudPrefs.heroOpen && <>
+          <div className="root-banner" style={{ '--root-accent': rootColor } as React.CSSProperties}><span className="root-glyph">✥</span><div><small>BẢN MỆNH LINH CĂN</small><strong>{ROOT_LABEL[character.root.tier]}</strong><span>{character.root.elements.map((element) => ELEMENT_LABEL[element]).join(' · ')} · ×{character.root.multiplier.toFixed(1)} hấp thu</span></div></div>
+          <button className="appearance-open" onClick={() => onPanel('home')}><House size={14} /> Nhà cấp {tier} · +{Math.round(houseAbsorptionBonus(tier - 1) * 100)}% hấp thụ <span>✧</span></button>
+          {character.devMode && <button className="appearance-open dev-open" onClick={() => onPanel('dev')}><Sparkles size={14} /> Dev mode · teleport & đổi nhân vật <span>✦</span></button>}
+          <button className="appearance-open" onClick={() => onPanel('menu')}><Menu size={14} /> Menu tính năng · nhà, công pháp, nhiệm vụ, cửa hàng <span>⌘</span></button>
+        </>}
+        {!hudPrefs.heroOpen && <button className="hero-preview" title="Mở Menu tính năng (M)" onClick={() => onPanel('menu')}>
+          <Menu size={13} /> Menu <kbd>M</kbd></button>}
       </section>
 
       <section className={`cultivate-card glass-panel ${hudPrefs.cultivateOpen ? '' : 'collapsed'}`}>
@@ -193,7 +202,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
           {inHome ? 'Xem rương cá nhân' : 'Xem lựa chọn tái sinh'} <ArrowRight size={14} />
         </button>
       </section> : !inTrial ? <section className="boss-card glass-panel"><div className="boss-card-header"><div className="boss-emblem"><Flame size={22} /></div><div><small>{inAscendant ? 'YÊU THÚ · THƯỢNG GIỚI' : focusedMonster ? 'MỤC TIÊU · HOANG VỰC' : 'THẾ GIỚI BOSS · NGOẠI GIỚI'}</small><strong>{focusedMonster?.name ?? (inAscendant ? 'Linh thú đang tái sinh' : 'Huyền Thiên Cổ Long')}</strong></div><span className="boss-level">LV. {focusedMonster?.level ?? 88}</span></div>
-        {focusedMonster ? <><div className="boss-health-heading"><span>SINH LỰC YÊU THÚ</span><b>{format(focusedMonster.hp)} / {format(focusedMonster.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${focusedMonster.hp / focusedMonster.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Phím J / Space: chém thường · 1–9: công pháp</div></> : boss && boss.hp > 0 ? <><div className="boss-health-heading"><span>SINH LỰC CỔ LONG</span><b>{format(boss.hp)} / {format(boss.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${boss.hp / boss.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Đi theo lối đá đến Long Vực và xuất chiêu</div></> : <div className="boss-defeated"><Sparkles size={15} /> {inAscendant ? 'Tiên thú đang hồi sinh. Hãy hái tiên thảo hoặc tĩnh tọa (+35%).' : `Đã bị đánh bại · Hồi sinh sau ${Math.max(0, Math.ceil(((boss?.respawnAt ?? now) - now) / 1000))}s`}</div>}
+        {focusedMonster ? <><div className="boss-health-heading"><span>SINH LỰC YÊU THÚ</span><b>{format(focusedMonster.hp)} / {format(focusedMonster.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${focusedMonster.hp / focusedMonster.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Chuột trái / J: chém thường · Space: nhảy · 1–9: công pháp</div></> : boss && boss.hp > 0 ? <><div className="boss-health-heading"><span>SINH LỰC CỔ LONG</span><b>{format(boss.hp)} / {format(boss.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${boss.hp / boss.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Đi theo lối đá đến Long Vực và xuất chiêu</div></> : <div className="boss-defeated"><Sparkles size={15} /> {inAscendant ? 'Tiên thú đang hồi sinh. Hãy hái tiên thảo hoặc tĩnh tọa (+35%).' : `Đã bị đánh bại · Hồi sinh sau ${Math.max(0, Math.ceil(((boss?.respawnAt ?? now) - now) / 1000))}s`}</div>}
       </section> : <section className="trial-card glass-panel"><div className="trial-card-head"><Zap size={20} /> CỬU THIÊN LÔI KIẾP</div><div className="trial-wave">Đạo lôi <strong>{Math.min((trial?.wave ?? 0) + 1, 9)} / 9</strong></div><div className="trial-pips">{Array.from({ length: 9 }, (_, i) => <span key={i} className={i < (trial?.wave ?? 0) ? 'done' : i === (trial?.wave ?? 0) ? 'current' : ''} />)}</div><p>{trial?.phase === 'warning' ? '⚠ VÙNG ĐỎ! Di chuyển khỏi tâm lôi ngay!' : trial?.phase === 'strike' ? 'Thiên lôi vừa giáng xuống!' : 'Chuẩn bị... Quan sát mặt đất và né tránh.'}</p>
         <button className="btn btn-outline-gold btn-full guard-button" disabled={!connected || !character.equipment.artifact || character.mp < 18 || trial?.guarding || (cooldowns.trial_guard ?? 0) > now} onClick={() => onAction('guard')}>
           <Shield size={14} /> {trial?.guarding ? 'Pháp bảo đang hộ thể' : (cooldowns.trial_guard ?? 0) > now ? `Hồi pháp bảo ${Math.ceil((cooldowns.trial_guard - now) / 1000)}s` : 'Xuất Pháp Bảo · F'}
@@ -257,7 +266,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <div className="hotbar-caption"><span /> PHÁP QUYẾT & THẦN THÔNG <span /></div>
         {lastCast && <div className="cast-flash" role="status">{lastCast.name}</div>}
         <div className="hotbar-slots">
-          <button className="skill-slot basic-slot" disabled={!connected || !inBattle || character.hp <= 0} onClick={onAttack} title="Đòn đánh thường (J / Space) · Hoang Vực và Thượng Giới">
+          <button className="skill-slot basic-slot" disabled={!connected || !inBattle || character.hp <= 0} onClick={onAttack} title="Đòn đánh thường · chuột trái trên bản đồ hoặc phím J · Hoang Vực và Thượng Giới">
             <kbd>J</kbd><span className="skill-symbol"><Swords size={26} /></span>{hudPrefs.skillLabels && <span className="skill-name">Chém thường</span>}<span className="skill-mana">0 MP</span>
           </button>
           {Array.from({ length: HOTBAR_SLOTS }, (_, index) => {
@@ -277,10 +286,14 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
           <button className={`utility-slot flight-slot ${flying ? 'selected' : ''}`} disabled={!canFly} onClick={() => onAction('flight:toggle')} title={canFly ? `${mountItem?.name} · phi hành (R)` : 'Trang bị vật phẩm phi hành để bay'}>
             <Feather size={20} /><span>Phi hành</span><kbd>R</kbd>
           </button>
+          <button className={`utility-slot camera-slot ${hudPrefs.cameraLock ? 'selected' : ''}`} onClick={() => onHudPrefs({ cameraLock: !hudPrefs.cameraLock })}
+            aria-pressed={hudPrefs.cameraLock} title={hudPrefs.cameraLock ? 'Đang khóa góc nhìn TPP · nhấn Y để xoay tự do' : 'Khóa góc nhìn thứ 3 bám sau lưng (Y)'}>
+            <Camera size={20} /><span>{hudPrefs.cameraLock ? 'TPP khóa' : 'TPP'}</span><kbd>Y</kbd>
+          </button>
           <button className={`utility-slot ${panel === 'menu' ? 'selected' : ''}`} onClick={() => onPanel(panel === 'menu' ? null : 'menu')} title="Menu: nhà riêng, công pháp, nhiệm vụ, cửa hàng, cài đặt (M)"><Menu size={20} /><span>Menu</span><kbd>M</kbd></button>
         </div>
       </section>
-      <div className="hud-corner"><div className="corner-controls"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Di chuyển <span>·</span> Kéo chuột: xoay <span>·</span> R: phi hành</div>{character.isAdmin && <button className="admin-shortcut" onClick={() => onPanel(panel === 'admin' ? null : 'admin')}><Crown size={14} /> THIÊN ĐẠO <kbd>Ctrl Shift F12</kbd></button>}</div>
+      <div className="hud-corner"><div className="corner-controls"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Di chuyển <span>·</span> Chuột trái: chém <span>·</span> Kéo chuột phải: xoay <span>·</span> <kbd>Y</kbd> khóa TPP <span>·</span> <kbd>Space</kbd> nhảy</div>{character.isAdmin && <button className="admin-shortcut" onClick={() => onPanel(panel === 'admin' ? null : 'admin')}><Crown size={14} /> THIÊN ĐẠO <kbd>Ctrl Shift F12</kbd></button>}</div>
     </div>
   </div>;
 }
