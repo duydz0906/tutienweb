@@ -1,5 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
-import { EQUIPMENT_SLOTS } from '@van-thuong/shared';
+import { EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS, HAIR_STYLES, ROBE_COLORS, SKIN_TONES } from '@van-thuong/shared';
 
 /** The Firebase UID is the only login identifier; passwords are never stored here. */
 export const UserModel = mongoose.model('User', new Schema({
@@ -28,9 +28,13 @@ export const CharacterModel = mongoose.model('Character', new Schema({
   name: { type: String, required: true, maxlength: 20 },
   gender: { type: String, enum: ['nam', 'nu'], required: true },
   appearance: {
-    hair: { type: String, enum: ['long', 'tied'], required: true },
-    hairColor: { type: String, enum: ['ink', 'silver'], required: true },
-    robeColor: { type: String, enum: ['ivory', 'jade', 'ember'], required: true },
+    hair: { type: String, enum: HAIR_STYLES, required: true },
+    hairColor: { type: String, enum: HAIR_COLORS, required: true },
+    robeColor: { type: String, enum: ROBE_COLORS, required: true },
+    face: { type: String, enum: FACE_SHAPES, default: 'oval' },
+    skinTone: { type: String, enum: SKIN_TONES, default: 'warm' },
+    height: { type: Number, min: 0, max: 1, default: 0.5 },
+    build: { type: Number, min: 0, max: 1, default: 0.5 },
   },
   root: {
     tier: { type: String, enum: ['tap', 'chan', 'thien', 'bien_di'], required: true },

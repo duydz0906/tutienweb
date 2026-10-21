@@ -1,85 +1,84 @@
-import { Suspense, useEffect, useMemo, useRef } from 'react';
-import { useFrame, useLoader } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { HumanAvatar, loadHumanPackage, type HumanPackage } from 'humanforge/human';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { ELEMENT_COLOR, type PublicPlayer } from '@van-thuong/shared';
+import { toHumanConfig } from './humanAppearance';
 
-type Rig = {
-  model: THREE.Group;
-  spine?: THREE.Object3D;
-  head?: THREE.Object3D;
-  leftArm?: THREE.Object3D;
-  rightArm?: THREE.Object3D;
-  ownedMaterials: THREE.Material[];
-  gear: THREE.Object3D[];
-};
+// One cached human base for the whole scene, but each player gets an independent skeleton,
+// fitted robe, face morphs, materials and equipment. Assets ship with the app (no CDN).
+let packagePromise: Promise<HumanPackage> | undefined;
+function humanPackage(): Promise<HumanPackage> {
+  if (!packagePromise) {
+    const base = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/human`;
+    packagePromise = loadHumanPackage(base, {
+      fetch: async (url) => {
+        const res = await fetch(url);
+        if (!res.ok || res.headers.get('content-type')?.includes('text/html'))
+          throw new Error(`Thiếu tài nguyên nhân vật 3D: ${url}`);
+        return res.arrayBuffer();
+      },
+    }).catch((error) => { packagePromise = undefined; throw error; });
+  }
+  return packagePromise;
+}
 
-function addGear(parent: THREE.Object3D, object: THREE.Object3D, rig: Rig): void {
-  parent.add(object);
-  rig.gear.push(object);
+function disposeMesh(object: THREE.Object3D): void {
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry.dispose();
+    for (const material of Array.isArray(child.material) ? child.material : [child.material]) material.dispose();
+  });
 }
 
 function makeWeapon(itemId: string): THREE.Group {
   const red = itemId === 'immortal_sword';
   const jade = itemId === 'jade_blade';
-  const metal = new THREE.MeshStandardMaterial({ color: red ? '#f3675e' : jade ? '#a2fae3' : '#cad6cc', metalness: 0.85, roughness: 0.2, emissive: red ? '#ff2929' : jade ? '#3a8c75' : '#171f22', emissiveIntensity: red ? 2.5 : jade ? 0.7 : 0.15 });
+  const metal = new THREE.MeshStandardMaterial({ color: red ? '#f3675e' : jade ? '#a2fae3' : '#d9e5da', metalness: 0.65, roughness: 0.3, emissive: red ? '#ff2929' : jade ? '#3a8c75' : '#64766b', emissiveIntensity: red ? 2.2 : jade ? 0.7 : 0.3 });
   const gold = new THREE.MeshStandardMaterial({ color: '#d7ae72', metalness: 0.8, roughness: 0.25 });
   const weapon = new THREE.Group();
   weapon.name = 'WeaponSocketMesh';
-  const blade = new THREE.Mesh(new THREE.ConeGeometry(0.092, red ? 1.5 : 1.2, 4), metal);
-  blade.rotation.y = Math.PI / 4;
-  blade.position.y = -0.95;
+  // The Mixamo palm's local +Y faces down/forward: the blade points at the ground,
+  // rather than the oversized black cone that previously stuck through the shoulder.
+  const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.047, red ? 0.85 : 0.72, 6), metal);
+  blade.position.y = red ? 0.63 : 0.56;
   blade.castShadow = true;
   weapon.add(blade);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.043, 0.53, 8), gold);
-  grip.position.y = -0.06;
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.023, 0.023, 0.31, 10), gold);
+  grip.position.y = -0.07;
   weapon.add(grip);
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.065, 0.075), gold);
-  guard.position.y = -0.34;
+  const guard = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.025, 12), gold);
+  guard.position.y = 0.19;
   weapon.add(guard);
-  weapon.rotation.z = -0.13;
+  weapon.rotation.z = -0.08;
+  weapon.position.set(0, -0.04, 0);
   return weapon;
 }
 
-function createRig(source: THREE.Group, player: PublicPlayer): Rig {
-  // SkeletonUtils.clone rebinds bones for EACH character; Object3D.clone does not.
-  const model = cloneSkeleton(source) as THREE.Group;
-  const rig: Rig = { model, spine: model.getObjectByName('Spine'), head: model.getObjectByName('Head'),
-    leftArm: model.getObjectByName('LeftArm'), rightArm: model.getObjectByName('RightArm'),
-    ownedMaterials: [], gear: [] };
-  const color = player.appearance.robeColor === 'jade' ? '#4f9790' : player.appearance.robeColor === 'ember' ? '#a36763' : '#e3decf';
-  model.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
-    object.castShadow = true;
-    object.receiveShadow = true;
-    const material = (object.material as THREE.MeshStandardMaterial).clone();
-    if (material.name === 'RobeMaterial') material.color.set(color);
-    if (material.name === 'HairMaterial') material.color.set(player.appearance.hairColor === 'silver' ? '#dce7e5' : '#202b32');
-    if (material.name === 'SkinMaterial') material.color.set(player.gender === 'nu' ? '#f4d9c3' : '#e9c6aa');
-    object.material = material;
-    rig.ownedMaterials.push(material);
-    if (player.appearance.hair === 'tied' && object.name === 'HairBack') object.scale.set(0.72, 0.55, 0.72);
-    if (player.gender === 'nu' && object.name === 'FlowingSkirt') object.scale.x = object.scale.z = 1.08;
-  });
-  const rightHand = model.getObjectByName('RightHand');
-  if (rightHand && player.equipment.weapon) addGear(rightHand, makeWeapon(player.equipment.weapon), rig);
-  if (rig.head && player.equipment.head) {
-    const crown = new THREE.Group();
-    const jade = new THREE.MeshStandardMaterial({ color: '#72c8b1', metalness: 0.65, roughness: 0.27 });
-    const crownBody = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 0.28, 8), jade);
-    crownBody.position.y = 0.5;
-    crown.add(crownBody);
-    addGear(rig.head, crown, rig);
+function addEquipment(human: HumanAvatar, player: PublicPlayer): () => void {
+  const added: THREE.Object3D[] = [];
+  const bone = (name: string) => human.bones.find((b) => b.name.endsWith(`:${name}`));
+  const add = (parent: THREE.Object3D | undefined, object: THREE.Object3D) => {
+    if (parent) { parent.add(object); added.push(object); }
+    else disposeMesh(object);
+  };
+  if (player.equipment.weapon) add(bone('RightHand'), makeWeapon(player.equipment.weapon));
+  if (player.equipment.head) {
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.017, 8, 36),
+      new THREE.MeshStandardMaterial({ color: '#b4e7c8', metalness: 0.7, roughness: 0.25 }));
+    crown.rotation.x = Math.PI / 2;
+    crown.position.set(0, 0.12, 0);
+    add(bone('Head'), crown);
   }
   if (player.equipment.shoulder) {
-    for (const arm of [rig.leftArm, rig.rightArm]) if (arm) {
-      const plate = new THREE.Mesh(new THREE.SphereGeometry(0.23, 10, 7), new THREE.MeshStandardMaterial({ color: '#ad9a7c', metalness: 0.7, roughness: 0.3 }));
+    for (const name of ['LeftArm', 'RightArm']) {
+      const plate = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12),
+        new THREE.MeshStandardMaterial({ color: '#ad9a7c', metalness: 0.68, roughness: 0.33 }));
       plate.scale.set(1.25, 0.52, 1.1);
-      addGear(arm, plate, rig);
+      add(bone(name), plate);
     }
   }
-  return rig;
+  return () => { for (const object of added) { object.removeFromParent(); disposeMesh(object); } };
 }
 
 function SwordHalo() {
@@ -109,15 +108,21 @@ function InnerAvatar({ player, local, preview, groupRef }: {
   player: PublicPlayer; local: boolean; preview: boolean;
   groupRef?: React.RefObject<THREE.Group | null>;
 }) {
-  const gltf = useLoader(GLTFLoader, '/models/cultivator.glb');
-  const rig = useMemo(() => createRig(gltf.scene, player), [gltf.scene, player.gender, player.appearance.hair,
-    player.appearance.hairColor, player.appearance.robeColor, player.equipment.weapon, player.equipment.head, player.equipment.shoulder]);
+  const [human, setHuman] = useState<HumanAvatar | null>(null);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const pose = useRef(new Map<string, THREE.Quaternion>());
+  const configChain = useRef<Promise<void>>(Promise.resolve());
+  const configRevision = useRef(0);
+  const robeMaterials = useRef<THREE.MeshStandardMaterial[]>([]);
+  const lastPosition = useRef(new THREE.Vector3(player.position.x, player.position.y, player.position.z));
+  const lastMoveAt = useRef(0);
   const internalRef = useRef<THREE.Group>(null);
   const artifactRef = useRef<THREE.Group>(null);
   const auraRef = useRef<THREE.ShaderMaterial>(null);
   const petRef = useRef<THREE.Group>(null);
   const magicRef = useRef<THREE.Group>(null);
-  const rootColor = new THREE.Color(ELEMENT_COLOR[player.root.elements[0]] || '#91e7cf');
+  const rootColor = useMemo(() => new THREE.Color(ELEMENT_COLOR[player.root.elements[0]] || '#91e7cf'), [player.root.elements[0]]);
   const aura = useMemo(() => new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uColor: { value: rootColor } },
     vertexShader: `varying vec3 vNormal; varying vec3 vView; uniform float uTime;
@@ -128,33 +133,102 @@ function InnerAvatar({ player, local, preview, groupRef }: {
       void main(){ float edge=pow(1.0-abs(dot(normalize(vNormal), normalize(vView))), 2.0);
         float pulse=0.58+0.22*sin(uTime*3.0); gl_FragColor=vec4(uColor*1.8, edge*pulse*0.45); }`,
     transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
-  }), [player.root.elements[0]]);
+  }), [rootColor]);
 
-  useEffect(() => () => {
-    rig.ownedMaterials.forEach((m) => m.dispose());
-    for (const gear of rig.gear) gear.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.geometry.dispose();
-        const materials = Array.isArray(o.material) ? o.material : [o.material];
-        materials.forEach((m) => m.dispose());
-      }
+  useEffect(() => {
+    let active = true;
+    let avatar: HumanAvatar | null = null;
+    void humanPackage().then((pkg) => {
+      if (!active) return;
+      avatar = new HumanAvatar(pkg);
+      avatar.textureSize = '1k';
+      avatar.normalMaps = false; // lighter on mobile; diffuse PBR material still receives scene lights/shadows
+      avatar.anisotropy = 2;
+      setHuman(avatar);
+    }).catch((error) => {
+      console.error('[avatar] CC0 human assets failed to load:', error);
+      if (active) setLoadError(true);
     });
-    aura.dispose();
-  }, [rig, aura]);
+    return () => {
+      active = false;
+      // A model swap may still be loading when the preview is replaced by the game.
+      // Let it finish before releasing its geometries and textures.
+      void configChain.current.catch(() => {}).then(() => avatar?.dispose());
+    };
+  }, []);
+
+  const appearanceKey = JSON.stringify(player.appearance);
+  useEffect(() => {
+    if (!human) return;
+    let active = true;
+    const revision = ++configRevision.current;
+    // Avoid discarding in-flight meshes on a quick style change, and debounce
+    // sliders so a drag does not trigger dozens of expensive face reshapes.
+    const timer = window.setTimeout(() => {
+      configChain.current = configChain.current.catch(() => {}).then(async () => {
+        if (!active || revision !== configRevision.current) return;
+        await human.setConfig(toHumanConfig(player.gender, player.appearance));
+        if (!active || revision !== configRevision.current) return;
+        human.group.traverse((object) => {
+          if (object instanceof THREE.Mesh) { object.castShadow = true; object.receiveShadow = true; }
+        });
+        pose.current = new Map(human.bones.map((b) => [b.name, b.quaternion.clone()]));
+        robeMaterials.current = [];
+        human.group.traverse((o) => {
+          if (o instanceof THREE.Mesh && o.name.startsWith('clothes-') && !o.name.includes('shoes') && o.material instanceof THREE.MeshStandardMaterial)
+            robeMaterials.current.push(o.material);
+        });
+        setLoadError(false);
+        setReady(true);
+      }).catch((error) => {
+        if (active) {
+          console.error('[avatar] CC0 human configuration failed:', error);
+          setLoadError(true);
+        }
+      });
+    }, 120);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [human, player.gender, appearanceKey]);
+  useEffect(() => human ? addEquipment(human, player) : undefined, [human, player.equipment.weapon, player.equipment.head, player.equipment.shoulder]);
+  useEffect(() => () => { aura.dispose(); }, [aura]);
 
   useFrame(({ clock }, dt) => {
-    const time = clock.getElapsedTime();
+    const time = clock.elapsedTime;
     const outer = groupRef?.current ?? internalRef.current;
     if (!outer) return;
     if (!local && !preview) {
       outer.position.lerp(new THREE.Vector3(player.position.x, player.position.y, player.position.z), Math.min(1, dt * 9));
       outer.rotation.y += Math.atan2(Math.sin(player.rotation - outer.rotation.y), Math.cos(player.rotation - outer.rotation.y)) * Math.min(1, dt * 8);
     }
-    if (preview) outer.rotation.y += dt * 0.17;
-    if (rig.spine) rig.spine.rotation.z = Math.sin(time * 1.5 + outer.position.x) * 0.016;
-    if (rig.head) rig.head.rotation.y = Math.sin(time * 0.9) * 0.055;
-    if (rig.leftArm) rig.leftArm.rotation.z = -0.08 + Math.sin(time * 2 + outer.position.z) * 0.07;
-    if (rig.rightArm) rig.rightArm.rotation.z = 0.08 - Math.sin(time * 2 + outer.position.z) * 0.07;
+    if (preview) outer.rotation.y = Math.sin(time * 0.23) * 0.13;
+    if (human && ready) {
+      if (outer.position.distanceTo(lastPosition.current) > 0.002) lastMoveAt.current = time;
+      lastPosition.current.copy(outer.position);
+      const walking = !preview && time - lastMoveAt.current < 0.22 ? 0.25 : 0;
+      for (const [name, phase] of [['LeftUpLeg', 0], ['RightUpLeg', Math.PI], ['LeftArm', Math.PI], ['RightArm', 0]] as const) {
+        const bone = human.bones.find((b) => b.name.endsWith(`:${name}`));
+        const rest = bone && pose.current.get(bone.name);
+        if (bone && rest) {
+          bone.quaternion.copy(rest);
+          const restArm = name === 'LeftArm' ? -0.65 : name === 'RightArm' ? 0.65 : 0;
+          if (restArm) bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), restArm));
+          if (walking) bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.sin(time * 8 + phase) * walking));
+        }
+      }
+      const head = human.bones.find((b) => b.name.endsWith(':Head'));
+      const headRest = head && pose.current.get(head.name);
+      if (head && headRest) head.quaternion.copy(headRest).multiply(new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0), Math.sin(time * 0.9) * 0.035,
+      ));
+      const blink = Math.max(0, 1 - Math.abs((time % 4.3) - 0.14) / 0.09);
+      human.setExpression('eyeBlinkLeft', blink);
+      human.setExpression('eyeBlinkRight', blink);
+      const shieldActive = Boolean(player.shieldUntil && player.shieldUntil > Date.now());
+      for (const material of robeMaterials.current) {
+        material.emissive.set(shieldActive ? '#986223' : '#000000');
+        material.emissiveIntensity = shieldActive ? 0.9 : 0;
+      }
+    }
     if (artifactRef.current) {
       artifactRef.current.position.set(Math.cos(time * 1.45) * 0.95, 1.65 + Math.sin(time * 2) * 0.14, Math.sin(time * 1.45) * 0.95);
       artifactRef.current.rotation.y += dt;
@@ -164,65 +238,57 @@ function InnerAvatar({ player, local, preview, groupRef }: {
       petRef.current.rotation.y = -0.32 + Math.sin(time) * 0.14;
     }
     if (magicRef.current) magicRef.current.rotation.y += dt * 0.25;
-    // Material swap on the actual GLTF skeletal body while the server shield lasts.
-    const shieldActive = Boolean(player.shieldUntil && player.shieldUntil > Date.now());
-    for (const material of rig.ownedMaterials) {
-      if (material instanceof THREE.MeshStandardMaterial && material.name === 'RobeMaterial') {
-        material.color.set(shieldActive ? '#d8ae5e' : player.appearance.robeColor === 'jade' ? '#4f9790' : player.appearance.robeColor === 'ember' ? '#a36763' : '#e3decf');
-        material.emissive.set(shieldActive ? '#986223' : '#000000');
-        material.emissiveIntensity = shieldActive ? 0.95 : 0;
-      }
-    }
     if (auraRef.current) auraRef.current.uniforms.uTime.value = time;
   });
 
   const immortal = player.equipment.weapon === 'immortal_sword';
-  return (
-    <group ref={groupRef ?? internalRef} position={[player.position.x, player.position.y, player.position.z]}
-      rotation={[0, player.rotation, 0]} scale={player.isAdmin ? 1.2 : 1}>
-      <primitive object={rig.model} />
-      {player.path === 'kiem' && <SwordHalo />}
-      {player.root.tier === 'bien_di' && <>
-        <mesh position={[0, 1.1, 0]} scale={[0.83, 1.35, 0.83]}>
-          <sphereGeometry args={[1, 28, 18]} /><primitive object={aura} ref={auraRef} attach="material" />
-        </mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
-          <ringGeometry args={[0.6, 0.76, 48]} />
-          <meshBasicMaterial color={rootColor} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-      </>}
-      {immortal && <pointLight color="#ff5246" intensity={3} distance={5} position={[0.5, 1.3, 0]} />}
-      {player.equipment.artifact && <group ref={artifactRef}>
-        <mesh castShadow><octahedronGeometry args={[0.19, 1]} /><meshStandardMaterial color="#99f4dd" emissive="#2dbea2" emissiveIntensity={2} metalness={0.6} roughness={0.15} /></mesh>
-        <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.29, 0.012, 4, 24]} /><meshBasicMaterial color="#c2fce7" /></mesh>
-      </group>}
-      {player.equipment.pet && <group ref={petRef}>
-        <mesh castShadow><sphereGeometry args={[0.3, 12, 9]} /><meshStandardMaterial color="#f0e6d5" /></mesh>
-        <mesh position={[0, 0.21, 0.2]} castShadow><sphereGeometry args={[0.22, 12, 9]} /><meshStandardMaterial color="#fff0df" /></mesh>
-        {[-0.15, 0.15].map((x) => <mesh key={x} position={[x, 0.43, 0.18]} rotation={[0, 0, x]}><coneGeometry args={[0.09, 0.23, 5]} /><meshStandardMaterial color="#eac7b4" /></mesh>)}
-        <mesh position={[0.15, 0.09, -0.32]} rotation={[0.35, 0, -0.5]}><coneGeometry args={[0.11, 0.47, 7]} /><meshStandardMaterial color="#fff0df" /></mesh>
-      </group>}
-      {player.isAdmin && <group ref={magicRef} position={[0, 0.035, 0]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[1.15, 1.22, 64]} />
-          <meshBasicMaterial color="#ffc48b" transparent opacity={0.9} side={THREE.DoubleSide} />
-        </mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.78, 0.81, 64]} />
-          <meshBasicMaterial color="#ffa762" transparent opacity={0.8} side={THREE.DoubleSide} />
-        </mesh>
-        {Array.from({ length: 12 }, (_, i) => <mesh key={i} position={[Math.sin(i * Math.PI / 6) * 1, 0.01, Math.cos(i * Math.PI / 6) * 1]}
-          rotation={[-Math.PI / 2, 0, i * Math.PI / 6]}>
-          <planeGeometry args={[0.06, 0.19]} /><meshBasicMaterial color="#ffe0a8" side={THREE.DoubleSide} />
-        </mesh>)}
-        <pointLight color="#ff9b59" intensity={2.5} distance={7} position={[0, 1, 0]} />
-      </group>}
-    </group>
-  );
+  return <group ref={groupRef ?? internalRef} position={[player.position.x, player.position.y, player.position.z]}
+    rotation={[0, player.rotation, 0]} scale={player.isAdmin ? 1.2 : 1}>
+    {human && ready && <primitive object={human.group} />}
+    {loadError && preview && <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[0.4, 0.43, 32]} /><meshBasicMaterial color="#ff847e" />
+    </mesh>}
+    {player.path === 'kiem' && <SwordHalo />}
+    {player.root.tier === 'bien_di' && <>
+      <mesh position={[0, 1.1, 0]} scale={[0.83, 1.35, 0.83]}>
+        <sphereGeometry args={[1, 28, 18]} /><primitive object={aura} ref={auraRef} attach="material" />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
+        <ringGeometry args={[0.6, 0.76, 48]} />
+        <meshBasicMaterial color={rootColor} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+    </>}
+    {immortal && <pointLight color="#ff5246" intensity={3} distance={5} position={[0.5, 1.3, 0]} />}
+    {player.equipment.artifact && <group ref={artifactRef}>
+      <mesh castShadow><octahedronGeometry args={[0.19, 1]} /><meshStandardMaterial color="#99f4dd" emissive="#2dbea2" emissiveIntensity={2} metalness={0.6} roughness={0.15} /></mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.29, 0.012, 4, 24]} /><meshBasicMaterial color="#c2fce7" /></mesh>
+    </group>}
+    {player.equipment.pet && <group ref={petRef}>
+      <mesh castShadow><sphereGeometry args={[0.3, 12, 9]} /><meshStandardMaterial color="#f0e6d5" /></mesh>
+      <mesh position={[0, 0.21, 0.2]} castShadow><sphereGeometry args={[0.22, 12, 9]} /><meshStandardMaterial color="#fff0df" /></mesh>
+      {[-0.15, 0.15].map((x) => <mesh key={x} position={[x, 0.43, 0.18]} rotation={[0, 0, x]}><coneGeometry args={[0.09, 0.23, 5]} /><meshStandardMaterial color="#eac7b4" /></mesh>)}
+      <mesh position={[0.15, 0.09, -0.32]} rotation={[0.35, 0, -0.5]}><coneGeometry args={[0.11, 0.47, 7]} /><meshStandardMaterial color="#fff0df" /></mesh>
+    </group>}
+    {player.isAdmin && <group ref={magicRef} position={[0, 0.035, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.15, 1.22, 64]} />
+        <meshBasicMaterial color="#ffc48b" transparent opacity={0.9} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.78, 0.81, 64]} />
+        <meshBasicMaterial color="#ffa762" transparent opacity={0.8} side={THREE.DoubleSide} />
+      </mesh>
+      {Array.from({ length: 12 }, (_, i) => <mesh key={i} position={[Math.sin(i * Math.PI / 6) * 1, 0.01, Math.cos(i * Math.PI / 6) * 1]}
+        rotation={[-Math.PI / 2, 0, i * Math.PI / 6]}>
+        <planeGeometry args={[0.06, 0.19]} /><meshBasicMaterial color="#ffe0a8" side={THREE.DoubleSide} />
+      </mesh>)}
+      <pointLight color="#ff9b59" intensity={2.5} distance={7} position={[0, 1, 0]} />
+    </group>}
+  </group>;
 }
 
 export function Avatar(props: { player: PublicPlayer; local?: boolean; preview?: boolean; groupRef?: React.RefObject<THREE.Group | null> }) {
-  return <Suspense fallback={null}><InnerAvatar {...props} local={props.local ?? false} preview={props.preview ?? false} /></Suspense>;
+  return <InnerAvatar {...props} local={props.local ?? false} preview={props.preview ?? false} />;
 }
 
 /** A capped instanced fire trail in WORLD space; it stays behind as an admin runs. */

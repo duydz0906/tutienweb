@@ -11,14 +11,15 @@ import type { CharacterStore } from '../db/store.js';
 import type { GameCache } from '../db/cache.js';
 import {
   addItem, breakthroughCost, clampToWorld, distanceXZ, equipItem,
-  equippedStats, gainCultivation, GOD_STAT, hitsTarget, TRIAL_RADIUS, WORLD_RADIUS,
+  equippedStats, gainCultivation, GOD_STAT, hitsTarget, parseAppearance, TRIAL_RADIUS, WORLD_RADIUS,
 } from './rules.js';
 
 type Trial = { state: TribulationState; returnPosition: Vector3 };
 type LivePlayer = {
   identity: Identity; character: CharacterState; socket: Socket;
   input: { x: number; z: number }; lastInputAt: number;
-  cooldowns: Map<string, number>; lastChatAt: number; lastAdminAt: number; casting: boolean; shieldUntil: number;
+  cooldowns: Map<string, number>; lastChatAt: number; lastAdminAt: number; lastAppearanceAt: number;
+  casting: boolean; shieldUntil: number;
   guardUntil: number; trial: Trial | null; respawnAt: number;
 };
 type Ack = (result: ActionResult) => void;
@@ -86,7 +87,8 @@ export class World {
     const retainedCooldowns = await this.cache.cooldowns(character.id);
     const s: LivePlayer = {
       identity, character, socket, input: { x: 0, z: 0 }, lastInputAt: 0,
-      cooldowns: new Map(Object.entries(retainedCooldowns)), lastChatAt: 0, lastAdminAt: 0, casting: false, shieldUntil: 0,
+      cooldowns: new Map(Object.entries(retainedCooldowns)), lastChatAt: 0, lastAdminAt: 0, lastAppearanceAt: 0,
+      casting: false, shieldUntil: 0,
       guardUntil: 0, trial: null, respawnAt: 0,
     };
     this.players.set(character.id, s);
@@ -151,6 +153,16 @@ export class World {
       return `Đã thay trang bị vào ô ${slot}.`;
     }));
     socket.on('craft', action(async (payload: unknown) => this.craft(s, payload)));
+    socket.on('appearance:update', action(async (payload: unknown) => {
+      if (s.character.scene !== 'overworld') throw new Error('Không thể thay đổi ngoại hình trong lôi kiếp.');
+      if (Date.now() - s.lastAppearanceAt < 3000) throw new Error('Hãy đợi ba giây trước khi thay đổi tiếp.');
+      const appearance = parseAppearance((payload as Record<string, unknown> | null)?.appearance);
+      s.character.appearance = appearance;
+      s.lastAppearanceAt = Date.now();
+      await this.sync(s);
+      this.sendSnapshots();
+      return 'Ngoại hình đã được lưu.';
+    }));
     socket.on('place-array', action(async () => this.placeArray(s)));
     socket.on('pickup', action(async (payload: unknown) => this.pickup(s, payload)));
     socket.on('chat', (payload: unknown) => this.chat(s, payload));

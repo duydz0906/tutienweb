@@ -387,3 +387,63 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 .guard-button { margin-top: 12px; min-height: 32px; font-size: 9px; }
 .guard-hint { display: block; margin-top: 8px; color: var(--faint); font-size: 9px; line-height: 1.6; }
+
+/* HumanForge CC0 avatar editor: fitted hair/robe meshes and continuous face/body morphs. */
+.creation-side { max-height: calc(100svh - 117px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(228,196,136,.45) transparent; padding-right: 4px; }
+.creation-form { padding: 17px 20px 18px; }
+.creation-intro { margin-bottom: 14px; }
+.appearance-editor { margin-top: 14px; }
+.appearance-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); gap: 5px; }
+.appearance-tabs button { min-height: 39px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); text-align: center; padding: 5px 2px; font-size: 10px; font-weight: 750; }
+.appearance-tabs button.active { border-color: var(--gold); color: var(--gold-bright); background: linear-gradient(0deg,rgba(228,190,133,.12),transparent); }
+.appearance-choice-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.appearance-choice-grid.face-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.appearance-choice { min-height: 32px; padding: 6px 3px; border-radius: 3px; border: 1px solid rgba(212,223,211,.15); color: #becac3; background: rgba(238,244,231,.035); font-size: 10px; font-weight: 650; }
+.appearance-choice:hover, .appearance-choice.selected { color: var(--gold-bright); border-color: rgba(234,197,139,.8); background: rgba(234,197,139,.11); }
+.appearance-swatches { display: flex; flex-wrap: wrap; gap: 11px; padding: 4px 2px; }
+.appearance-swatches .color-swatch { width: 27px; height: 27px; }
+.appearance-slider { margin-top: 15px; }
+.appearance-slider label { display: flex; justify-content: space-between; color: var(--gold); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+.appearance-slider label strong { color: var(--cream); font-size: 11px; letter-spacing: 0; }
+.appearance-slider input { width: 100%; accent-color: #eac58c; height: 21px; margin: 6px 0 0; cursor: pointer; }
+.slider-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
+.preview-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; margin: 11px 0 0; border: 1px solid rgba(204,234,221,.21); border-radius: 3px; background: rgba(107,167,159,.07); color: var(--jade); font-size: 10px; font-weight: 700; justify-content: center; }
+.preview-toggle:hover { border-color: var(--jade); }
+.create-button { margin-top: 13px; }
+.appearance-drawer .appearance-editor { margin-top: 0; }
+.appearance-drawer .appearance-tabs button { font-size: 11px; }
+.appearance-drawer .appearance-choice { min-height: 39px; }
+.appearance-save { margin-top: 25px; }
+@media (max-width: 720px) {
+  .creation-side { max-height: none; overflow-y: visible; padding-right: 0; }
+  .creation-intro { max-width: 360px; }
+  .creation-form { padding: 15px; }
+  .appearance-tabs button { font-size: 9px; }
+}
+.appearance-open { display: flex; align-items: center; gap: 6px; margin-top: 11px; padding: 7px 8px; width: 100%; border: 1px solid rgba(221,194,137,.33); border-radius: 3px; background: rgba(232,190,127,.08); color: var(--gold-bright); font-size: 10px; font-weight: 750; }
+.appearance-open span { margin-left: auto; }
+.appearance-open:hover { border-color: var(--gold); background: rgba(232,190,127,.17); }
+.appearance-open:disabled { opacity: .42; cursor: not-allowed; }
+.world-entry { background: rgba(6,25,29,.85); text-align: center; letter-spacing: normal; }
+.world-entry strong { font: 500 24px 'Literata',Georgia,serif; }
+.world-entry > span { color: var(--muted); }
+.world-entry .inline-error { max-width: 360px; margin: 12px auto 0; }
+.entry-actions { display: flex; gap: 12px; margin-top: 2px; }
+.entry-actions button { min-height: 37px; }
+/* Keep the one-time draw reachable even when the extra customization controls scroll. */
+.creation-form .create-button { position: sticky; bottom: 8px; z-index: 2; box-shadow: 0 6px 20px rgba(7,24,27,.72); }
+.creation-form .create-button { background: #d8b582; color: #112d2e; }
+.creation-form .create-button:hover:not(:disabled) { background: #ebcc99; }
+.appearance-scrim { background: rgba(3,13,19,.12); }
+.appearance-drawer .preview-toggle { min-height: 37px; margin-top: 18px; }
+.mobile-preview-open, .mobile-preview-actions { display: none; }
+@media (max-width: 720px) {
+  .creation-form .create-button { position: static; margin-top: 18px; }
+  .mobile-preview-open { position: absolute; top: 66px; right: 15px; z-index: 7; display: flex; align-items: center; gap: 5px; padding: 8px 9px; border: 1px solid var(--gold); border-radius: 3px; background: rgba(10,32,35,.9); color: var(--gold-bright); font-size: 9px; font-weight: 750; }
+  .creation-layout.mobile-preview-active { overflow: hidden; background: transparent; }
+  .mobile-preview-active .creation-side, .mobile-preview-active .creation-probability, .mobile-preview-active .creation-preview-note { display: none; }
+  .mobile-preview-actions { position: absolute; bottom: 18px; left: 12px; right: 12px; z-index: 7; display: grid; gap: 10px; padding: 11px 13px; text-align: center; }
+  .mobile-preview-actions > span { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--cream); font-size: 10px; }
+  .mobile-preview-actions > div { display: flex; gap: 7px; }
+  .mobile-preview-actions button { flex: 1; min-height: 37px; padding: 5px; font-size: 10px; justify-content: center; }
+}

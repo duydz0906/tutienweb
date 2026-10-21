@@ -86,7 +86,7 @@ async function main(): Promise<void> {
     const existing = await store.get(identity.uid);
     if (existing) { res.json({ character: ownCharacter(existing, identity), existing: true }); return; }
     let parsed: ReturnType<typeof parseCreation>;
-    try { parsed = parseCreation(req.body, identity.isAdmin); }
+    try { parsed = parseCreation(req.body, identity.isAdmin, demoMode); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Thông tin không hợp lệ.' }); return; }
     const created = await store.create(newCharacter(identity.uid, parsed));
     await cache.update(created, identity.isAdmin);

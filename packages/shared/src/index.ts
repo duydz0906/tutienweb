@@ -20,7 +20,36 @@ export const ROOT_LABEL: Record<RootTier, string> = {
 };
 export const ROOT_MULTIPLIER: Record<RootTier, number> = { tap: 0.7, chan: 1, thien: 1.8, bien_di: 2.6 };
 export type SpiritRoot = { tier: RootTier; elements: Element[]; multiplier: number };
-export type Appearance = { hair: 'long' | 'tied'; hairColor: 'ink' | 'silver'; robeColor: 'ivory' | 'jade' | 'ember' };
+export const HAIR_STYLES = ['long', 'tied', 'bob', 'braid', 'bun', 'short', 'cropped'] as const;
+export const HAIR_COLORS = ['ink', 'silver', 'chestnut', 'auburn', 'gold', 'ash', 'plum', 'jade'] as const;
+export const ROBE_COLORS = ['ivory', 'jade', 'ember', 'midnight', 'lilac'] as const;
+export const FACE_SHAPES = ['oval', 'round', 'angular', 'heart'] as const;
+export const SKIN_TONES = ['light', 'warm', 'bronze', 'deep'] as const;
+export type Appearance = {
+  hair: (typeof HAIR_STYLES)[number]; hairColor: (typeof HAIR_COLORS)[number];
+  robeColor: (typeof ROBE_COLORS)[number]; face: (typeof FACE_SHAPES)[number];
+  skinTone: (typeof SKIN_TONES)[number]; height: number; build: number;
+};
+export const DEFAULT_APPEARANCE: Appearance = {
+  hair: 'long', hairColor: 'ink', robeColor: 'ivory', face: 'oval', skinTone: 'warm',
+  height: 0.5, build: 0.5,
+};
+/** Old MongoDB characters only had hair/hairColor/robeColor. Upgrade them without rerolling Linh Căn. */
+export function normalizeAppearance(raw: unknown): Appearance {
+  const data = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const choice = <T extends string>(options: readonly T[], key: string, fallback: T): T =>
+    options.find((value) => value === data[key]) ?? fallback;
+  const ratio = (key: string): number => typeof data[key] === 'number' && Number.isFinite(data[key]) &&
+    (data[key] as number) >= 0 && (data[key] as number) <= 1 ? data[key] as number : 0.5;
+  return {
+    hair: choice(HAIR_STYLES, 'hair', DEFAULT_APPEARANCE.hair),
+    hairColor: choice(HAIR_COLORS, 'hairColor', DEFAULT_APPEARANCE.hairColor),
+    robeColor: choice(ROBE_COLORS, 'robeColor', DEFAULT_APPEARANCE.robeColor),
+    face: choice(FACE_SHAPES, 'face', DEFAULT_APPEARANCE.face),
+    skinTone: choice(SKIN_TONES, 'skinTone', DEFAULT_APPEARANCE.skinTone),
+    height: ratio('height'), build: ratio('build'),
+  };
+}
 export type Resources = { stones: number; herbs: number; ore: number; ink: number };
 export const EQUIPMENT_SLOTS = ['weapon', 'robe', 'head', 'shoulder', 'boots', 'ring', 'necklace', 'artifact', 'pet', 'talisman'] as const;
 export type EquipmentSlot = (typeof EQUIPMENT_SLOTS)[number];

@@ -27,6 +27,8 @@ export class SceneEngine {
   private isTribulation = false;
   private isAdminSky = false;
   private wasCinematic = false;
+  private previewView: 'body' | 'face' | null = null;
+  private previousGameYaw: number | null = null;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -77,6 +79,22 @@ export class SceneEngine {
     this.touchInput = { right: THREE.MathUtils.clamp(right, -1, 1), forward: THREE.MathUtils.clamp(forward, -1, 1) };
   }
 
+  /** The real human's face morphs are visible close up; entering the world restores game framing. */
+  setPreviewView(view: 'body' | 'face' | null, facing?: number): void {
+    if (view === this.previewView) return;
+    if (view && facing !== undefined && this.previousGameYaw === null) {
+      this.previousGameYaw = this.yaw;
+      this.yaw = facing; // character editor: view the actual face, not the back of the head
+    }
+    if (!view && this.previousGameYaw !== null) {
+      this.yaw = this.previousGameYaw;
+      this.previousGameYaw = null;
+    }
+    this.previewView = view;
+    this.distance = view === 'face' ? 1.7 : view === 'body' ? 5.3 : 14;
+    this.pitch = view === 'face' ? 0.05 : view === 'body' ? 0.18 : 0.31;
+  }
+
   getMovement(): { x: number; z: number; rotation: number } {
     const forward = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) + this.touchInput.forward;
     const right = Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')) + this.touchInput.right;
@@ -112,9 +130,9 @@ export class SceneEngine {
       this.target.set(serverPosition.x, serverPosition.y, serverPosition.z);
       if (avatar.position.distanceTo(this.target) > 6) avatar.position.copy(this.target);
       else avatar.position.lerp(this.target, Math.min(1, dt * 5));
-      this.lookAt.copy(avatar.position).add(new THREE.Vector3(0, 1.65, 0));
+      this.lookAt.copy(avatar.position).add(new THREE.Vector3(0, this.previewView === 'face' ? 1.62 : this.previewView ? 1.03 : 1.65, 0));
     } else {
-      this.lookAt.set(0, 1.65, 0);
+      this.lookAt.set(0, this.previewView === 'face' ? 1.62 : 1.65, 0);
     }
 
     const cinematic = performance.now() < this.cinematicUntil;
@@ -130,7 +148,7 @@ export class SceneEngine {
     } else {
       this.desiredCamera.set(
         this.lookAt.x + Math.sin(this.yaw) * Math.cos(this.pitch) * this.distance,
-        this.lookAt.y + Math.sin(this.pitch) * this.distance + 1.2,
+        this.lookAt.y + Math.sin(this.pitch) * this.distance + (this.previewView === 'face' ? 0 : this.previewView ? 0.1 : 1.2),
         this.lookAt.z + Math.cos(this.yaw) * Math.cos(this.pitch) * this.distance,
       );
     }

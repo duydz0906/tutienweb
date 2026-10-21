@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_APPEARANCE, normalizeAppearance } from '@van-thuong/shared';
 import { MemoryStore } from '../db/store.js';
 import { addItem, breakthroughCost, clampToWorld, distanceXZ, equipItem,
-  gainCultivation, hitsTarget, newCharacter, OFFLINE_CAP_MS, parseCreation, rollSpiritRoot } from './rules.js';
+  gainCultivation, hitsTarget, newCharacter, OFFLINE_CAP_MS, parseAppearance, parseCreation, rollSpiritRoot } from './rules.js';
 
-const data = { name: 'Tiểu Vân', gender: 'nu' as const, appearance: { hair: 'long' as const, hairColor: 'ink' as const, robeColor: 'jade' as const } };
+const data = { name: 'Tiểu Vân', gender: 'nu' as const, appearance: { ...DEFAULT_APPEARANCE, robeColor: 'jade' as const } };
 const drawAt = (result: number) => (max: number) => max === 10_000 ? result : 0;
 
 describe('server-only Linh Căn RNG', () => {
@@ -24,10 +25,23 @@ describe('server-only Linh Căn RNG', () => {
 });
 
 describe('characters, AFK and equipment', () => {
-  it('prevents a client from claiming the reserved admin nickname or supplying role', () => {
-    expect(() => parseCreation({ ...data, name: 'daniel965', isAdmin: true }, false)).toThrow();
+  it('keeps admin authorization server-side without blocking the demo nickname', () => {
+    expect(() => parseCreation({ ...data, name: 'Daniel965', isAdmin: true }, false)).toThrow('dành riêng');
+    expect(parseCreation({ ...data, name: 'Daniel965', isAdmin: true }, false, true).name).toBe('Daniel965');
     expect(parseCreation({ ...data, name: 'Anything', isAdmin: false }, true).name).toBe('daniel965');
     expect(() => parseCreation({ ...data, appearance: { ...data.appearance, hair: '<script>' } }, false)).toThrow();
+  });
+  it('validates appearance morphs and upgrades older saved characters without rerolling', () => {
+    expect(parseAppearance(data.appearance).face).toBe('oval');
+    expect(parseAppearance({ hair: 'long', hairColor: 'ink', robeColor: 'jade' })).toEqual({ ...DEFAULT_APPEARANCE, robeColor: 'jade' });
+    expect(normalizeAppearance({ hair: 'tied', hairColor: 'silver', robeColor: 'ember' })).toEqual({ ...DEFAULT_APPEARANCE, hair: 'tied', hairColor: 'silver', robeColor: 'ember' });
+    for (const field of ['height', 'build']) {
+      expect(() => parseAppearance({ ...data.appearance, [field]: -0.1 })).toThrow();
+      expect(() => parseAppearance({ ...data.appearance, [field]: 1.01 })).toThrow();
+      expect(() => parseAppearance({ ...data.appearance, [field]: '0.5' })).toThrow();
+    }
+    expect(() => parseAppearance({ ...data.appearance, skinTone: 'invisible' })).toThrow();
+    expect(() => parseAppearance({ ...data.appearance, face: '<script>' })).toThrow();
   });
   it('returns an existing character instead of granting a second root draw', async () => {
     const store = new MemoryStore();

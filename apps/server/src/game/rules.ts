@@ -1,6 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  BREAKTHROUGH_COSTS, EQUIPMENT_SLOTS, ITEMS, ROOT_MULTIPLIER,
+  BREAKTHROUGH_COSTS, DEFAULT_APPEARANCE, EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS,
+  HAIR_STYLES, ITEMS, ROBE_COLORS, ROOT_MULTIPLIER, SKIN_TONES,
   type Appearance, type CharacterState, type Element, type EquipmentSlot,
   type Gender, type SpiritRoot, type Vector3,
 } from '@van-thuong/shared';
@@ -25,20 +26,42 @@ export function rollSpiritRoot(draw: (max: number) => number = randomInt): Spiri
   return { tier, elements, multiplier: ROOT_MULTIPLIER[tier] };
 }
 
-export function parseCreation(input: unknown, isAdmin: boolean): { name: string; gender: Gender; appearance: Appearance } {
-  if (typeof input !== 'object' || input === null) throw new Error('Thông tin nhân vật không hợp lệ.');
+/** The same strict allowlist guards creation and later appearance updates. */
+export function parseAppearance(raw: unknown): Appearance {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Ngoại hình không hợp lệ.');
+  const a = raw as Record<string, unknown>;
+  const option = <T extends string>(values: readonly T[], key: string, fallback: T): T => {
+    if (a[key] === undefined) return fallback; // pre-upgrade clients and saved characters
+    const match = values.find((value) => value === a[key]);
+    if (!match) throw new Error(`Tùy chọn ${key} không hợp lệ.`);
+    return match;
+  };
+  const ratio = (key: 'height' | 'build'): number => {
+    if (a[key] === undefined) return DEFAULT_APPEARANCE[key];
+    if (typeof a[key] !== 'number' || !Number.isFinite(a[key]) || (a[key] as number) < 0 || (a[key] as number) > 1)
+      throw new Error(`Thông số ${key} phải nằm trong khoảng 0–1.`);
+    return a[key] as number;
+  };
+  return {
+    hair: option(HAIR_STYLES, 'hair', DEFAULT_APPEARANCE.hair),
+    hairColor: option(HAIR_COLORS, 'hairColor', DEFAULT_APPEARANCE.hairColor),
+    robeColor: option(ROBE_COLORS, 'robeColor', DEFAULT_APPEARANCE.robeColor),
+    face: option(FACE_SHAPES, 'face', DEFAULT_APPEARANCE.face),
+    skinTone: option(SKIN_TONES, 'skinTone', DEFAULT_APPEARANCE.skinTone),
+    height: ratio('height'), build: ratio('build'),
+  };
+}
+
+export function parseCreation(input: unknown, isAdmin: boolean, demo = false): { name: string; gender: Gender; appearance: Appearance } {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new Error('Thông tin nhân vật không hợp lệ.');
   const data = input as Record<string, unknown>;
   const requestedName = typeof data.name === 'string' ? data.name.trim().replace(/\s+/g, ' ') : '';
   if (!/^[\p{L}\p{N} _-]{2,20}$/u.test(requestedName)) throw new Error('Tên nhân vật cần 2–20 ký tự chữ hoặc số.');
-  if (!isAdmin && requestedName.toLowerCase() === 'daniel965') throw new Error('Tên này đã được bảo lưu.');
+  // The demo has no admin at all. Let players use this display name there; NEVER grant its privileges.
+  if (!isAdmin && !demo && requestedName.toLowerCase() === 'daniel965')
+    throw new Error('Tên này dành riêng cho tài khoản quản trị. Hãy chọn tên khác.');
   if (data.gender !== 'nam' && data.gender !== 'nu') throw new Error('Giới tính không hợp lệ.');
-  const raw = data.appearance;
-  if (typeof raw !== 'object' || raw === null) throw new Error('Ngoại hình không hợp lệ.');
-  const a = raw as Record<string, unknown>;
-  if (a.hair !== 'long' && a.hair !== 'tied') throw new Error('Kiểu tóc không hợp lệ.');
-  if (a.hairColor !== 'ink' && a.hairColor !== 'silver') throw new Error('Màu tóc không hợp lệ.');
-  if (a.robeColor !== 'ivory' && a.robeColor !== 'jade' && a.robeColor !== 'ember') throw new Error('Màu y phục không hợp lệ.');
-  return { name: isAdmin ? 'daniel965' : requestedName, gender: data.gender, appearance: a as Appearance };
+  return { name: isAdmin ? 'daniel965' : requestedName, gender: data.gender, appearance: parseAppearance(data.appearance) };
 }
 
 export function newCharacter(ownerUid: string, data: ReturnType<typeof parseCreation>, now = Date.now()): CharacterState {

@@ -9,10 +9,10 @@ import { Overworld, SkillVfx, TrialArena, type VisualEffect } from './WorldDecor
 
 const BloomEffects = lazy(() => import('./BloomEffects'));
 
-export type PreviewOptions = { name: string; gender: Gender; appearance: Appearance; root?: SpiritRoot };
+export type PreviewOptions = { name: string; gender: Gender; appearance: Appearance; view: 'body' | 'face'; root?: SpiritRoot };
 type Props = {
   character: OwnCharacter | null; world: WorldSnapshot | null; trial: TribulationState | null;
-  preview: PreviewOptions; effects: VisualEffect[];
+  preview: PreviewOptions; appearanceDraft?: Appearance | null; editorView?: 'body' | 'face' | null; effects: VisualEffect[];
   touch: React.RefObject<{ right: number; forward: number }>;
   onInput: (input: { x: number; z: number; rotation: number }) => void;
   onPickup: (id: string) => void;
@@ -28,7 +28,7 @@ function publicFromOwn(c: OwnCharacter): PublicPlayer {
   };
 }
 
-function SceneContent({ character, world, trial, preview, effects, touch, onInput, onPickup }: Props) {
+function SceneContent({ character, world, trial, preview, appearanceDraft, editorView, effects, touch, onInput, onPickup }: Props) {
   const { scene, camera, gl } = useThree();
   const engine = useRef<SceneEngine | null>(null);
   const avatar = useRef<THREE.Group>(null);
@@ -42,6 +42,10 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   }, [scene, camera, gl]);
   useEffect(() => { engine.current?.setAtmosphere(Boolean(inTrial), Boolean(character?.isAdmin)); }, [inTrial, character?.isAdmin]);
   useEffect(() => {
+    engine.current?.setPreviewView(character ? editorView ?? null : preview.view,
+      character && editorView ? avatar.current?.rotation.y ?? character.rotation : undefined);
+  }, [character?.id, preview.view, editorView]);
+  useEffect(() => {
     const latest = effects.at(-1);
     if (!latest || latest.visualId === lastCinematic.current || !character) return;
     lastCinematic.current = latest.visualId;
@@ -52,12 +56,14 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     }
   }, [effects, character?.id]);
 
-  const local = useMemo<PublicPlayer>(() => character ? publicFromOwn(character) : {
+  const local = useMemo<PublicPlayer>(() => character ? { ...publicFromOwn(character),
+    appearance: appearanceDraft ?? character.appearance,
+  } : {
     id: 'preview', name: preview.name || 'Tân đệ tử', position: { x: 0, y: 0, z: 10 },
     rotation: 0, hp: 120, maxHp: 120, realm: 0, path: null, gender: preview.gender,
     appearance: preview.appearance, root: preview.root ?? { tier: 'chan', elements: ['moc', 'thuy'], multiplier: 1 },
-    equipment: { weapon: 'wooden_sword', robe: 'novice_robe' }, isAdmin: false,
-  }, [character, preview]);
+    equipment: { robe: 'novice_robe' }, isAdmin: false,
+  }, [character, preview, appearanceDraft]);
   const others = useMemo(() => (world?.players ?? []).filter((player) => player.id !== character?.id), [world?.players, character?.id]);
   const serverPosition = character && world?.players.find((player) => player.id === character.id)?.position || local.position;
 
@@ -65,11 +71,11 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const controller = engine.current;
     if (!controller) return;
     controller.setTouchInput(touch.current.right, touch.current.forward);
-    controller.update(delta, avatar.current, serverPosition, character?.isAdmin ? 30 : 6, Boolean(character));
+    controller.update(delta, avatar.current, serverPosition, character?.isAdmin ? 30 : 6, Boolean(character) && !editorView);
     const now = performance.now();
     if (character && now - lastInput.current >= 50) {
       lastInput.current = now;
-      onInput(controller.getMovement());
+      onInput(editorView ? { x: 0, z: 0, rotation: avatar.current?.rotation.y ?? character.rotation } : controller.getMovement());
     }
   });
 

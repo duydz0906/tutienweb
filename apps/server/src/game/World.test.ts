@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
 import { describe, expect, it } from 'vitest';
-import type { ActionResult, OwnCharacter, TribulationState, WorldSnapshot } from '@van-thuong/shared';
+import { DEFAULT_APPEARANCE, type ActionResult, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
 import { MemoryStore } from '../db/store.js';
@@ -30,8 +30,8 @@ describe('authoritative multiplayer world', () => {
     const world = new World(io, store, cache);
     const first = makeDemoSession();
     const second = makeDemoSession();
-    const charA = newCharacter(first.identity.uid, { name: 'Kiếm Khách', gender: 'nam', appearance: { hair: 'tied', hairColor: 'ink', robeColor: 'jade' } });
-    const charB = newCharacter(second.identity.uid, { name: 'Dược Sư', gender: 'nu', appearance: { hair: 'long', hairColor: 'silver', robeColor: 'ivory' } });
+    const charA = newCharacter(first.identity.uid, { name: 'Kiếm Khách', gender: 'nam', appearance: { ...DEFAULT_APPEARANCE, hair: 'tied', robeColor: 'jade' } });
+    const charB = newCharacter(second.identity.uid, { name: 'Dược Sư', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE, hairColor: 'silver' } });
     charA.position = { x: 0, y: 0, z: -8 };
     charA.rotation = Math.PI;
     charA.cultivation = 150;
@@ -58,6 +58,15 @@ describe('authoritative multiplayer world', () => {
       expect((await verifyIdentity(first.token)).isAdmin).toBe(false);
       const forbidden = await ack(a, 'admin:action', { type: 'spawn-item', itemId: 'immortal_sword', isAdmin: true });
       expect(forbidden.ok).toBe(false);
+      const appearanceBroadcast = nextEvent<WorldSnapshot>(b, 'world');
+      const edited = await ack(a, 'appearance:update', { appearance: { ...charA.appearance, hair: 'bun', hairColor: 'gold', face: 'angular', height: 0.72, build: 0.64 }, isAdmin: true });
+      expect(edited.ok).toBe(true);
+      if (edited.ok) expect(edited.character?.appearance.face).toBe('angular');
+      expect((await appearanceBroadcast).players.find(p => p.id === charA.id)?.appearance.hair).toBe('bun');
+      const injected = await ack(b, 'appearance:update', { appearance: { ...charB.appearance, face: '__proto__', height: 999 } });
+      expect(injected.ok).toBe(false);
+      expect((await store.get(first.identity.uid))?.appearance.face).toBe('angular');
+      expect((await store.get(second.identity.uid))?.appearance.face).toBe('oval');
 
       a.emit('input', { x: 999, z: 0, rotation: Math.PI, position: { x: 1000, y: 999, z: 1000 } });
       await sleep(180);

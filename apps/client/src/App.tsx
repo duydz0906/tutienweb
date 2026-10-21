@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { AlertCircle, CheckCircle2, LoaderCircle, Sparkles, X } from 'lucide-react';
-import { skillsForPath, type ActionResult, type ChatMessage, type CombatEvent, type LeaderboardEntry,
+import { DEFAULT_APPEARANCE, skillsForPath, type ActionResult, type Appearance, type ChatMessage, type CombatEvent, type LeaderboardEntry,
   type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { WorldScene, type PreviewOptions } from './game/WorldScene';
 import { type VisualEffect } from './game/WorldDecor';
@@ -14,11 +14,11 @@ import { api } from './lib/api';
 import { firebaseEnabled, loginGoogle, loginPassword, logoutFirebase, observeFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
 
-type Phase = 'loading' | 'login' | 'create' | 'reveal' | 'game';
+type Phase = 'loading' | 'login' | 'create' | 'reveal' | 'entering' | 'game';
 type Session = { kind: 'demo'; token: string } | { kind: 'firebase'; token: string; user: User };
 type Toast = { id: string; text: string; kind: 'good' | 'bad' | 'info' };
 const DEMO_KEY = 'van-thuong:demo-session';
-const initialPreview: PreviewOptions = { name: '', gender: 'nu', appearance: { hair: 'long', hairColor: 'ink', robeColor: 'ivory' } };
+const initialPreview: PreviewOptions = { name: '', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE }, view: 'body' };
 
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -36,6 +36,8 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [panel, setPanel] = useState<ActivePanel>(null);
+  const [appearanceDraft, setAppearanceDraft] = useState<Appearance | null>(null);
+  const [editorView, setEditorView] = useState<'body' | 'face'>('body');
   const [pathModal, setPathModal] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [roster, setRoster] = useState<AdminPlayer[]>([]);
@@ -57,7 +59,8 @@ export function App() {
       const response = await api<{ identity: { displayName: string; isAdmin: boolean }; character: OwnCharacter | null }>('/api/me', nextSession.token);
       setSession(nextSession);
       setCharacter(response.character);
-      setPhase(response.character ? 'game' : 'create');
+      setWorld(null);
+      setPhase(response.character ? 'entering' : 'create');
       previousRealm.current = response.character?.realm ?? 0;
       setPanel(null);
     } catch (e) {
@@ -97,8 +100,9 @@ export function App() {
     return () => { cancelled = true; unsubscribe(); };
   }, [attach]);
 
+  const inWorld = phase === 'entering' || phase === 'game';
   useEffect(() => {
-    if (phase !== 'game' || !session || !character) return;
+    if (!inWorld || !session || !character) return;
     const socket = io({
       path: '/socket.io',
       auth: (callback) => {
@@ -109,11 +113,11 @@ export function App() {
       reconnectionDelayMax: 4500,
     });
     socketRef.current = socket;
-    socket.on('connect', () => setConnected(true));
+    socket.on('connect', () => { setConnected(true); setError(null); });
     socket.on('disconnect', () => setConnected(false));
-    socket.on('connect_error', (e: Error) => { setConnected(false); if (!e.message.includes('websocket error')) notify(e.message, 'bad'); });
-    socket.on('fatal', (text: string) => notify(text, 'bad'));
-    socket.on('world', (snapshot: WorldSnapshot) => setWorld(snapshot));
+    socket.on('connect_error', (e: Error) => { setConnected(false); setError(e.message); if (!e.message.includes('websocket error')) notify(e.message, 'bad'); });
+    socket.on('fatal', (text: string) => { notify(text, 'bad'); setError(text); setWorld(null); setPhase('entering'); });
+    socket.on('world', (snapshot: WorldSnapshot) => { setWorld(snapshot); setError(null); setPhase((current) => current === 'entering' ? 'game' : current); });
     socket.on('character', (next: OwnCharacter) => setCharacter(next));
     socket.on('tribulation', (next: TribulationState) => setTrial(next.active ? next : null));
     socket.on('cooldowns', (next: Record<string, number>) => setCooldowns(next));
@@ -128,7 +132,13 @@ export function App() {
       setEffects((prev) => [...prev.filter((effect) => Date.now() - effect.at < 1600), visual]);
     });
     return () => { socket.removeAllListeners(); socket.disconnect(); socketRef.current = null; setConnected(false); };
-  }, [phase, session?.token, character?.id, notify]);
+  }, [inWorld, session?.token, character?.id, notify]);
+
+  useEffect(() => {
+    if (phase !== 'entering') return;
+    const timeout = setTimeout(() => setError((current) => current ?? 'Kết nối thế giới quá lâu. Vui lòng thử lại.'), 12000);
+    return () => clearTimeout(timeout);
+  }, [phase]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -174,13 +184,13 @@ export function App() {
     socketRef.current?.disconnect();
     sessionStorage.removeItem(DEMO_KEY);
     if (session?.kind === 'firebase') await logoutFirebase().catch(() => {});
-    setSession(null); setCharacter(null); setWorld(null); setTrial(null); setMessages([]); setPanel(null);
+    setSession(null); setCharacter(null); setWorld(null); setTrial(null); setMessages([]); setPanel(null); setAppearanceDraft(null);
     setPhase('login'); setError(null);
   };
 
-  const action = useCallback(async (event: string, payload: object = {}) => {
+  const action = useCallback(async (event: string, payload: object = {}): Promise<boolean> => {
     const socket = socketRef.current;
-    if (!socket?.connected) { notify('Đang kết nối thế giới. Vui lòng chờ...', 'bad'); return; }
+    if (!socket?.connected) { notify('Đang kết nối thế giới. Vui lòng chờ...', 'bad'); return false; }
     try {
       const result = await new Promise<ActionResult>((resolve, reject) => {
         socket.timeout(6000).emit(event, payload, (error: Error | null, response: ActionResult) => {
@@ -188,11 +198,29 @@ export function App() {
           else resolve(response);
         });
       });
-      if (!result.ok) { notify(result.error, 'bad'); return; }
+      if (!result.ok) { notify(result.error, 'bad'); return false; }
       if (result.character) setCharacter(result.character);
       if (result.message) notify(result.message, 'good');
-    } catch (e) { notify(e instanceof Error ? e.message : 'Thao tác thất bại.', 'bad'); }
+      return true;
+    } catch (e) { notify(e instanceof Error ? e.message : 'Thao tác thất bại.', 'bad'); return false; }
   }, [notify]);
+
+  const openPanel = (next: ActivePanel) => {
+    if (next === 'appearance' && character) { setAppearanceDraft({ ...character.appearance }); setEditorView('body'); }
+    if (panel === 'appearance' && next !== 'appearance') setAppearanceDraft(null);
+    setPanel(next);
+  };
+  const saveAppearance = async () => {
+    if (!appearanceDraft || !character) return;
+    if (await action('appearance:update', { appearance: appearanceDraft })) openPanel(null);
+  };
+  const retryWorld = () => {
+    setError(null);
+    setWorld(null);
+    const socket = socketRef.current;
+    if (socket) { socket.disconnect(); socket.connect(); }
+    else if (session) void attach(session);
+  };
 
   const input = useCallback((movement: { x: number; z: number; rotation: number }) => {
     if (socketRef.current?.connected) socketRef.current.emit('input', movement);
@@ -220,22 +248,34 @@ export function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [character?.isAdmin, character?.path, character?.scene, phase, panel, pathModal, skill, action]);
 
-  const showCharacter = phase === 'game' ? character : null;
+  const showCharacter = inWorld ? character : null;
   const scenePreview = phase === 'reveal' && character ? { ...preview, root: character.root } : preview;
   return <div className="app-shell">
-    <WorldScene character={showCharacter} world={phase === 'game' ? world : null} trial={trial} preview={scenePreview} effects={effects}
+    <WorldScene character={showCharacter} world={phase === 'game' ? world : null} trial={trial} preview={scenePreview}
+      appearanceDraft={panel === 'appearance' ? appearanceDraft : null} editorView={panel === 'appearance' ? editorView : null} effects={effects}
       touch={touchMovement} onInput={input} onPickup={pickup} />
     <div className="vignette" aria-hidden="true" />
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}
     {phase === 'login' && <LoginScreen demoAvailable={demoAvailable} firebaseAvailable={firebaseEnabled && !demoAvailable} busy={busy} error={error}
       onDemo={() => { void enterDemo(); }} onGoogle={() => { void enterGoogle(); }} onPassword={(email, password) => { void enterPassword(email, password); }} />}
-    {(phase === 'create' || phase === 'reveal') && <CharacterCreation preview={preview} onChange={setPreview} onCreate={() => { void create(); }}
-      busy={busy} error={error} revealed={phase === 'reveal' ? character : null} onEnter={() => { setPhase('game'); notify('Chào mừng đến Vân Thượng Sơn!', 'good'); }} onBack={() => { void logout(); }} />}
+    {(phase === 'create' || phase === 'reveal') && <CharacterCreation preview={preview} onChange={(next) => { setPreview(next); setError(null); }} onCreate={() => { void create(); }}
+      busy={busy} error={error} revealed={phase === 'reveal' ? character : null}
+      onEnter={() => { setWorld(null); setError(null); setPhase('entering'); }} onBack={() => { void logout(); }} />}
+    {phase === 'entering' && <div className="loading-screen world-entry" role="status">
+      <div className="loading-mark">雲</div><LoaderCircle size={29} className="spinner" />
+      <strong>Đang mở cổng vào Vân Thượng...</strong><span>Đợi thế giới đồng bộ nhân vật của bạn.</span>
+      {error && <><p className="inline-error" role="alert">{error}</p><div className="entry-actions">
+        <button className="btn btn-gold" onClick={retryWorld}>Thử kết nối lại</button>
+        <button className="btn btn-quiet" onClick={() => { void logout(); }}>Về đăng nhập</button>
+      </div></>}
+    </div>}
     {phase === 'game' && character && <>
       <GameHUD character={character} world={world} trial={trial} connected={connected} cooldowns={cooldowns} messages={messages} panel={panel}
-        onPanel={setPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
+        onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
-      <Panels panel={panel} onClose={() => setPanel(null)} character={character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }} />
+      <Panels panel={panel} onClose={() => openPanel(null)} character={character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
+        appearanceDraft={appearanceDraft} onAppearanceChange={setAppearanceDraft} onSaveAppearance={() => { void saveAppearance(); }} connected={connected}
+        editorView={editorView} onEditorView={setEditorView} />
       {pathModal && character.realm >= 2 && !character.path && <PathModal onClose={() => setPathModal(false)} onSelect={selectPath} />}
     </>}
     <div className="toast-stack" aria-live="polite">{toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.kind === 'bad' ? <AlertCircle size={18} /> : toast.kind === 'good' ? <CheckCircle2 size={18} /> : <Sparkles size={18} />}<span>{toast.text}</span><button aria-label="Đóng thông báo" onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}><X size={14} /></button></div>)}</div>
