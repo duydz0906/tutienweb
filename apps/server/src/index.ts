@@ -5,27 +5,21 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { Server } from 'socket.io';
-import type { OwnCharacter, CharacterState } from '@van-thuong/shared';
-import { demoMode, initializeAuthentication, makeDemoSession, verifyIdentity, type Identity } from './auth.js';
+import { demoMode, initializeAuthentication, localDevMode, makeDemoSession, makeLocalDevSession, verifyIdentity, type Identity } from './auth.js';
+import { FileStore } from './db/fileStore.js';
 import { MemoryStore, MongoStore, type CharacterStore } from './db/store.js';
 import { MemoryCache, RedisCache, type GameCache } from './db/cache.js';
+import { ownCharacter } from './game/devMode.js';
+import { ensureLocalDevCharacter } from './game/localDevCharacter.js';
 import { World } from './game/World.js';
-import { GOD_STAT, newCharacter, parseCreation } from './game/rules.js';
-
-function ownCharacter(c: CharacterState, identity: Identity): OwnCharacter {
-  const { ownerUid: _uid, devModeBackup: _backup, ...data } = c;
-  const god = identity.isAdmin && c.devMode;
-  return { ...data,
-    hp: god ? GOD_STAT : c.hp, mp: god ? GOD_STAT : c.mp,
-    maxHp: god ? GOD_STAT : c.maxHp, maxMp: god ? GOD_STAT : c.maxMp,
-    isAdmin: identity.isAdmin };
-}
+import { newCharacter, parseCreation } from './game/rules.js';
+import { isLocalDevIdentity, LOCAL_DATA_DIR } from './localDev.js';
 
 async function main(): Promise<void> {
-  initializeAuthentication();
+  await initializeAuthentication();
   let store: CharacterStore;
   let cache: GameCache;
-  if (demoMode) { store = new MemoryStore(); cache = new MemoryCache(); }
+  if (demoMode) { store = localDevMode ? new FileStore(LOCAL_DATA_DIR) : new MemoryStore(); cache = new MemoryCache(); }
   else {
     if (!process.env.MONGO_URI || !process.env.REDIS_URL) throw new Error('MONGO_URI and REDIS_URL are required.');
     const mongo = new MongoStore();
@@ -62,7 +56,20 @@ async function main(): Promise<void> {
       })();
     };
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true, mode: demoMode ? 'demo' : 'production', online: io.engine.clientsCount }));
+  app.get('/api/health', (_req, res) => res.json({ ok: true, mode: demoMode ? 'demo' : 'production',
+    devAutoLogin: localDevMode, online: io.engine.clientsCount }));
+
+  // No client-supplied UID/name/destination. This endpoint is absent outside the local demo launch.
+  app.post('/api/dev/session', (_req, res) => {
+    if (!localDevMode) { res.status(404).json({ error: 'Không hỗ trợ tự vào dev mode.' }); return; }
+    void (async () => {
+      await ensureLocalDevCharacter(store);
+      res.json({ token: makeLocalDevSession().token });
+    })().catch((error) => {
+      console.error('[dev] Failed to load local character:', error);
+      res.status(500).json({ error: 'Không thể tải nhân vật dev đã lưu. Kiểm tra thư mục .local-data.' });
+    });
+  });
 
   const demoRequestTimes = new Map<string, number[]>();
   app.post('/api/demo/session', (req, res) => {
@@ -79,14 +86,14 @@ async function main(): Promise<void> {
   app.get('/api/me', withAuth(async (_req, res, identity) => {
     await store.syncUser(identity);
     const authorized = identity.isAdmin && await store.hasAdminRole(identity.uid);
-    const character = await store.get(identity.uid);
+    const character = isLocalDevIdentity(identity) ? await ensureLocalDevCharacter(store) : await store.get(identity.uid);
     res.json({ identity: { displayName: identity.displayName, isAdmin: authorized },
       character: character ? ownCharacter(character, { ...identity, isAdmin: authorized }) : null });
   }));
 
   app.post('/api/characters', withAuth(async (req, res, identity) => {
     await store.syncUser(identity);
-    const existing = await store.get(identity.uid);
+    const existing = isLocalDevIdentity(identity) ? await ensureLocalDevCharacter(store) : await store.get(identity.uid);
     if (existing) {
       const authorized = identity.isAdmin && await store.hasAdminRole(identity.uid);
       res.json({ character: ownCharacter(existing, { ...identity, isAdmin: authorized }), existing: true }); return;
@@ -96,7 +103,7 @@ async function main(): Promise<void> {
     try { parsed = parseCreation(req.body, authorized, demoMode); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Thông tin không hợp lệ.' }); return; }
     const created = await store.create(newCharacter(identity.uid, parsed));
-    await cache.update(created, authorized);
+    await cache.update(created, authorized || isLocalDevIdentity(identity));
     res.status(201).json({ character: ownCharacter(created, { ...identity, isAdmin: authorized }), existing: false });
   }));
 

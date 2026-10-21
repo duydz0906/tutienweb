@@ -22,7 +22,7 @@ const garments = ['dress_maxi01', 'jalabiya01', 'shoes04'];
 const face = ['eyes-high-poly', 'teeth-teeth_base', 'tongue-tongue01', 'eyebrows-eyebrow001', 'eyelashes-eyelashes01'];
 const allowed = new Set([...hair.map(id => `hair-${id}`), ...garments.map(id => `clothes-${id}`), ...face]);
 manifest.proxies = manifest.proxies.filter(p => allowed.has(`${p.kind}-${p.id}`));
-for (const p of manifest.proxies) { delete p.normalTexture; delete p.preview; }
+for (const p of manifest.proxies) delete p.preview; // keep CC0 fabric normal maps for close-up PBR detail
 manifest.skins = manifest.skins.filter(s => /^young_(caucasian|asian|african)_(female|male)$/.test(s.id));
 manifest.eyes = ['brownlight'];
 manifest.eyeOptions = { brownlight: manifest.eyeOptions.brownlight };
@@ -31,8 +31,8 @@ delete manifest.mobileTextures;
 
 const files = new Set([
   'body.glb.gz', 'shapes.bin.gz', 'eyes/brownlight.webp',
-  ...manifest.skins.map(s => `skins/${s.id}_1k.webp`),
-  ...manifest.proxies.flatMap(p => [p.file, p.texture].filter(Boolean)),
+  ...manifest.skins.flatMap(s => [`skins/${s.id}_1k.webp`, `skins/${s.id}_2k.webp`]),
+  ...manifest.proxies.flatMap(p => [p.file, p.texture, p.normalTexture].filter(Boolean)),
 ]);
 if (process.argv.includes('--list')) {
   console.log(['/LICENSE.ASSETS.md', '/LICENSE', '/assets/human/manifest.json', ...[...files].map(p => `/assets/human/${p}`)].join('\n'));

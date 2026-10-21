@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { SectLandscape } from './MountainLandscape';
 import { ITEMS, SECT_BUILDINGS, SKILLS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
 
 const JADE = '#82cdbb';
@@ -118,15 +119,16 @@ function GroundFoliage() {
   </>;
 }
 
-function MountainHorizon() {
+function MountainHorizon({ sect }: { sect: boolean }) {
   const mountains = useMemo(() => Array.from({ length: 22 }, (_, i) => {
     const angle = (i / 22) * Math.PI * 2;
     const distance = 78 + (i % 4) * 8;
     return { x: Math.sin(angle) * distance, z: Math.cos(angle) * distance,
-      height: 17 + ((i * 13) % 17), radius: 11 + ((i * 7) % 10) };
+      height: sect ? 36 + ((i * 13) % 25) : 17 + ((i * 13) % 17),
+      radius: sect ? 18 + ((i * 7) % 15) : 11 + ((i * 7) % 10) };
   }), []);
   return <>
-    {mountains.map((m, i) => <mesh key={i} position={[m.x, m.height * 0.18 - 4, m.z]}>
+    {mountains.map((m, i) => <mesh key={i} position={[m.x, m.height * 0.25 - (sect ? 15 : 4), m.z]}>
       <coneGeometry args={[m.radius, m.height, 5]} />
       <meshStandardMaterial color={i % 3 ? '#6e9090' : '#7ea39e'} roughness={1} flatShading />
     </mesh>)}
@@ -170,21 +172,24 @@ function SpiritParticles({ storm = false }: { storm?: boolean }) {
   return <points ref={group} geometry={geometry} material={material} />;
 }
 
-export function Overworld({ zone, boss, drops, formations, onPickup }: {
-  zone: WorldZone; boss: BossState | null; drops: WorldDrop[]; formations: FormationState[]; onPickup: (id: string) => void;
+export function Overworld({ zone, playerPosition, boss, drops, formations, onPickup }: {
+  zone: WorldZone; playerPosition: Vector3; boss: BossState | null; drops: WorldDrop[];
+  formations: FormationState[]; onPickup: (id: string) => void;
 }) {
   const sect = zone === 'overworld';
   return <>
-    <MountainHorizon />
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -3.7, 0]}>
+    <MountainHorizon sect={sect} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, sect ? -15 : -3.7, 0]}>
       <circleGeometry args={[300, 96]} /><meshStandardMaterial color={sect ? '#7fa8a6' : '#647c8e'} roughness={0.44} metalness={0.12} />
     </mesh>
-    <mesh castShadow receiveShadow position={[0, -1.45, 0]}>
-      <cylinderGeometry args={[47, 42, 3.1, 72]} /><meshStandardMaterial color={sect ? '#526b63' : '#434b50'} roughness={1} flatShading />
-    </mesh>
-    <mesh receiveShadow position={[0, 0, 0]}>
-      <cylinderGeometry args={[46.9, 47, 0.14, 72]} /><meshStandardMaterial color={sect ? '#748c77' : '#56645e'} roughness={1} />
-    </mesh>
+    {sect ? <SectLandscape playerPosition={playerPosition} /> : <>
+      <mesh castShadow receiveShadow position={[0, -1.45, 0]}>
+        <cylinderGeometry args={[47, 42, 3.1, 72]} /><meshStandardMaterial color="#434b50" roughness={1} flatShading />
+      </mesh>
+      <mesh receiveShadow position={[0, 0, 0]}>
+        <cylinderGeometry args={[46.9, 47, 0.14, 72]} /><meshStandardMaterial color="#56645e" roughness={1} />
+      </mesh>
+    </>}
     <mesh position={[0, 0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[43.7, 44.1, 96]} /><meshBasicMaterial color={sect ? '#b9bd94' : '#a39da7'} transparent opacity={0.55} side={THREE.DoubleSide} />
     </mesh>
@@ -205,7 +210,8 @@ export function Overworld({ zone, boss, drops, formations, onPickup }: {
       </mesh>)}
       <BambooGrove />
       <GroundFoliage />
-      {sectTrees.map(([x, z, scale], i) => <CherryTree key={i} x={x} z={z} scale={scale} />)}
+      {sectTrees.filter(([x,z]) => SECT_BUILDINGS.every(room => Math.abs(x-room.x) > room.width/2 + 3 || Math.abs(z-room.z) > room.depth/2 + 3)).map(([x, z, scale], i) =>
+        <CherryTree key={i} x={x} z={z} scale={scale} />)}
       {[-1, 1].flatMap((side) => [8, 12, 22].map((z) => <Lantern key={`${side}-${z}`} x={side * 5.6} z={z} />))}
     </>}
     {!sect && boss && <BossModel boss={boss} />}

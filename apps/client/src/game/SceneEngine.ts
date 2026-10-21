@@ -27,6 +27,8 @@ export class SceneEngine {
   private shakeUntil = 0;
   private isTribulation = false;
   private isWilderness = false;
+  private isAscendant = false;
+  private isInterior = false;
   private isAdminSky = false;
   private wasCinematic = false;
   private previewView: 'body' | 'face' | null = null;
@@ -85,10 +87,14 @@ export class SceneEngine {
   enterZone(zone: GameScene, position: Vector3): void {
     this.keys.clear();
     this.touchInput = { right: 0, forward: 0 };
-    // In the sect, frame the open halls without putting the gate between camera and player.
-    this.distance = zone === 'wilderness' ? 6.8 : zone === 'overworld' ? 7.6 : 14;
-    this.pitch = zone === 'tribulation' ? 0.31 : 0.14;
-    this.yaw = zone === 'overworld' ? Math.PI + 0.27 : 0.27;
+    // Place the camera to the side of the room's entry door. Otherwise the exit door
+    // blocks the avatar and its sprite fills the screen on arrival.
+    const interior = zone === 'residence' || zone === 'sanctum';
+    this.distance = zone === 'overworld' ? 7.1 : interior ? 5.0 : zone === 'tribulation' ? 12 : 7.5;
+    this.pitch = zone === 'tribulation' ? 0.34 : interior ? 0.24 : 0.27;
+    // Third-person chase axis: W advances away from the camera, never toward it.
+    // The sect spawns facing +Z; wilderness, Ascendant and private rooms face -Z.
+    this.yaw = zone === 'overworld' ? Math.PI : interior ? 0.85 : 0;
     this.lastRotation = zone === 'overworld' ? 0 : Math.PI;
     this.lookAt.set(position.x, position.y + 1.65, position.z);
     this.camera.position.set(
@@ -111,8 +117,8 @@ export class SceneEngine {
       this.previousGameYaw = null;
     }
     this.previewView = view;
-    this.distance = view === 'face' ? 1.7 : view === 'body' ? 5.3 : this.isWilderness ? 6.8 : 7.6;
-    this.pitch = view === 'face' ? 0.05 : view === 'body' ? 0.18 : this.isTribulation ? 0.31 : 0.14;
+    this.distance = view === 'face' ? 1.7 : view === 'body' ? 5.3 : this.isInterior ? 5.0 : this.isWilderness || this.isAscendant ? 7.5 : 7.1;
+    this.pitch = view === 'face' ? 0.05 : view === 'body' ? 0.18 : this.isTribulation ? 0.34 : this.isInterior ? 0.24 : 0.27;
   }
 
   getMovement(): { x: number; z: number; rotation: number } {
@@ -172,6 +178,13 @@ export class SceneEngine {
         this.lookAt.z + Math.cos(this.yaw) * Math.cos(this.pitch) * this.distance,
       );
     }
+    // Keep an interior chase camera on the player's side of the walls even after
+    // zooming, rotating, or walking right up to a cupboard.
+    if (this.isInterior && avatar) {
+      this.desiredCamera.x = THREE.MathUtils.clamp(this.desiredCamera.x, -7.35, 7.35);
+      this.desiredCamera.z = THREE.MathUtils.clamp(this.desiredCamera.z, -7.35, 7.7);
+      this.desiredCamera.y = Math.min(this.desiredCamera.y, 5.05);
+    }
     this.camera.position.lerp(this.desiredCamera, Math.min(1, dt * (cinematic ? 5 : 6)));
     if (performance.now() < this.shakeUntil) {
       this.camera.position.x += (Math.random() - 0.5) * 0.12;
@@ -188,23 +201,25 @@ export class SceneEngine {
     this.shakeUntil = performance.now() + durationMs;
   }
 
-  setAtmosphere(tribulation: boolean, admin: boolean, wilderness = false): void {
+  setAtmosphere(tribulation: boolean, admin: boolean, wilderness = false, ascendant = false, interior = false): void {
     this.isTribulation = tribulation;
     this.isAdminSky = admin;
     this.isWilderness = wilderness;
+    this.isAscendant = ascendant;
+    this.isInterior = interior;
     this.applyAtmosphere();
   }
 
   private applyAtmosphere(): void {
     const dark = this.isTribulation || this.wasCinematic;
-    const color = dark ? '#171729' : this.isAdminSky ? '#b97c68' : this.isWilderness ? '#828e9e' : '#8bb8bb';
+    const color = dark ? '#171729' : this.isInterior ? '#342f42' : this.isAscendant ? '#9cbad2' : this.isAdminSky ? '#b97c68' : this.isWilderness ? '#828e9e' : '#8bb8bb';
     this.scene.background = new THREE.Color(color);
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.color.set(color);
-      this.scene.fog.density = dark ? 0.023 : this.isWilderness ? 0.016 : 0.0095;
+      this.scene.fog.density = dark ? 0.023 : this.isInterior ? 0.007 : this.isAscendant ? 0.012 : this.isWilderness ? 0.016 : 0.008;
     }
-    this.sun.color.set(dark ? '#b1a5ed' : this.isAdminSky ? '#ffb77a' : this.isWilderness ? '#e1d0c1' : '#ffebc8');
-    this.hemisphere.intensity = dark ? 0.65 : this.isWilderness ? 1.15 : 1.6;
+    this.sun.color.set(dark ? '#b1a5ed' : this.isInterior ? '#f2d6c5' : this.isAscendant ? '#e3f2ff' : this.isAdminSky ? '#ffb77a' : this.isWilderness ? '#e1d0c1' : '#ffebc8');
+    this.hemisphere.intensity = dark ? 0.65 : this.isInterior ? 1.2 : this.isAscendant ? 1.85 : this.isWilderness ? 1.15 : 1.6;
   }
 
   dispose(): void {
@@ -247,6 +262,8 @@ export class SceneEngine {
   private onPointerUp = (): void => { this.dragging = false; };
   private onWheel = (event: WheelEvent): void => {
     event.preventDefault();
-    this.distance = THREE.MathUtils.clamp(this.distance + event.deltaY * 0.015, 6, 23);
+    const [min, max] = this.previewView === 'face' ? [1.2, 3.5] : this.previewView ? [3.2, 8]
+      : this.isInterior ? [3.2, 5.6] : [5.2, 23];
+    this.distance = THREE.MathUtils.clamp(this.distance + event.deltaY * 0.015, min, max);
   };
 }

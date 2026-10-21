@@ -141,9 +141,10 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     void humanPackage().then((pkg) => {
       if (!active) return;
       avatar = new HumanAvatar(pkg);
-      avatar.textureSize = '1k';
-      avatar.normalMaps = false; // lighter on mobile; diffuse PBR material still receives scene lights/shadows
-      avatar.anisotropy = 2;
+      // The local character/creator get 2K CC0 skin detail and robe normal maps; remote actors stay 1K.
+      avatar.textureSize = local || preview ? '2k' : '1k';
+      avatar.normalMaps = true;
+      avatar.anisotropy = local || preview ? 4 : 2;
       setHuman(avatar);
     }).catch((error) => {
       console.error('[avatar] CC0 human assets failed to load:', error);

@@ -1,7 +1,7 @@
 import type { HumanConfig } from 'humanforge/human';
 import { DEFAULT_APPEARANCE, normalizeAppearance, type Appearance, type Gender } from '@van-thuong/shared';
 
-/** Local CC0 MakeHuman package: seven fitted hair meshes, six skin textures, two flowing robes. */
+/** Local CC0 MakeHuman package: seven fitted hair meshes, six skin textures in 2K, fitted robes and PBR normal maps. */
 export const HAIR_HEX: Record<Appearance['hairColor'], string> = {
   ink: '#201e26', silver: '#e1e0d8', chestnut: '#794637', auburn: '#ae5541',
   gold: '#d2aa70', ash: '#958e86', plum: '#815674', jade: '#57948c',

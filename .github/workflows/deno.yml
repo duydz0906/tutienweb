@@ -1,0 +1,33 @@
+name: Deno + Node game checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # This repository deliberately has no npm lockfile, so npm ci/cache cannot run.
+      - name: Install workspaces
+        run: npm install --include=dev --package-lock=false --no-audit --no-fund
+      - name: Validate local CC0 human assets (settings from deno.ysl)
+        run: deno run --allow-read=deno.ysl,apps/client/public/human scripts/verify-human-assets.ts
+      - name: Typecheck client and server
+        run: npm run typecheck
+      - name: Run authoritative world tests
+        run: npm test
+      - name: Build web game
+        run: npm run build

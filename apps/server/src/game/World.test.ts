@@ -60,12 +60,11 @@ describe('authoritative multiplayer world', () => {
       expect(forbidden.ok).toBe(false);
       const appearanceBroadcast = nextEvent<WorldSnapshot>(b, 'world');
       const edited = await ack(a, 'appearance:update', { appearance: { ...charA.appearance, hair: 'bun', hairColor: 'gold', face: 'angular', height: 0.72, build: 0.64 }, isAdmin: true });
-      expect(edited.ok).toBe(true);
-      if (edited.ok) expect(edited.character?.appearance.face).toBe('angular');
-      expect((await appearanceBroadcast).players.find(p => p.id === charA.id)?.appearance.hair).toBe('bun');
+      expect(edited.ok).toBe(false);
+      expect((await appearanceBroadcast).players.find(p => p.id === charA.id)?.appearance.hair).toBe('tied');
       const injected = await ack(b, 'appearance:update', { appearance: { ...charB.appearance, face: '__proto__', height: 999 } });
       expect(injected.ok).toBe(false);
-      expect((await store.get(first.identity.uid))?.appearance.face).toBe('angular');
+      expect((await store.get(first.identity.uid))?.appearance.face).toBe('oval');
       expect((await store.get(second.identity.uid))?.appearance.face).toBe('oval');
 
       a.emit('input', { x: 999, z: 0, rotation: Math.PI, position: { x: 1000, y: 999, z: 1000 } });

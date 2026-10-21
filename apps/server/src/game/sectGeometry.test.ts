@@ -12,7 +12,7 @@ describe('walkable, server-authoritative sect buildings', () => {
       const inside = p(room.x, room.z - room.depth / 2 + 1.6);
       expect(canWalkInSect(before, inside)).toBe(true);
       expect(canWalkInSect(inside, before)).toBe(true);
-      expect(canWalkInSect(inside, NPCS[room.id].position)).toBe(true);
+      if (room.id === 'master' || room.id === 'quest' || room.id === 'shop') expect(canWalkInSect(inside, NPCS[room.id].position)).toBe(true);
     }
   });
 

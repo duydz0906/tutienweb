@@ -17,6 +17,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     allowedHosts: true,
+    // Vite can otherwise expose files in the workspace via /@fs/ (including local saves/session keys).
+    fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.local-data/**'] },
     proxy: {
       '/api': { target: 'http://127.0.0.1:3001', changeOrigin: true },
       '/socket.io': { target: 'http://127.0.0.1:3001', ws: true, changeOrigin: true },
