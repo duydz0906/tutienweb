@@ -22,6 +22,27 @@ function next<T>(socket: ClientSocket, event: string): Promise<T> {
   });
 }
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * The world re-sends the authoritative character once a second, and only that live projection is
+ * guaranteed to include tick-driven changes: chân khí drain is not written back to the store until
+ * the next periodic save, so reading the store races the first 50 ms tick. Wait for the server's own
+ * `character` event instead; the assertion on its value stays exactly as strict.
+ */
+async function waitForOwn(socket: ClientSocket, predicate: (character: OwnCharacter) => boolean, timeout = 6000): Promise<OwnCharacter> {
+  const received: OwnCharacter[] = [];
+  const listener = (value: OwnCharacter) => { received.push(value); };
+  socket.on('character', listener);
+  try {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const latest = received.at(-1);
+      if (latest && predicate(latest)) return latest;
+      await sleep(50);
+    }
+    const last = received.at(-1);
+    throw new Error(`Chân khí không giảm trên máy chủ (mp=${last?.mp ?? 'không có dữ liệu'}, flying=${last?.flying ?? 'không có dữ liệu'}).`);
+  } finally { socket.off('character', listener); }
+}
 /** Move an already-connected character the same way the movement tick would, without a long walk. */
 function place(world: World, characterId: string, position: { x: number; y: number; z: number }) {
   const live = [...(world as unknown as { players: Map<string, { character: { position: typeof position } }> })
@@ -83,8 +104,7 @@ describe('flight and the Vân Cốc village (authoritative server)', () => {
       expect((await store.get(swordsman.ownerUid))?.flying).toBe(true);
       // A Tà tu may ride any flight treasure, including a sword.
       expect((await ack(d, 'flight:toggle')).ok).toBe(true);
-      await sleep(1200);
-      const airborne = (await store.get(swordsman.ownerUid))!;
+      const airborne = await waitForOwn(a, (character) => character.mp < 60 && character.flying === true);
       expect(airborne.flying).toBe(true);
       expect(airborne.mp).toBeLessThan(60); // chân khí is spent by the tick, not by the browser
       const landing = await ack(a, 'flight:toggle');

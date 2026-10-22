@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MATS, silk } from './materials';
 import { bladeGeometry, meshOf, pleatedLathe, seg, taperedSpline } from './geometry';
+import { markParts } from './parts';
 
 const tintCache = new Map<string, THREE.MeshStandardMaterial>();
 
@@ -13,7 +14,7 @@ function tinted(color: string, options: { roughness?: number; metalness?: number
     material = new THREE.MeshStandardMaterial({
       color, roughness: options.roughness ?? 0.6, metalness: options.metalness ?? 0.05,
       emissive: options.emissive ?? '#000000', emissiveIntensity: options.emissiveIntensity ?? 0,
-      map: options.map, bumpMap: options.map, bumpScale: options.bumpScale ?? 0.02,
+      map: options.map ?? null, bumpMap: options.map ?? null, bumpScale: options.bumpScale ?? 0.02,
     });
     tintCache.set(key, material);
   }
@@ -183,7 +184,7 @@ export function buildSpiritFox(quality = 1): THREE.Group {
     pivots.push(pivot);
   }
   group.add(tails);
-  group.userData.parts = { head, legs, tails: pivots };
+  markParts({ head, legs, tails: pivots });
   return group;
 }
 
@@ -199,7 +200,7 @@ export function buildSpiritWolf(quality = 1, color = '#98a4b2', glow = '#bff2ff'
   }
   group.add(taperedSpline([[0, 0.92, -0.75], [0, 0.72, -1.35], [0, 0.95, -1.85]],
     (u) => Math.sin(u * Math.PI) * 0.16, fur, { quality, tubular: 24, radial: 12 }));
-  group.userData.parts = { head, legs };
+  markParts({ head, legs });
   return group;
 }
 
@@ -216,7 +217,7 @@ export function buildIronBoar(quality = 1): THREE.Group {
   for (let i = 0; i < 6; i++) {
     group.add(meshOf(bladeGeometry(0.36, 0.1, 0.032, -0.08), armor, [0, 0.62 + 0.44, 0.52 - i * 0.22], [-0.45, 0, 0]));
   }
-  group.userData.parts = { head, legs };
+  markParts({ head, legs });
   return group;
 }
 
@@ -234,7 +235,7 @@ export function buildSpiritStag(quality = 1, saddle = false, color = '#f6ead1'):
       (u) => (1 - u * 0.8) * 0.025, MATS.jade, { quality, tubular: 12, radial: 8 }));
     head.add(meshOf(new THREE.SphereGeometry(0.055, 16, 12), MATS.glowCyan, [side * 0.34, 1.16, 0.06]));
   }
-  group.userData.parts = { head, legs };
+  markParts({ head, legs });
   return group;
 }
 
@@ -268,7 +269,7 @@ export function buildSpiritSerpent(quality = 1, options: { dark?: boolean } = {}
     }
   }
   group.add(head);
-  group.userData.parts = { head };
+  markParts({ head });
   return group;
 }
 
@@ -310,7 +311,7 @@ export function buildCloudCrane(quality = 1, options: { saddle?: boolean; tint?:
     cushion.position.set(0, 1.42, 0);
     crane.add(cushion);
   }
-  crane.userData.parts = { wings, head: crane, legs: [] };
+  markParts({ head: crane, wings });
   return crane;
 }
 
@@ -337,7 +338,7 @@ export function buildWraith(quality = 1, tint = '#584773', glow = '#c28bff'): TH
     group.add(taperedSpline([[side * 0.3, 1.6, 0.1], [side * 0.62, 1.35, 0.4], [side * 0.78, 0.95, 0.2]],
       (u) => 0.06 * (1 - u * 0.5), cloak, { quality, tubular: 14, radial: 8 }));
   }
-  group.userData.parts = { legs: [] };
+  markParts({});
   return group;
 }
 
@@ -372,7 +373,7 @@ export function buildStoneGolem(quality = 1, tint = '#8a8d84', glow = '#ffe4b2')
     group.add(meshOf(new THREE.SphereGeometry(0.062, 14, 10), core, [side * 0.14, 2.34, 0.36]));
   }
   for (const side of [-1, 1] as const) group.add(boulder(0.3, [0.9, 1.35, 0.95], 11.2 + side, [side * 0.42, 0.1, 0]));
-  group.userData.parts = { legs: [] };
+  markParts({});
   return group;
 }
 
@@ -440,7 +441,7 @@ export function buildDragonBoss(quality = 1): THREE.Group {
   const pearl = meshOf(new THREE.SphereGeometry(0.26, seg(26, quality, 12), seg(26, quality, 12)), MATS.glowGold,
     [headPosition[0], headPosition[1] - 0.14, headPosition[2] + 1.3]);
   dragon.add(pearl);
-  dragon.userData.parts = { head, pearl };
+  markParts({ head, pearl });
   return dragon;
 }
 
@@ -452,7 +453,7 @@ export function buildFlyingSwordMount(quality = 1): THREE.Group {
   sword.rotation.set(Math.PI / 2, 0, Math.PI / 2);
   group.add(sword);
   group.add(meshOf(new THREE.TorusGeometry(1.5, 0.02, 12, 48), MATS.glowCyan, [0, -0.12, 0], [Math.PI / 2, 0, 0]));
-  group.userData.parts = {};
+  markParts({});
   return group;
 }
 
@@ -465,7 +466,7 @@ export function buildCloudDiscMount(quality = 1): THREE.Group {
     group.add(meshOf(bladeGeometry(0.55, 0.2, 0.028, 0.1), MATS.jade,
       [Math.cos(angle) * 1.45, 0.13, Math.sin(angle) * 1.45], [Math.PI / 3, -angle + Math.PI / 2, 0]));
   }
-  group.userData.parts = {};
+  markParts({});
   return group;
 }
 
@@ -484,7 +485,7 @@ export function buildWindFireWheelMount(quality = 1): THREE.Group {
     }
     group.add(wheel);
   }
-  group.userData.parts = { wheels: group.children as THREE.Group[] };
+  markParts({ wheels: group.children as THREE.Group[] });
   return group;
 }
 
@@ -500,7 +501,7 @@ export function buildCloudMount(dark = false, quality = 1): THREE.Group {
       [x, y, z], [0, 0, 0], [1.3, 0.72, 1.1]));
   }
   group.add(meshOf(new THREE.SphereGeometry(0.5, seg(22, quality, 10), seg(22, quality, 10)), coreMaterial, [0, 0.14, 0]));
-  group.userData.parts = {};
+  markParts({});
   return group;
 }
 
@@ -515,7 +516,7 @@ export function buildQilinMount(quality = 1): THREE.Group {
   }
   group.add(taperedSpline([[0, 0.95, -0.75], [0, 1.3, -1.4], [0, 1.7, -1.85]],
     (u) => Math.sin(u * Math.PI) * 0.14 + 0.02, MATS.glowCyan, { quality, tubular: 20, radial: 10 }));
-  group.userData.parts = { head, legs, wings };
+  markParts({ head, legs, wings });
   return group;
 }
 
