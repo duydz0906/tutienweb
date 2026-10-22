@@ -5,12 +5,15 @@ import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HABITATS, HO
   type ChatMessage, type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import type { ActivePanel } from './Panels';
 import type { HudPrefs } from '../lib/uiPrefs';
+import { heroEyebrow } from '../lib/devTools';
 
 const format = (value: number) => value.toLocaleString('vi-VN');
 
-export function GameHUD({ character, world, trial, connected, cooldowns, messages, panel, selectedTarget, hudPrefs, lastCast,
+export function GameHUD({ character, world, trial, connected, cooldowns, messages, panel, selectedTarget, hudPrefs, lastCast, devTools,
   onHudPrefs, onPanel, onAction, onSkill, onAttack, onChat, onOpenPath, onPickup, now }: {
   character: OwnCharacter; world: WorldSnapshot | null; trial: TribulationState | null;
+  /** Dev drawer/teleports only exist in the `npm run dev` sandbox (or for a verified admin). */
+  devTools: boolean;
   connected: boolean; cooldowns: Record<string, number>; messages: ChatMessage[]; panel: ActivePanel; selectedTarget: string | null;
   hudPrefs: HudPrefs; lastCast: { id: number; name: string } | null; onHudPrefs: (patch: Partial<HudPrefs>) => void;
   onPanel: (panel: ActivePanel) => void; onAction: (event: string, payload?: object) => void;
@@ -100,13 +103,13 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
           onClick={() => onHudPrefs({ heroOpen: !hudPrefs.heroOpen })}>
           {hudPrefs.heroOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
-        <div className="hero-card-top"><div className="hero-portrait"><span>{character.name.charAt(0).toUpperCase()}</span><div className="portrait-ring" /></div><div className="hero-name-block"><div className="hero-eyebrow">{character.isAdmin ? '✦ THIÊN ĐẠO CHỦ' : character.devMode ? '✦ DEV SANDBOX' : 'ĐỆ TỬ VÂN THƯỢNG'}</div><h2>{character.name}</h2><div className="hero-realm"><span className="realm-diamond" />{REALMS[character.realm]}{character.realm ? ` · Tầng ${character.minorStage}` : ''} <span>·</span> {SECT_RANK_LABEL[character.sectRank]}</div></div></div>
+        <div className="hero-card-top"><div className="hero-portrait"><span>{character.name.charAt(0).toUpperCase()}</span><div className="portrait-ring" /></div><div className="hero-name-block"><div className="hero-eyebrow">{heroEyebrow(character, devTools)}</div><h2>{character.name}</h2><div className="hero-realm"><span className="realm-diamond" />{REALMS[character.realm]}{character.realm ? ` · Tầng ${character.minorStage}` : ''} <span>·</span> {SECT_RANK_LABEL[character.sectRank]}</div></div></div>
         <div className="vital-row"><div className="vital-label"><span><Activity size={14} /> Sinh lực</span><b>{available(character.hp)} / {available(character.maxHp)}</b></div><div className="vital-track"><span className="vital-fill health" style={{ width: `${Math.max(0, character.hp / character.maxHp * 100)}%` }} /></div></div>
         <div className="vital-row"><div className="vital-label"><span><Sparkles size={14} /> Chân khí</span><b>{available(character.mp)} / {available(character.maxMp)}</b></div><div className="vital-track"><span className="vital-fill mana" style={{ width: `${Math.max(0, character.mp / character.maxMp * 100)}%` }} /></div></div>
         {hudPrefs.heroOpen && <>
           <div className="root-banner" style={{ '--root-accent': rootColor } as React.CSSProperties}><span className="root-glyph">✥</span><div><small>BẢN MỆNH LINH CĂN</small><strong>{ROOT_LABEL[character.root.tier]}</strong><span>{character.root.elements.map((element) => ELEMENT_LABEL[element]).join(' · ')} · ×{character.root.multiplier.toFixed(1)} hấp thu</span></div></div>
           <button className="appearance-open" onClick={() => onPanel('home')}><House size={14} /> Nhà cấp {tier} · +{Math.round(houseAbsorptionBonus(tier - 1) * 100)}% hấp thụ <span>✧</span></button>
-          {character.devMode && <button className="appearance-open dev-open" onClick={() => onPanel('dev')}><Sparkles size={14} /> Dev mode · teleport & đổi nhân vật <span>✦</span></button>}
+          {devTools && <button className="appearance-open dev-open" onClick={() => onPanel('dev')}><Sparkles size={14} /> Dev mode · teleport & đổi nhân vật <span>✦</span></button>}
           <button className="appearance-open" onClick={() => onPanel('menu')}><Menu size={14} /> Menu tính năng · nhà, công pháp, nhiệm vụ, cửa hàng <span>⌘</span></button>
         </>}
         {!hudPrefs.heroOpen && <button className="hero-preview" title="Mở Menu tính năng (M)" onClick={() => onPanel('menu')}>

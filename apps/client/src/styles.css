@@ -754,3 +754,66 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .email-form-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 10px; color: var(--muted); }
 .email-form-foot .link-button { font-size: 10px; }
 .email-form-foot .link-button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ─────────────────────────────────────────────────────────────────────────────────────────
+   Adaptive HUD: one interface for desktop browsers and phones.
+   Desktop keeps the four-corner HUD; touch screens get safe-area aware edges, 44 px targets
+   and drawers that slide up as bottom sheets instead of covering the whole viewport.
+   ───────────────────────────────────────────────────────────────────────────────────────── */
+html { -webkit-text-size-adjust: 100%; }
+body { overscroll-behavior: none; }
+.app-shell { height: 100dvh; }
+.btn, .icon-button, .hotbar-slots > button, .touch-pad { touch-action: manipulation; -webkit-touch-callout: none; }
+.hud-top, .hud-left, .hud-right, .hud-bottom { user-select: none; }
+
+/* Desktop: keep drawers anchored to the right, but never taller than the viewport. */
+@media (min-width: 721px) {
+  .drawer { max-height: 100dvh; }
+}
+
+/* Phones and small tablets. */
+@media (max-width: 720px) {
+  .panel-scrim { align-items: flex-end; }
+  .drawer {
+    position: relative; width: 100%; height: min(88dvh, 100%); max-height: 88dvh;
+    padding: 18px 15px calc(16px + env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0; border-top: 1px solid rgba(232, 220, 186, .28);
+    animation: sheet-up .22s ease-out;
+  }
+  .drawer::before {
+    content: ''; position: sticky; top: -6px; display: block; width: 44px; height: 4px; margin: -8px auto 8px;
+    border-radius: 99px; background: rgba(240, 224, 185, .38);
+  }
+  .drawer-head { position: sticky; top: 0; z-index: 2; padding-bottom: 12px; background: inherit; }
+  .drawer-head h2 { font-size: 21px; margin-top: 3px; }
+  .drawer-scroll { padding-top: 12px; }
+  .btn, .icon-button { min-height: 44px; }
+  .icon-button { min-width: 44px; }
+  .skill-name, .skill-mana, .hotbar-caption { font-size: 9px; letter-spacing: 0; }
+  .chat-message, .chat-empty, .chat-input input { font-size: 10px; }
+  .hud-top { top: 0; left: 0; right: 0; height: calc(49px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left)); border-radius: 0 0 12px 12px; }
+  .hud-left { top: calc(63px + env(safe-area-inset-top)); left: calc(7px + env(safe-area-inset-left)); max-height: calc(100dvh - 210px); overflow-y: auto; overscroll-behavior: contain; }
+  .hud-right { top: calc(63px + env(safe-area-inset-top)); right: calc(7px + env(safe-area-inset-right)); }
+  .hud-bottom { left: calc(7px + env(safe-area-inset-left)); right: calc(7px + env(safe-area-inset-right)); bottom: calc(7px + env(safe-area-inset-bottom)); }
+  .touch-pad-wrap { right: calc(18px + env(safe-area-inset-right)); bottom: calc(152px + env(safe-area-inset-bottom)); }
+  .touch-pad { width: 108px; height: 108px; }
+  .toast-stack { top: calc(60px + env(safe-area-inset-top)); }
+}
+
+@keyframes sheet-up { from { transform: translateY(18px); opacity: .4; } to { transform: translateY(0); opacity: 1; } }
+
+/* Phones in landscape: the world is short, so the HUD shrinks instead of covering it. */
+@media (max-width: 900px) and (max-height: 520px) and (orientation: landscape) {
+  .hud-left { top: calc(56px + env(safe-area-inset-top)); max-height: calc(100dvh - 120px); width: min(210px, 32vw); }
+  .cultivate-card, .root-banner { display: none; }
+  .hud-right { display: none; }
+  .hud-bottom { bottom: calc(5px + env(safe-area-inset-bottom)); }
+  .skill-slot { height: 52px; }
+  .drawer { height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}
+
+/* Touch-only devices: keyboard hints are noise. */
+@media (hover: none) and (pointer: coarse) {
+  .skill-slot > kbd, .hotbar-caption, .guard-hint, .help-row kbd { display: none; }
+  .splash-footnote { display: none; }
+}

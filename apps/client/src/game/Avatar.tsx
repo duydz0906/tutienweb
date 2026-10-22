@@ -5,9 +5,25 @@ import { ELEMENT_COLOR, ITEMS, normalizeAppearance, type PublicPlayer } from '@v
 import { RealmAura } from './RealmAura';
 import { RIG, buildCultivator, type CultivatorLook } from './sculpt/cultivator';
 import { buildMountModel, buildPetModel } from './sculpt/beasts';
+import { humanLookKey, instantiateHuman, rigOf, type HumanRig } from './human/character';
+import { applyHumanPose } from './human/animation';
 import { buildArtifactModel, buildBootModel, buildCrownModel, buildNecklaceModel, buildPauldronModel,
   buildRingModel, buildTalismanModel, buildWeaponModel } from './sculpt/gear';
 import { clonePrototype } from './sculpt/cache';
+
+/**
+ * Phones render at 1K skin/hair textures and skip the fine facial proxies (lashes, teeth), which
+ * halves the download and is invisible on a small screen. Desktop keeps the 2K detail.
+ */
+const SMALL_SCREEN = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  && window.matchMedia('(max-width: 720px)').matches;
+const avatarQuality = (local: boolean, preview: boolean): number => local || preview ? (SMALL_SCREEN ? 0.8 : 1) : 0.55;
+
+/** Socket-relative equipment placement. Joint origins differ between the two body types. */
+const HUMAN_EQUIP = {
+  weapon: [0, -0.02, 0.03], crown: [0, -0.06, 0.01], pauldron: [0, 0.05, 0], boot: [0, 0.01, 0],
+  ring: [0, -0.02, 0.02], necklace: [0, 0.12, 0.03],
+} satisfies Record<string, [number, number, number]>;
 
 /** Where each flying style should sit under the rider's feet. */
 const MOUNT_OFFSET: Record<string, number> = {
@@ -33,15 +49,18 @@ function appearanceKey(player: PublicPlayer, quality: number, robeOverride?: str
     a.height.toFixed(2), a.build.toFixed(2), quality, flavor].join('|');
 }
 
-/** One sculpted, fully procedural cultivator per unique look, cloned for every actor. */
+/** One human (real mesh) or sculpted cultivator per unique look, cloned for every actor. */
 type Flavor = { beard?: boolean; staff?: boolean };
+type ModelKind = 'human' | 'sculpt';
 
 function useCultivator(player: PublicPlayer, local: boolean, preview: boolean, flavor: Flavor = {}): {
-  model: THREE.Group | null; rig: RefObject<RigNodes>;
+  model: THREE.Group | null; rig: RefObject<RigNodes>; human: RefObject<HumanRig | null>; kind: ModelKind;
 } {
   const [model, setModel] = useState<THREE.Group | null>(null);
+  const [kind, setKind] = useState<ModelKind>('sculpt');
   const rig = useRef<RigNodes>({});
-  const quality = local || preview ? 1 : 0.55;
+  const human = useRef<HumanRig | null>(null);
+  const quality = avatarQuality(local, preview);
   const appearance = normalizeAppearance(player.appearance);
   const robeOverride = player.equipment.robe === 'moon_robe' ? 'lilac' : undefined;
   const key = appearanceKey(player, quality, robeOverride, `${flavor.beard ? 'b' : ''}${flavor.staff ? 's' : ''}`);
@@ -60,13 +79,40 @@ function useCultivator(player: PublicPlayer, local: boolean, preview: boolean, f
   }), [key]);
 
   useEffect(() => {
-    const sculpted = clonePrototype(`cultivator:${key}`, () => buildCultivator(look));
-    rig.current = resolveRig(sculpted);
-    setModel(sculpted);
-    return () => setModel(null);
-  }, [key]);
+    let cancelled = false;
+    // The real-human mesh is the default. The sculpted body is the fallback: a slow or blocked
+    // download must never leave the player invisible, and it keeps Node tests/offline play working.
+    const useSculpted = () => {
+      const sculpted = clonePrototype(`cultivator:${key}`, () => buildCultivator(look));
+      if (cancelled) return;
+      human.current = null;
+      rig.current = resolveRig(sculpted);
+      setKind('sculpt');
+      setModel(sculpted);
+    };
+    const humanLook = {
+      gender: look.gender, hair: look.hair, hairColor: look.hairColor, face: look.face,
+      skinTone: look.skinTone, robeColor: look.robeColor, height: look.height, build: look.build,
+      // Cloth shoes are part of the human; a boot item replaces them on the ankles.
+      shoes: !player.equipment.boots,
+      beard: flavor.beard, staff: flavor.staff,
+    } as const;
+    void instantiateHuman(humanLookKey(humanLook, quality), humanLook, quality).then((character) => {
+      if (cancelled) return;
+      const humanRig = rigOf(character);
+      if (!humanRig.bones.head || !humanRig.bones.handR) { useSculpted(); return; }
+      human.current = humanRig;
+      rig.current = resolveRig(character);
+      setKind('human');
+      setModel(character);
+    }).catch((error) => {
+      if (import.meta.env.DEV) console.warn('[avatar] Không tải được mô hình người thật, dùng mô hình dự phòng:', error);
+      useSculpted();
+    });
+    return () => { cancelled = true; setModel(null); };
+  }, [key, player.equipment.boots]);
 
-  return { model, rig };
+  return { model, rig, human, kind };
 }
 
 function SwordHalo() {
@@ -98,9 +144,10 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
   wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
   beard?: boolean; staff?: boolean;
 }) {
-  const { model, rig } = useCultivator(player, local, preview, { beard, staff });
+  const { model, rig, human, kind } = useCultivator(player, local, preview, { beard, staff });
   const internalRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
+  const modelRef = useRef<THREE.Group>(null);
   const artifactRef = useRef<THREE.Group>(null);
   const auraRef = useRef<THREE.ShaderMaterial>(null);
   const magicRef = useRef<THREE.Group>(null);
@@ -131,7 +178,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
   const mountId = player.equipment.mount;
   const altitude = mountId ? ITEMS[mountId]?.flight?.altitude ?? 1.9 : 1.9;
   const petId = player.equipment.pet;
-  const quality = local || preview ? 1 : 0.55;
+  const quality = avatarQuality(local, preview);
 
   // Equipment is sculpted once per piece and mounted on the rig sockets.
   useEffect(() => {
@@ -146,31 +193,43 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     // The sculpted body already carries a bare jade blade; an equipped weapon replaces it in the same grip.
     const defaultSword = model.getObjectByName('cultivator-sword');
     if (player.equipment.weapon && defaultSword) defaultSword.visible = false;
+    const humanBody = kind === 'human';
     if (player.equipment.weapon) {
       const weapon = buildWeaponModel(player.equipment.weapon, quality);
-      weapon.position.set(0, -0.1, 0.02);
-      weapon.rotation.set(0.12, 0, -0.22);
+      if (humanBody) {
+        weapon.position.set(...HUMAN_EQUIP.weapon);
+        weapon.rotation.set(0.12, 0, -0.22);
+      } else {
+        weapon.position.set(0, -0.1, 0.02);
+        weapon.rotation.set(0.12, 0, -0.22);
+      }
       attach(rig.current.handR, weapon);
     }
-    if (player.equipment.head) attach(rig.current.head, buildCrownModel(quality), [0, 0.12, 0]);
+    if (player.equipment.head) attach(rig.current.head, buildCrownModel(quality),
+      humanBody ? HUMAN_EQUIP.crown : [0, 0.12, 0]);
     if (player.equipment.shoulder) {
-      attach(rig.current.armL, buildPauldronModel(-1, quality), [0.02, 0.02, 0]);
-      attach(rig.current.armR, buildPauldronModel(1, quality), [0.02, 0.02, 0]);
+      attach(rig.current.armL, buildPauldronModel(-1, quality), humanBody ? HUMAN_EQUIP.pauldron : [0.02, 0.02, 0]);
+      attach(rig.current.armR, buildPauldronModel(1, quality), humanBody ? HUMAN_EQUIP.pauldron : [0.02, 0.02, 0]);
     }
     if (player.equipment.boots) {
       const left = buildBootModel(-1, quality), right = buildBootModel(1, quality);
       left.scale.setScalar(1.06); right.scale.setScalar(1.06);
-      attach(rig.current.legL, left, [0, -1.3, 0.02]);
-      attach(rig.current.legR, right, [0, -1.3, 0.02]);
+      // The real rig has ankle bones, so boots sit on the foot instead of hanging off the thigh.
+      const bootL = humanBody ? rig.current.footL : rig.current.legL;
+      const bootR = humanBody ? rig.current.footR : rig.current.legR;
+      attach(bootL, left, humanBody ? HUMAN_EQUIP.boot : [0, -1.3, 0.02]);
+      attach(bootR, right, humanBody ? HUMAN_EQUIP.boot : [0, -1.3, 0.02]);
     }
-    if (player.equipment.ring) attach(rig.current.handR, buildRingModel(quality), [0, -0.16, 0.06]);
-    if (player.equipment.necklace) attach(rig.current.torso, buildNecklaceModel(quality), [0, 0.62, 0.06]);
+    if (player.equipment.ring) attach(rig.current.handR, buildRingModel(quality),
+      humanBody ? HUMAN_EQUIP.ring : [0, -0.16, 0.06]);
+    if (player.equipment.necklace) attach(rig.current.torso, buildNecklaceModel(quality),
+      humanBody ? HUMAN_EQUIP.necklace : [0, 0.62, 0.06]);
     if (player.equipment.talisman) attach(rig.current.torso, buildTalismanModel(quality));
     return () => {
       for (const child of gear) child.removeFromParent();
       if (defaultSword) defaultSword.visible = true;
     };
-  }, [model, player.equipment.weapon, player.equipment.head, player.equipment.shoulder, player.equipment.boots,
+  }, [model, kind, player.equipment.weapon, player.equipment.head, player.equipment.shoulder, player.equipment.boots,
     player.equipment.ring, player.equipment.necklace, player.equipment.talisman, quality]);
 
   useEffect(() => {
@@ -200,9 +259,20 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     lastPosition.current.copy(outer.position);
 
     const nodes = rig.current;
-    if (model) {
-      const walking = !preview && !meditating && !flying && (wandering || time - lastMoveAt.current < 0.24);
-      phase.current += dt * (walking ? 9 : 2.2);
+    const walking = !preview && !meditating && !flying && (wandering || time - lastMoveAt.current < 0.24);
+    if (model) phase.current += dt * (walking ? 9 : 2.2);
+    if (kind === 'human' && human.current) {
+      // Real skeleton: poses are deltas from the mixamo bind pose, plus a pelvis drop for the gait.
+      const swingProgress = attackAt && Date.now() - attackAt < 480 ? 1 - (Date.now() - attackAt) / 480 : 0;
+      const drop = applyHumanPose(human.current, {
+        time, walk: walking || wandering ? 1 : 0, phase: phase.current,
+        flying, meditating, attack: swingProgress,
+      });
+      if (modelRef.current) modelRef.current.position.y = drop;
+    } else if (modelRef.current) {
+      modelRef.current.position.y = meditating ? -0.28 : 0;
+    }
+    if (model && kind === 'sculpt') {
       const swing = walking ? Math.sin(phase.current) * 0.5 : 0;
       if (nodes.legL) nodes.legL.rotation.x = swing;
       if (nodes.legR) nodes.legR.rotation.x = -swing;
@@ -265,7 +335,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     rotation={[0, player.rotation, 0]} scale={player.devMode ? 1.2 : 1}>
     <group ref={bodyRef}>
     {mount && <group ref={mountRef}><primitive object={mount} /></group>}
-    {model && <primitive object={model} position={meditating ? [0, -0.28, 0] : [0, 0, 0]} />}
+    {model && <group ref={modelRef}><primitive object={model} /></group>}
     {shieldActive && <mesh position={[0, 1.05, 0]} scale={[0.95, 1.25, 0.95]}>
       <sphereGeometry args={[0.95, 28, 20]} />
       <meshBasicMaterial color="#ffcf7a" transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
