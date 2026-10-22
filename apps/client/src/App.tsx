@@ -25,8 +25,19 @@ const initialPreview: PreviewOptions = { name: '', gender: 'nu', appearance: { .
 // Cooldown, mana and miss results are already shown on the skill slot / combat feedback.
 const QUIET_CAST = /(đang hồi|chân khí|không trúng|Đòn đánh trượt|Sinh lực đã đầy|Hãy để chiêu trước)/i;
 
+/** A dead API is by far the most common "cannot enter" cause; say what to do about it. */
+function connectionMessage(error: unknown): string {
+  const text = error instanceof Error ? error.message : '';
+  if (/Failed to fetch|NetworkError|Load failed|ECONNREFUSED|ERR_CONNECTION/i.test(text)) {
+    return 'Không kết nối được máy chủ game (cổng 3001). Hãy chắc chắn "npm run dev" vẫn đang chạy rồi thử lại.';
+  }
+  return text ? `Không thể kết nối máy chủ: ${text}` : 'Máy chủ chưa sẵn sàng.';
+}
+
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
+  /** Bumped by "Kiểm tra lại máy chủ" so a failed health check can be retried without a reload. */
+  const [bootAttempt, setBootAttempt] = useState(0);
   const [demoAvailable, setDemoAvailable] = useState(false);
   const [localDevAvailable, setLocalDevAvailable] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -126,11 +137,11 @@ export function App() {
       } catch (e) {
         if (cancelled) return;
         setPhase('login');
-        setError(e instanceof Error ? `Không thể kết nối máy chủ: ${e.message}` : 'Máy chủ chưa sẵn sàng.');
+        setError(connectionMessage(e));
       }
     })();
     return () => { cancelled = true; unsubscribe(); };
-  }, [attach]);
+  }, [attach, bootAttempt]);
 
   const inWorld = phase === 'entering' || phase === 'game';
   useEffect(() => {
@@ -208,6 +219,12 @@ export function App() {
       .then((data) => setCharacter((current) => current ? { ...current, dailyDay: data.day, dailyQuests: data.quests } : current))
       .catch((e) => notify(e instanceof Error ? e.message : 'Không thể tải nhiệm vụ.', 'bad'));
   }, [panel, session?.token, notify]);
+
+  const retryServer = useCallback(() => {
+    setError(null);
+    setPhase('loading');
+    setBootAttempt((attempt) => attempt + 1);
+  }, []);
 
   const enterDemo = async () => {
     setBusy(true);
@@ -408,7 +425,8 @@ export function App() {
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}
     {phase === 'login' && <LoginScreen demoAvailable={demoAvailable} firebaseAvailable={firebaseEnabled && !demoAvailable} busy={busy} error={error}
       notice={notice} onRegister={enterRegister} onReset={sendReset}
-      onDemo={() => { void enterDemo(); }} onGoogle={() => { void enterGoogle(); }} onPassword={(email, password) => { void enterPassword(email, password); }} />}
+      onDemo={() => { void enterDemo(); }} onRetry={retryServer}
+      onGoogle={() => { void enterGoogle(); }} onPassword={(email, password) => { void enterPassword(email, password); }} />}
     {(phase === 'create' || phase === 'reveal') && <CharacterCreation preview={preview} onChange={(next) => { setPreview(next); setError(null); }} onCreate={() => { void create(); }}
       busy={busy} error={error} revealed={phase === 'reveal' ? character : null}
       onEnter={() => { setWorld(null); setError(null); setPhase('entering'); }} onBack={() => { void logout(); }} />}

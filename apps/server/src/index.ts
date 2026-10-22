@@ -144,6 +144,17 @@ async function main(): Promise<void> {
   });
 
   const port = Number(process.env.PORT || 3001);
+  // A busy port otherwise dies as an unhandled 'error' stack, while the browser only shows
+  // "cannot connect", which is impossible to act on.
+  http.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`[server] Cổng ${port} đang bị tiến trình khác chiếm. `
+        + 'Tắt "npm run dev" cũ (hoặc ứng dụng đang dùng cổng này) rồi chạy lại.');
+    } else {
+      console.error('[server] Không mở được cổng HTTP:', error.message);
+    }
+    process.exit(1);
+  });
   http.listen(port, '0.0.0.0', () => console.info(`[server] http://0.0.0.0:${port} (${demoMode ? 'demo' : 'Firebase + MongoDB + Redis'})`));
 
   let stopping = false;

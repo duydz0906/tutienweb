@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { ArrowRight, Compass, Crown, MailCheck, MousePointer2, ShieldCheck, Sparkles, Swords } from 'lucide-react';
+import { ArrowRight, Compass, Crown, MailCheck, MousePointer2, RefreshCw, ShieldCheck, Sparkles, Swords } from 'lucide-react';
 
 type AuthMode = 'login' | 'register';
 
-export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, notice, onDemo, onGoogle, onPassword, onRegister, onReset }: {
+export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, notice, onDemo, onRetry, onGoogle, onPassword, onRegister, onReset }: {
   demoAvailable: boolean; firebaseAvailable: boolean; busy: boolean; error: string | null; notice?: string | null;
-  onDemo: () => void; onGoogle: () => void;
+  onDemo: () => void; onRetry: () => void; onGoogle: () => void;
   onPassword: (email: string, password: string) => void;
   onRegister: (email: string, password: string, name: string) => void;
   onReset: (email: string) => void;
@@ -86,7 +86,12 @@ export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, not
         {demoAvailable && <button className="btn btn-gold btn-full" disabled={busy} onClick={onDemo}>
           {busy ? 'Đang mở cánh cổng...' : 'Bước vào chơi thử'} <ArrowRight size={17} />
         </button>}
-        {!demoAvailable && !firebaseAvailable && <div className="login-unavailable">Đang chờ cấu hình đăng nhập. Xem README để chạy chế độ chơi thử.</div>}
+        {!demoAvailable && !firebaseAvailable && <div className="login-unavailable">
+          Chưa kết nối được máy chủ game. Chạy <code>npm run dev</code> ở thư mục gốc dự án rồi kiểm tra lại.
+        </div>}
+        {(!demoAvailable || Boolean(error)) && <button className="btn btn-outline-gold btn-full" disabled={busy} onClick={onRetry}>
+          <RefreshCw size={15} /> Kiểm tra lại máy chủ
+        </button>}
         <div className="entrance-divider"><span /></div>
         <div className="entrance-security"><ShieldCheck size={17} /> Combat và tài khoản được xác thực phía máy chủ.</div>
       </div>
