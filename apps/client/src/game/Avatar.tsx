@@ -7,8 +7,8 @@ import { RIG, buildCultivator, type CultivatorLook } from './sculpt/cultivator';
 import { buildMountModel, buildPetModel } from './sculpt/beasts';
 import { humanLookKey, instantiateHuman, rigOf, type HumanRig } from './human/character';
 import { applyHumanPose } from './human/animation';
-import { buildArtifactModel, buildBootModel, buildCrownModel, buildNecklaceModel, buildPauldronModel,
-  buildRingModel, buildTalismanModel, buildWeaponModel } from './sculpt/gear';
+import { buildArtifactModel } from './sculpt/gear';
+import { mountEquipment, weaponHand } from './equipment';
 import { clonePrototype } from './sculpt/cache';
 
 /**
@@ -18,12 +18,6 @@ import { clonePrototype } from './sculpt/cache';
 const SMALL_SCREEN = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
   && window.matchMedia('(max-width: 720px)').matches;
 const avatarQuality = (local: boolean, preview: boolean): number => local || preview ? (SMALL_SCREEN ? 0.8 : 1) : 0.55;
-
-/** Socket-relative equipment placement. Joint origins differ between the two body types. */
-const HUMAN_EQUIP = {
-  weapon: [0, -0.02, 0.03], crown: [0, -0.06, 0.01], pauldron: [0, 0.05, 0], boot: [0, 0.01, 0],
-  ring: [0, -0.02, 0.02], necklace: [0, 0.12, 0.03],
-} satisfies Record<string, [number, number, number]>;
 
 /** Where each flying style should sit under the rider's feet. */
 const MOUNT_OFFSET: Record<string, number> = {
@@ -180,55 +174,11 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
   const petId = player.equipment.pet;
   const quality = avatarQuality(local, preview);
 
-  // Equipment is sculpted once per piece and mounted on the rig sockets.
+  // Equipment is sculpted once per piece and mounted on measured sockets (see equipment.ts).
   useEffect(() => {
     if (!model) return;
-    const gear: THREE.Object3D[] = [];
-    const attach = (parent: THREE.Object3D | undefined, child: THREE.Object3D, position?: [number, number, number]) => {
-      if (!parent) return;
-      if (position) child.position.set(...position);
-      parent.add(child);
-      gear.push(child);
-    };
-    // The sculpted body already carries a bare jade blade; an equipped weapon replaces it in the same grip.
-    const defaultSword = model.getObjectByName('cultivator-sword');
-    if (player.equipment.weapon && defaultSword) defaultSword.visible = false;
-    const humanBody = kind === 'human';
-    if (player.equipment.weapon) {
-      const weapon = buildWeaponModel(player.equipment.weapon, quality);
-      if (humanBody) {
-        weapon.position.set(...HUMAN_EQUIP.weapon);
-        weapon.rotation.set(0.12, 0, -0.22);
-      } else {
-        weapon.position.set(0, -0.1, 0.02);
-        weapon.rotation.set(0.12, 0, -0.22);
-      }
-      attach(rig.current.handR, weapon);
-    }
-    if (player.equipment.head) attach(rig.current.head, buildCrownModel(quality),
-      humanBody ? HUMAN_EQUIP.crown : [0, 0.12, 0]);
-    if (player.equipment.shoulder) {
-      attach(rig.current.armL, buildPauldronModel(-1, quality), humanBody ? HUMAN_EQUIP.pauldron : [0.02, 0.02, 0]);
-      attach(rig.current.armR, buildPauldronModel(1, quality), humanBody ? HUMAN_EQUIP.pauldron : [0.02, 0.02, 0]);
-    }
-    if (player.equipment.boots) {
-      const left = buildBootModel(-1, quality), right = buildBootModel(1, quality);
-      left.scale.setScalar(1.06); right.scale.setScalar(1.06);
-      // The real rig has ankle bones, so boots sit on the foot instead of hanging off the thigh.
-      const bootL = humanBody ? rig.current.footL : rig.current.legL;
-      const bootR = humanBody ? rig.current.footR : rig.current.legR;
-      attach(bootL, left, humanBody ? HUMAN_EQUIP.boot : [0, -1.3, 0.02]);
-      attach(bootR, right, humanBody ? HUMAN_EQUIP.boot : [0, -1.3, 0.02]);
-    }
-    if (player.equipment.ring) attach(rig.current.handR, buildRingModel(quality),
-      humanBody ? HUMAN_EQUIP.ring : [0, -0.16, 0.06]);
-    if (player.equipment.necklace) attach(rig.current.torso, buildNecklaceModel(quality),
-      humanBody ? HUMAN_EQUIP.necklace : [0, 0.62, 0.06]);
-    if (player.equipment.talisman) attach(rig.current.torso, buildTalismanModel(quality));
-    return () => {
-      for (const child of gear) child.removeFromParent();
-      if (defaultSword) defaultSword.visible = true;
-    };
+    const groups = mountEquipment(model, kind, player.equipment, quality);
+    return () => { for (const group of groups) group.removeFromParent(); };
   }, [model, kind, player.equipment.weapon, player.equipment.head, player.equipment.shoulder, player.equipment.boots,
     player.equipment.ring, player.equipment.necklace, player.equipment.talisman, quality]);
 
@@ -267,6 +217,8 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
       const drop = applyHumanPose(human.current, {
         time, walk: walking || wandering ? 1 : 0, phase: phase.current,
         flying, meditating, attack: swingProgress,
+        // A held weapon closes that hand into a fist around the grip socket.
+        grip: weaponHand(kind, player.equipment),
       });
       if (modelRef.current) modelRef.current.position.y = drop;
     } else if (modelRef.current) {

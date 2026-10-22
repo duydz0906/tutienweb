@@ -159,8 +159,10 @@ export function buildDetailedSword(blade: THREE.Material, hilt: THREE.Material, 
     { quality, segments: 20, pleats: 10, pleatDepth: 0.003 });
   grip.position.set(0, -1.02, 0);
   sword.add(grip, meshOf(new THREE.TorusGeometry(0.055, 0.018, 12, 24), hilt, [0, -1.06, 0]));
-  sword.add(taperedSpline([[0, -1.1, 0], [0.08, -1.35, 0.05], [-0.05, -1.65, -0.05]],
-    (u) => 0.015 + u * 0.035, silk('#b6414b'), { quality, tubular: 22, radial: 10 }));
+  // The tassel stays short: a fist sits at the grip's middle, so anything longer than ~0.3 units
+  // below the pommel ring pokes out of the hand and into the wearer's forearm.
+  sword.add(taperedSpline([[0, -1.1, 0], [0.05, -1.22, 0.03], [-0.03, -1.34, -0.03]],
+    (u) => 0.015 + u * 0.03, silk('#b6414b'), { quality, tubular: 18, radial: 8 }));
   sword.scale.setScalar(scale);
   return sword;
 }

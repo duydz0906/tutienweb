@@ -42,6 +42,11 @@ export const HUMAN_SOCKETS = {
   hips: 'rig-hips', torso: 'rig-torso', head: 'rig-head',
   armL: 'rig-armL', armR: 'rig-armR', handL: 'rig-handL', handR: 'rig-handR',
   legL: 'rig-legL', legR: 'rig-legR', footL: 'rig-footL', footR: 'rig-footR',
+  // Sword/hilt frames inside the closed fist (see `addGripFrames`). Only the real rig has them:
+  // the sculpted body has no fingers, so its weapon keeps a fixed hand offset.
+  gripL: 'rig-gripL', gripR: 'rig-gripR',
+  // A ring hangs off a finger, not the wrist.
+  ringR: 'rig-ringR',
 } as const;
 export type HumanSocket = keyof typeof HUMAN_SOCKETS;
 
@@ -58,19 +63,104 @@ const BONES: Record<HumanBone, string> = {
   footL: 'leftfoot', footR: 'rightfoot',
 };
 
-/** Which bone each equipment socket hangs from. */
-const SOCKET_BONE: Record<HumanSocket, HumanBone> = {
+/** Which bone each equipment socket hangs from (the ring finger is picked by name). */
+const SOCKET_BONE: Record<Exclude<HumanSocket, 'ringR'>, HumanBone> = {
   hips: 'hips', torso: 'chest', head: 'head',
   armL: 'armL', armR: 'armR', handL: 'handL', handR: 'handR',
   legL: 'legL', legR: 'legR', footL: 'footL', footR: 'footR',
+  gripL: 'handL', gripR: 'handR',
 };
+
+/** One finger bone plus the local rotation that closes it into a fist. */
+export type GripFinger = { bone: THREE.Bone; rest: THREE.Quaternion; curl: THREE.Quaternion };
 
 export type HumanRig = {
   bones: Partial<Record<HumanBone, THREE.Bone>>;
   /** Bind-pose rotation of every bone; poses are expressed as deltas from it. */
   rest: Map<THREE.Bone, THREE.Quaternion>;
   sockets: Partial<Record<HumanSocket, THREE.Object3D>>;
+  /** Finger bones per hand, so a held item can close around its grip. */
+  fingers: Partial<Record<'L' | 'R', GripFinger[]>>;
 };
+
+/**
+ * Verified against the bind pose: inside a closed fist the socket sits a few millimetres toward the
+ * palm side of the wrist, ~10 cm along the hand bone (i.e. between the curled fingers and the
+ * palm). Both hands declare it in their own bone space, so one vector covers both.
+ */
+const FIST_LOCAL = new THREE.Vector3(0.014, 0.097, 0.005);
+
+/**
+ * A hilt passes through the tunnel a closed fist forms, which runs along the hand bone's own X axis.
+ * On the right hand -X points down, back and slightly out once the idle pose has brought the arm in
+ * (measured: blade direction ≈ (-0.36, -0.72, -0.59), tip of a 1 m sword 0.25 m above the ground);
+ * the left hand mirrors it. This is why the weapon needs no extra rotation: the socket IS the grip.
+ */
+const BLADE_LOCAL = {
+  L: new THREE.Vector3(1, 0, 0),
+  R: new THREE.Vector3(-1, 0, 0),
+} as const;
+
+/**
+ * Sockets whose bone frame is arbitrary in the asset (Mixamo bones point along their own length).
+ * Hanging a circlet, a pauldron or a boot in that frame tilts it, so these are aligned with the
+ * model at bind time: local +Y is up and +Z is forward, exactly like the gear was authored.
+ */
+const WORLD_ALIGNED: readonly HumanSocket[] = ['head', 'torso', 'footL', 'footR'];
+
+/**
+ * Finger closure measured on the skeleton: local X bends the finger toward the palm, Z closes it
+ * inward. The index closes the least and the pinky the most, which is what a real fist does.
+ */
+const FINGER_CURL: Record<'Index' | 'Middle' | 'Ring' | 'Pinky', [number, number, number]> = {
+  Index: [1.03, 0.103, -0.619],
+  Middle: [1.176, 0.118, -0.706],
+  Ring: [1.2, 0.12, -0.72],
+  Pinky: [1.368, 0.137, -0.821],
+};
+const THUMB_CURL: [number, number, number] = [0.96, 0.72, 0.24];
+const FINGER_NAMES = ['Index', 'Middle', 'Ring', 'Pinky'] as const;
+const SIDE_PREFIX = { L: 'LeftHand', R: 'RightHand' } as const;
+const _euler = new THREE.Euler();
+
+function curlQuaternion([x, y, z]: [number, number, number]): THREE.Quaternion {
+  return new THREE.Quaternion().setFromEuler(_euler.set(x, y, z, 'XYZ'));
+}
+
+/** Every bone of a rig keyed by its normalised name, so lookups happen in one traversal. */
+function boneIndex(root: THREE.Object3D): Map<string, THREE.Bone> {
+  const index = new Map<string, THREE.Bone>();
+  root.traverse((object) => {
+    const bone = object as THREE.Bone;
+    if (!bone.isBone) return;
+    index.set(bone.name.toLowerCase().replace(/[^a-z0-9]/g, ''), bone);
+  });
+  return index;
+}
+
+/** Finger bones of one hand, with the closure each of them needs to form a fist. */
+function gripFingers(index: Map<string, THREE.Bone>, side: 'L' | 'R'): GripFinger[] {
+  const found: GripFinger[] = [];
+  const prefix = SIDE_PREFIX[side].toLowerCase();
+  // Bone names in the asset carry a `mixamorig:` prefix; exported skeletons may not.
+  const pick = (suffix: string): THREE.Bone | undefined =>
+    index.get(`mixamorig${prefix}${suffix}`.toLowerCase()) ?? index.get(`${prefix}${suffix}`.toLowerCase());
+  for (const name of FINGER_NAMES) {
+    const curl = FINGER_CURL[name];
+    for (const segment of ['1', '2', '3']) {
+      const bone = pick(`${name}${segment}`);
+      if (!bone) continue;
+      // The middle phalanx closes a little harder so the fingertips tuck against the palm.
+      const amount = segment === '2' ? curl.map((value) => value * 1.1) as [number, number, number] : curl;
+      found.push({ bone, rest: bone.quaternion.clone(), curl: curlQuaternion(amount) });
+    }
+  }
+  for (const segment of ['1', '2', '3']) {
+    const bone = pick(`Thumb${segment}`);
+    if (bone) found.push({ bone, rest: bone.quaternion.clone(), curl: curlQuaternion(THUMB_CURL) });
+  }
+  return found;
+}
 
 const HAIR_PROXY: Record<HumanLook['hair'], string> = {
   long: 'hair-long01', tied: 'hair-ponytail01', bob: 'hair-bob02', braid: 'hair-braid01',
@@ -295,20 +385,51 @@ async function addProxies(root: THREE.Group, skeleton: THREE.Skeleton, blueprint
   }
 }
 
+/**
+ * Grip frames are not plain bone followers: a sword socket has to sit inside the fist and carry the
+ * blade along the fist's own axis, so a held weapon keeps the wrist's orientation (and therefore
+ * every pose) for free.
+ */
+function addGripFrames(rig: HumanRig): void {
+  for (const side of ['L', 'R'] as const) {
+    const hand = rig.bones[side === 'L' ? 'handL' : 'handR'];
+    const socket = rig.sockets[side === 'L' ? 'gripL' : 'gripR'];
+    if (!hand || !socket) continue;
+    socket.position.copy(FIST_LOCAL);
+    socket.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), BLADE_LOCAL[side]);
+  }
+}
+
 function addSockets(root: THREE.Group, rig: HumanRig): void {
+  root.updateMatrixWorld(true);
+  const world = new THREE.Quaternion();
   for (const [socket, bone] of Object.entries(SOCKET_BONE) as [HumanSocket, HumanBone][]) {
     const target = rig.bones[bone];
     if (!target) continue;
     const node = new THREE.Object3D();
     node.name = HUMAN_SOCKETS[socket];
+    // Cancel the bind rotation, so the socket behaves like the model space the pieces are built in.
+    if (WORLD_ALIGNED.includes(socket)) {
+      target.getWorldQuaternion(world);
+      node.quaternion.copy(world).invert();
+    }
     target.add(node);
     rig.sockets[socket] = node;
   }
+  const bones = boneIndex(root);
+  const ring = bones.get('mixamorigrighthandring1') ?? bones.get('righthandring1');
+  if (ring) {
+    const node = new THREE.Object3D();
+    node.name = HUMAN_SOCKETS.ringR;
+    ring.add(node);
+    rig.sockets.ringR = node;
+  }
+  addGripFrames(rig);
 }
 
 /** Read the mixamo skeleton back into our small, stable rig contract. */
 export function rigOf(root: THREE.Object3D): HumanRig {
-  const rig: HumanRig = { bones: {}, rest: new Map(), sockets: {} };
+  const rig: HumanRig = { bones: {}, rest: new Map(), sockets: {}, fingers: {} };
   const bones: THREE.Bone[] = [];
   root.traverse((object) => { const bone = object as THREE.Bone; if (bone.isBone) bones.push(bone); });
   const byNormalisedName = new Map<string, THREE.Bone>();
@@ -323,6 +444,11 @@ export function rigOf(root: THREE.Object3D): HumanRig {
   for (const [socket, name] of Object.entries(HUMAN_SOCKETS) as [HumanSocket, string][]) {
     const node = root.getObjectByName(name);
     if (node) rig.sockets[socket] = node;
+  }
+  const index = boneIndex(root);
+  for (const side of ['L', 'R'] as const) {
+    const fingers = gripFingers(index, side);
+    if (fingers.length) rig.fingers[side] = fingers;
   }
   return rig;
 }

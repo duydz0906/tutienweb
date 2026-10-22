@@ -7,10 +7,22 @@ import { bladeGeometry, meshOf, pleatedLathe, seg, taperedSpline } from './geome
  * Equipment is sculpted from the same vocabulary as the body: beveled blades, gold trim and
  * jade inlays. Each builder returns a group already oriented for its rig socket.
  */
+/**
+ * Blade length per socket: 3.35 units from pommel to tip, so the grip is centred at the origin
+ * (`GRIP_CENTRE`) and the whole figure is scaled to the body that wears it in `equipment.ts`.
+ * An earlier version left the model origin at the guard and then rotated the sword inside the
+ * hand, which threw a 2.6 m blade across the character.
+ */
+const GRIP_CENTRE = 0.78;
+const SWORD_SCALE = 0.78;
+
 export function buildWeaponModel(itemId: string, quality = 1): THREE.Group {
-  const sword = buildDetailedSword(weaponBlade(itemId), MATS.gold, 0.78, quality);
-  sword.rotation.set(0.16, 0, -0.2);
-  sword.position.set(0, -0.02, 0);
+  const sword = new THREE.Group();
+  sword.name = 'weapon-model';
+  const blade = buildDetailedSword(weaponBlade(itemId), MATS.gold, SWORD_SCALE, quality);
+  // The pleated grip runs from y -1.02 to -0.54; move the sword so the hand sits on its middle.
+  blade.position.y = GRIP_CENTRE * SWORD_SCALE;
+  sword.add(blade);
   return sword;
 }
 
@@ -33,7 +45,8 @@ export function buildCrownModel(quality = 1): THREE.Group {
       [Math.sin(angle) * 0.19, 0.07 + (index === 1 ? 0.02 : 0), Math.cos(angle) * 0.19]));
   }
   for (const side of [-1, 1] as const) {
-    crown.add(taperedSpline([[side * 0.12, 0.04, -0.02], [side * 0.28, 0.24, -0.12], [side * 0.4, 0.44, -0.26]],
+    // Wings sweep back over the skull (a Lưu Vân crest), not up like antlers.
+    crown.add(taperedSpline([[side * 0.1, 0.02, -0.04], [side * 0.22, 0.08, -0.24], [side * 0.31, 0.12, -0.46]],
       (u) => (1 - u * 0.8) * 0.022, MATS.gold, { quality, tubular: 18, radial: 10 }));
   }
   crown.position.set(0, 0.24, 0.01);
@@ -47,7 +60,7 @@ export function buildPauldronModel(side: 1 | -1, quality = 1): THREE.Group {
     MATS.darkIron, [0, 0.02, 0], [0, 0, 0], [1.15, 0.85, 1.05]);
   dome.material = new THREE.MeshStandardMaterial({ color: '#5a616b', metalness: 0.82, roughness: 0.3 });
   pauldron.add(dome);
-  pauldron.add(meshOf(new THREE.TorusGeometry(0.17, 0.018, 12, 36), MATS.gold, [0, -0.01, 0], [Math.PI / 2, 0, 0], [1.12, 1.02, 1]));
+  pauldron.add(meshOf(new THREE.TorusGeometry(0.155, 0.015, 12, 36), MATS.gold, [0, -0.01, 0], [Math.PI / 2, 0, 0], [1.08, 1, 1]));
   pauldron.add(meshOf(bladeGeometry(0.28, 0.06, 0.02, -0.05), MATS.gold, [side * 0.1, 0.08, -0.02], [-0.4, 0, side * 0.5]));
   pauldron.position.set(side * 0.03, 0.03, 0);
   return pauldron;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { HumanBone, HumanRig } from './character';
+import type { GripFinger, HumanBone, HumanRig } from './character';
 
 /**
  * Procedural animation for the real-human skeleton. Poses are deltas from the bind pose, applied in
@@ -23,6 +23,8 @@ export type HumanPose = {
   attack?: number;
   /** Extra head yaw in radians (look toward the camera target). */
   look?: number;
+  /** Hand that holds a weapon; its fingers close into a fist around the grip. */
+  grip?: 'L' | 'R';
 };
 
 /**
@@ -44,14 +46,25 @@ function add(acc: Accumulator, bone: HumanBone, axis: keyof typeof AXES, angle: 
   rotation.multiply(_delta.setFromAxisAngle(AXES[axis], angle));
 }
 
-/** Write the accumulated deltas onto the bones, on top of their bind-pose rotations. */
-function flush(rig: HumanRig, acc: Accumulator): void {
+/**
+ * Write the accumulated deltas onto the bones, on top of their bind-pose rotations, and close the
+ * holding hand around its grip. Fingers are not part of the pose accumulator: they either hold an
+ * item (curl) or relax back to the bind pose, never both.
+ */
+function flush(rig: HumanRig, acc: Accumulator, grip?: 'L' | 'R'): void {
   for (const [key, bone] of Object.entries(rig.bones) as [HumanBone, THREE.Bone][]) {
     const rest = rig.rest.get(bone);
     if (!rest) continue;
     const delta = acc.get(key);
     if (delta) bone.quaternion.copy(rest).multiply(delta);
     else bone.quaternion.copy(rest);
+  }
+  for (const [side, fingers] of Object.entries(rig.fingers) as ['L' | 'R', GripFinger[]][]) {
+    const closed = grip === side;
+    for (const finger of fingers) {
+      if (closed) finger.bone.quaternion.copy(finger.rest).multiply(finger.curl);
+      else finger.bone.quaternion.copy(finger.rest);
+    }
   }
 }
 
@@ -145,7 +158,7 @@ export function applyHumanPose(rig: HumanRig, pose: HumanPose): number {
 
   if (!pose.meditating && !pose.flying) poseWalk(acc, pose);
   if (pose.attack) poseAttack(acc, pose.attack);
-  flush(rig, acc);
+  flush(rig, acc, pose.grip);
 
   if (pose.meditating) return MEDITATE_HOVER + Math.sin(pose.time * 1.1) * 0.012;
   if (pose.flying) return 0;
