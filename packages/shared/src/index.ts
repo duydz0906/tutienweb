@@ -1,11 +1,19 @@
 /* Wire contracts and public game data. Never put secrets or admin credentials here. */
 import levelConfig from './level_config.json' with { type: 'json' };
 export type Vector3 = { x: number; y: number; z: number };
-/** One map boundary for authoritative movement, rendering and minimap. */
-export const WORLD_RADIUS = 68;
-export const SECT_RADIUS = 58;
-/** A small valley village below the mountain gate; safe like the sect but a separate map. */
-export const VILLAGE_RADIUS = 34;
+/**
+ * One map boundary for authoritative movement, rendering and minimap.
+ *
+ * The world was expanded to twenty times its old **area**: radius grows by √20 ≈ 4.47, so
+ * 68 → 304 and 58 → 259. The hand-placed heart of each map (sect halls, village square, gates)
+ * keeps its original coordinates, and the outer rings are filled with new districts, roads,
+ * terraces, groves and hunting grounds — see `OuterLands` on the client and `HABITATS` below.
+ */
+export const WORLD_SCALE = 4.47;
+export const WORLD_RADIUS = 304;
+export const SECT_RADIUS = 259;
+/** A valley village below the mountain gate; safe like the sect but a separate map. */
+export const VILLAGE_RADIUS = 152;
 export type WorldZone = 'overworld' | 'wilderness' | 'ascendant' | 'village';
 export type GameScene = WorldZone | 'residence' | 'sanctum' | 'tribulation';
 export const PUBLIC_ZONES: readonly WorldZone[] = ['overworld', 'wilderness', 'ascendant', 'village'];
@@ -221,8 +229,20 @@ export const NPCS = {
     position: { x: -8, y: 0, z: -6 }, scene: 'village' },
   village_elder: { id: 'village_elder', name: 'Lý Trưởng Vân Cốc', role: 'Chợ Vân Cốc · Tin tức sơn môn',
     position: { x: 8, y: 0, z: -2 }, scene: 'village' },
+  // Quán trọ and tửu lầu, as in every xianxia road story: a bed and a bowl between expeditions.
+  innkeeper: { id: 'innkeeper', name: 'Bà Tần · Chủ Quán Trọ', role: 'Vân Lai Khách Điếm · Nghỉ trọ hồi sức',
+    position: { x: -19, y: 0, z: 6 }, scene: 'village' },
+  tavern: { id: 'tavern', name: 'Tửu Lão Bạch', role: 'Thanh Phong Tửu Lầu · Rượu nóng và tin đồn',
+    position: { x: 20, y: 0, z: 8 }, scene: 'village' },
+  sect_inn: { id: 'sect_inn', name: 'Lý Quản Sự · Khách Điếm', role: 'Nghênh Khách Điếm · Nghỉ trọ trong tông môn',
+    position: { x: -36, y: 0, z: 4 } },
 } as const;
 export type NpcId = keyof typeof NPCS;
+/** The three innkeepers: an inn bed restores body and qi for a handful of spirit stones. */
+export const INN_NPCS: readonly NpcId[] = ['innkeeper', 'sect_inn', 'tavern'];
+/** Spirit stones for one night: cheaper for sect disciples than for road travellers. */
+export function innRestCost(id: NpcId): number { return id === 'sect_inn' ? 4 : id === 'tavern' ? 10 : 8; }
+export const INN_RADIUS = 4.6;
 /** Sect NPCs live on the plateau; the village has its own two residents. */
 export function npcScene(id: NpcId): GameScene {
   return (NPCS[id] as { scene?: GameScene }).scene ?? 'overworld';
@@ -234,12 +254,21 @@ export const HERB_NODES = [
   { id: 'herb-1', position: { x: -10, y: 0, z: -8 } }, { id: 'herb-2', position: { x: 12, y: 0, z: -9 } },
   { id: 'herb-3', position: { x: -21, y: 0, z: -17 } }, { id: 'herb-4', position: { x: 22, y: 0, z: -18 } },
   { id: 'herb-5', position: { x: -12, y: 0, z: -29 } }, { id: 'herb-6', position: { x: 14, y: 0, z: -31 } },
+  // The expanded hunting grounds each carry their own patches, so the walk out is worth it.
+  { id: 'herb-7', position: { x: -74, y: 0, z: 38 } }, { id: 'herb-8', position: { x: 86, y: 0, z: 24 } },
+  { id: 'herb-9', position: { x: -112, y: 0, z: -62 } }, { id: 'herb-10', position: { x: 118, y: 0, z: -74 } },
+  { id: 'herb-11', position: { x: -46, y: 0, z: -128 } }, { id: 'herb-12', position: { x: 52, y: 0, z: -146 } },
+  { id: 'herb-13', position: { x: -168, y: 0, z: 96 } }, { id: 'herb-14', position: { x: 176, y: 0, z: 88 } },
+  { id: 'herb-15', position: { x: 24, y: 0, z: 168 } }, { id: 'herb-16', position: { x: -30, y: 0, z: 186 } },
 ] as const;
 /** Reborn players can gather denser spirit herbs in the Ascendant world. */
 export const ASCENDANT_HERBS = [
   { id: 'asc-herb-1', position: { x: -11, y: 0, z: -13 } }, { id: 'asc-herb-2', position: { x: 13, y: 0, z: -11 } },
   { id: 'asc-herb-3', position: { x: -20, y: 0, z: -22 } }, { id: 'asc-herb-4', position: { x: 22, y: 0, z: -20 } },
   { id: 'asc-herb-5', position: { x: -7, y: 0, z: -31 } }, { id: 'asc-herb-6', position: { x: 10, y: 0, z: -33 } },
+  { id: 'asc-herb-7', position: { x: -96, y: 0, z: 64 } }, { id: 'asc-herb-8', position: { x: 104, y: 0, z: 58 } },
+  { id: 'asc-herb-9', position: { x: -150, y: 0, z: -44 } }, { id: 'asc-herb-10', position: { x: 158, y: 0, z: -52 } },
+  { id: 'asc-herb-11', position: { x: 36, y: 0, z: -164 } }, { id: 'asc-herb-12', position: { x: -42, y: 0, z: 172 } },
 ] as const;
 export type HerbState = { id: string; position: Vector3; availableAt: number };
 export const DAILY_QUESTS = {
@@ -313,6 +342,19 @@ export const DEV_TELEPORTS = [
   { id: 'village-market', name: 'Chợ Vân Cốc', scene: 'village', position: { x: 0, y: 0, z: 4 } },
   { id: 'wild-arrival', name: 'Hoang Vực · Bãi nhập cảnh', scene: 'wilderness', position: { x: 0, y: 0, z: 23 } },
   { id: 'wild-boss', name: 'Hoang Vực · Long Vực Boss', scene: 'wilderness', position: { x: 0, y: 0, z: -46 } },
+  // The expanded outer ring: one jump per new district so testers (and the levelling pass) do not
+  // have to walk two hundred metres to check a courtyard or a hunting ground.
+  { id: 'village-inn', name: 'Vân Lai Khách Điếm (quán trọ)', scene: 'village', position: { x: -19, y: 0, z: 9 } },
+  { id: 'village-tavern', name: 'Thanh Phong Tửu Lầu', scene: 'village', position: { x: 20, y: 0, z: 11 } },
+  { id: 'village-fields', name: 'Ruộng bậc thang · Nam thôn', scene: 'village', position: { x: 0, y: 0, z: -70 } },
+  { id: 'sect-inn', name: 'Nghênh Khách Điếm (tông môn)', scene: 'overworld', position: { x: -36, y: 0, z: 8 } },
+  { id: 'sect-outer', name: 'Ngoại môn · Diễn Vũ Trường', scene: 'overworld', position: { x: 0, y: 0, z: -88 } },
+  { id: 'sect-scripture', name: 'Tàng Kinh Các · Bắc sơn', scene: 'overworld', position: { x: -28, y: 0, z: 152 } },
+  { id: 'wild-moon', name: 'Hoang Vực · Nguyệt Lang cốc', scene: 'wilderness', position: { x: -118, y: 0, z: 132 } },
+  { id: 'wild-crag', name: 'Hoang Vực · Nham Nhai', scene: 'wilderness', position: { x: 146, y: 0, z: -104 } },
+  { id: 'wild-delta', name: 'Hoang Vực · Giao Hà', scene: 'wilderness', position: { x: 206, y: 0, z: 40 } },
+  { id: 'linh-gioi', name: 'Linh Giới · Thiên Kiếm Tông', scene: 'ascendant', position: { x: -160, y: 0, z: 150 } },
+  { id: 'linh-gioi-2', name: 'Linh Giới · Cửu Thiên Cung', scene: 'ascendant', position: { x: 168, y: 0, z: -156 } },
   { id: 'ascendant', name: 'Thượng Giới', scene: 'ascendant', position: { x: 0, y: 0, z: 23 } },
 ] as const;
 export type DevTeleportId = (typeof DEV_TELEPORTS)[number]['id'];
@@ -407,6 +449,25 @@ export const HABITATS: readonly Habitat[] = [
   { id: 'wraith-cloud', scene: 'ascendant', kind: 'sky_wraith', name: 'Thiên Ảnh', level: 12, center: { x: 36, z: -35 }, radius: 7, color: '#ccb9ff', biome: 'mist', hp: 940 },
   { id: 'serpent-void', scene: 'ascendant', kind: 'void_serpent', name: 'Hư Không Mãng', level: 14, center: { x: -20, z: -52 }, radius: 7, color: '#a29beb', biome: 'crystal', hp: 1230 },
   { id: 'guardian-star', scene: 'ascendant', kind: 'star_guardian', name: 'Tinh Thần Hộ Vệ', level: 16, center: { x: 18, z: -53 }, radius: 7, color: '#f4cc86', biome: 'ruins', hp: 1570 },
+  // ── The outer ring ────────────────────────────────────────────────────────────────────────────
+  // Land is now twenty times larger, so the hunt continues far beyond the old island edge: every
+  // level band gets camps at several distances, and the furthest ones pay more.
+  { id: 'wolf-moon', scene: 'wilderness', kind: 'wolf', name: 'Nguyệt Lang', level: 2, center: { x: -118, z: 148 }, radius: 7, color: '#a9d7c5', biome: 'pine', hp: 120 },
+  { id: 'wolf-coast', scene: 'wilderness', kind: 'wolf', name: 'Hải Ngạn Lang', level: 3, center: { x: -238, z: 96 }, radius: 7, color: '#b2d4ec', biome: 'pine', hp: 150 },
+  { id: 'boar-crag', scene: 'wilderness', kind: 'boar', name: 'Nham Nhai Trư', level: 4, center: { x: 146, z: -118 }, radius: 7, color: '#e6b292', biome: 'rock', hp: 240 },
+  { id: 'boar-mire', scene: 'wilderness', kind: 'boar', name: 'Đầm Nê Trư', level: 5, center: { x: 234, z: -168 }, radius: 7, color: '#e89b73', biome: 'rock', hp: 300 },
+  { id: 'shade-gloom', scene: 'wilderness', kind: 'shade', name: 'U Minh Ảnh', level: 6, center: { x: -64, z: -196 }, radius: 7, color: '#baa3f0', biome: 'mist', hp: 420 },
+  { id: 'serpent-delta', scene: 'wilderness', kind: 'forest_serpent', name: 'Giao Hà Xà', level: 7, center: { x: 206, z: 52 }, radius: 7, color: '#75d5a0', biome: 'swamp', hp: 520 },
+  { id: 'crane-sky', scene: 'wilderness', kind: 'thunder_bird', name: 'Phong Lôi Điêu', level: 7, center: { x: 36, z: 236 }, radius: 7, color: '#cfe4ff', biome: 'cloud', hp: 540 },
+  { id: 'golem-crypt', scene: 'wilderness', kind: 'stone_golem', name: 'Cổ Mộ Thạch Khôi', level: 8, center: { x: -212, z: -36 }, radius: 7, color: '#d8c298', biome: 'ruins', hp: 690 },
+  { id: 'wraith-mirror', scene: 'ascendant', kind: 'sky_wraith', name: 'Kính Ảnh', level: 9, center: { x: -256, z: 20 }, radius: 7, color: '#ccb9ff', biome: 'mist', hp: 760 },
+  { id: 'stag-moon', scene: 'ascendant', kind: 'spirit_stag', name: 'Nguyệt Lộc', level: 10, center: { x: -120, z: 140 }, radius: 7, color: '#b3f4db', biome: 'grove', hp: 900 },
+  { id: 'stag-jade', scene: 'ascendant', kind: 'spirit_stag', name: 'Bích Ngọc Lộc', level: 11, center: { x: 250, z: 20 }, radius: 7, color: '#a1f5db', biome: 'grove', hp: 1050 },
+  { id: 'crane-cloud', scene: 'ascendant', kind: 'cloud_crane', name: 'Cửu Thiên Hạc', level: 12, center: { x: 150, z: 130 }, radius: 7, color: '#c1e8ff', biome: 'cloud', hp: 1180 },
+  { id: 'wraith-void', scene: 'ascendant', kind: 'sky_wraith', name: 'Hư Không Ảnh', level: 13, center: { x: -190, z: -120 }, radius: 7, color: '#ccb9ff', biome: 'mist', hp: 1320 },
+  { id: 'crane-storm', scene: 'ascendant', kind: 'cloud_crane', name: 'Lôi Vân Hạc', level: 14, center: { x: 62, z: -252 }, radius: 7, color: '#c1e8ff', biome: 'cloud', hp: 1460 },
+  { id: 'serpent-abyss', scene: 'ascendant', kind: 'void_serpent', name: 'Vô Đáy Mãng', level: 15, center: { x: 196, z: -150 }, radius: 7, color: '#a29beb', biome: 'crystal', hp: 1610 },
+  { id: 'guardian-heaven', scene: 'ascendant', kind: 'star_guardian', name: 'Thiên Môn Hộ Vệ', level: 16, center: { x: -40, z: 250 }, radius: 7, color: '#f4cc86', biome: 'ruins', hp: 1760 },
 ];
 export type MonsterState = { id: string; scene: 'wilderness' | 'ascendant'; kind: MonsterKind; name: string; level: number;
   position: Vector3; hp: number; maxHp: number; radius: number; respawnAt: number | null };

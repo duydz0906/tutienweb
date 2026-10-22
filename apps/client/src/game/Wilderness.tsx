@@ -95,7 +95,7 @@ function Herb({ patch, onGather }: { patch: HerbState; onGather: (id: string) =>
 function AscendantGround() {
   return <>
     <mesh receiveShadow position={[0, 0.079, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <circleGeometry args={[WORLD_RADIUS - 0.3, 96]} /><meshStandardMaterial color="#8caaa2" roughness={0.84} side={THREE.DoubleSide} />
+      <circleGeometry args={[WORLD_RADIUS - 0.3, 192]} /><meshStandardMaterial color="#8caaa2" roughness={0.84} side={THREE.DoubleSide} />
     </mesh>
     {Array.from({ length: 37 }, (_, i) => <mesh key={i} receiveShadow
       position={[Math.sin(i * 1.2) * 0.6, 0.11, 27 - i * 2.5]} rotation={[0, i * 0.51, 0]}>
@@ -129,16 +129,25 @@ function AscendantGround() {
   </>;
 }
 
+/**
+ * How far away a monster is still worth drawing. The expanded maps hold 36 hunting grounds (144
+ * creatures); the old version built an avatar for every one of them every frame, which is a lot of
+ * geometry nobody can see through the haze.
+ */
+const MONSTER_VIEW = 150;
+
 export function Wilderness({ zone, monsters, herbs, playerPosition, selectedTarget, onSelect, onGather, onTravel }: {
   zone: 'wilderness' | 'ascendant';
   monsters: MonsterState[]; herbs: HerbState[]; playerPosition: Vector3; selectedTarget: string | null;
   onSelect: (id: string) => void; onGather: (id: string) => void; onTravel: () => void;
 }) {
+  const nearMonsters = monsters.filter((monster) => monster.id === selectedTarget ||
+    Math.hypot(monster.position.x - playerPosition.x, monster.position.z - playerPosition.z) <= MONSTER_VIEW);
   return <>
     {zone === 'ascendant' ? <AscendantGround /> : <>
     {/* A separate instance from the sect: landing pad, path and distinct hunting clearings. */}
     <mesh receiveShadow position={[0, 0.082, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <circleGeometry args={[WORLD_RADIUS - 0.3, 96]} /><meshStandardMaterial color="#454e4f" roughness={1} side={THREE.DoubleSide} />
+      <circleGeometry args={[WORLD_RADIUS - 0.3, 192]} /><meshStandardMaterial color="#454e4f" roughness={1} side={THREE.DoubleSide} />
     </mesh>
     <mesh receiveShadow position={[0, 0.086, 29]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[18, 20]} /><meshStandardMaterial color="#777a75" roughness={0.96} />
@@ -176,7 +185,7 @@ export function Wilderness({ zone, monsters, herbs, playerPosition, selectedTarg
     </>}
     {HABITATS.filter((habitat) => habitat.scene === zone).map((habitat) => <HabitatGround key={habitat.id} habitat={habitat} />)}
     <PortalGate zone={zone} playerPosition={playerPosition} onTravel={onTravel} />
-    {monsters.map((monster) => <Monster key={monster.id} monster={monster} selected={selectedTarget === monster.id} onSelect={onSelect} />)}
+    {nearMonsters.map((monster) => <Monster key={monster.id} monster={monster} selected={selectedTarget === monster.id} onSelect={onSelect} />)}
     {herbs.map((patch) => <Herb key={patch.id} patch={patch} onGather={onGather} />)}
   </>;
 }

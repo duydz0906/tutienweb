@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APPEARANCE, HABITATS, NPCS, type ActionResult, type MonsterState, type OwnCharacter } from '@van-thuong/shared';
+import { DEFAULT_APPEARANCE, HABITATS, NPCS, SECT_RADIUS, WORLD_RADIUS, type ActionResult, type MonsterState, type OwnCharacter } from '@van-thuong/shared';
 import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
 import { MemoryStore } from '../db/store.js';
@@ -24,10 +24,16 @@ function next<T>(socket: ClientSocket, event: string): Promise<T> {
 
 describe('new habitats, spirit beasts and alchemy (authoritative server)', () => {
   it('spawns one pack of enemies in every spaced-out level habitat', () => {
-    expect(HABITATS).toHaveLength(20);
-    expect(MONSTER_SPAWNS).toHaveLength(20 * SPAWNS_PER_HABITAT);
-    expect(new Set(HABITATS.map((habitat) => habitat.level)).size).toBe(14);
+    // The world is twenty times larger in area, so the roster grew with it rather than thinning out.
+    expect(HABITATS.length).toBeGreaterThanOrEqual(36);
+    expect(MONSTER_SPAWNS).toHaveLength(HABITATS.length * SPAWNS_PER_HABITAT);
+    expect(new Set(HABITATS.map((habitat) => habitat.level)).size).toBeGreaterThanOrEqual(14);
     expect(new Set(HABITATS.map((habitat) => habitat.biome)).size).toBeGreaterThanOrEqual(7);
+    // Every camp has to sit inside the map that owns it, or its monsters are unreachable.
+    for (const habitat of HABITATS) {
+      const radius = habitat.scene === 'wilderness' || habitat.scene === 'ascendant' ? WORLD_RADIUS : SECT_RADIUS;
+      expect(Math.hypot(habitat.center.x, habitat.center.z), habitat.id).toBeLessThan(radius - 8);
+    }
     for (const habitat of HABITATS) {
       const spawned = MONSTER_SPAWNS.filter((monster) => monster.id.startsWith(`${habitat.id}-`));
       expect(spawned).toHaveLength(SPAWNS_PER_HABITAT);

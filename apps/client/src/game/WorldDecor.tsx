@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SectLandscape } from './MountainLandscape';
 import { SkyAtmosphere } from './SkyAtmosphere';
+import { OuterLands, SpiritWells } from './OuterLands';
 import { buildDragonBoss } from './sculpt/beasts';
 import { clonePrototype } from './sculpt/cache';
 import { animateCreature } from './creatures';
@@ -186,6 +187,8 @@ export function Overworld({ zone, playerPosition, boss, drops, formations, onPic
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, sect ? -15 : -3.7, 0]}>
       <circleGeometry args={[300, 96]} /><meshStandardMaterial color={sect ? '#7fa8a6' : '#647c8e'} roughness={0.44} metalness={0.12} />
     </mesh>
+    <OuterLands zone={zone} />
+    <SpiritWells spots={[[-58, 122], [64, 148], [-96, -46], [108, 96]]} />
     {sect ? <SectLandscape playerPosition={playerPosition} /> : <>
       <mesh castShadow receiveShadow position={[0, -1.45, 0]}>
         <cylinderGeometry args={[WORLD_RADIUS, WORLD_RADIUS - 6, 3.1, 96]} /><meshStandardMaterial color="#434b50" roughness={1} flatShading />

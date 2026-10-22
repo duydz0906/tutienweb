@@ -21,6 +21,15 @@ const SMALL_SCREEN = typeof window !== 'undefined' && typeof window.matchMedia =
 const avatarQuality = (local: boolean, preview: boolean): number => local || preview ? (SMALL_SCREEN ? 0.8 : 1) : 0.55;
 
 /** Where each flying style should sit under the rider's feet. */
+/**
+ * Companions are sized up deliberately: a spirit beast is a mount-class creature in the genre, and at
+ * the sculpt's natural scale it read as a toy next to the cultivator. The follower orbits wider so
+ * the bigger body never clips the robe.
+ */
+const PET_SCALE = 1.75;
+const ARTIFACT_SCALE = 1.35;
+const PET_ORBIT = { x: -1.25, z: -0.95 };
+
 const MOUNT_OFFSET: Record<string, number> = {
   flying_sword: -0.08, cloud_disc: -0.12, wind_fire_wheel: -0.14,
   cloud_crane_mount: -1.32, jade_stag_mount: -1.1, ink_cloud: -0.26, spirit_cloud: -0.26,
@@ -274,7 +283,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
       mountRef.current.rotation.x = Math.sin(time * 1.1 + 0.6) * (flying ? 0.06 : 0.02);
     }
     if (petRef.current) {
-      petRef.current.position.set(-0.85 + Math.sin(time * 1.1) * 0.12, 0.02 + Math.sin(time * 2.2) * 0.04, -0.72);
+      petRef.current.position.set(PET_ORBIT.x + Math.sin(time * 1.1) * 0.12, 0.02 + Math.sin(time * 2.2) * 0.04, PET_ORBIT.z);
       petRef.current.rotation.y = 0.35 + Math.sin(time * 0.9) * 0.18;
     }
     // Living companions: legs step, wings beat, tails and heads follow the clock.
@@ -317,10 +326,10 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
       </mesh>
     </>}
     {immortal && <pointLight color="#ff5246" intensity={3} distance={5} position={[0.5, 1.3, 0]} />}
-    {player.equipment.artifact && <group ref={artifactRef}>
+    {player.equipment.artifact && <group ref={artifactRef} scale={ARTIFACT_SCALE}>
       <primitive object={artifact} />
     </group>}
-    {pet && <group ref={petRef}><primitive object={pet} /></group>}
+    {pet && <group ref={petRef} scale={PET_SCALE}><primitive object={pet} /></group>}
     {player.devMode && <group ref={magicRef} position={[0, 0.08, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.15, 1.22, 64]} />

@@ -6,6 +6,7 @@ import { Avatar } from './Avatar';
 import { BillboardLabel } from './Billboard';
 import { PortalGate } from './PortalGate';
 import { SkyAtmosphere } from './SkyAtmosphere';
+import { OuterLands, SpiritWells } from './OuterLands';
 
 const wallColors = ['#cbb894', '#b9ac8c', '#d1c3a2', '#b4a181'];
 const roofColors = ['#6b5a4c', '#586556', '#70584a'];
@@ -80,7 +81,8 @@ function VillageNpc({ id, appearance, gender, position, rotation, glow, beard, s
       <ringGeometry args={[0.76, 0.84, 40]} /><meshBasicMaterial color={glow} transparent opacity={0.7} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
     <BillboardLabel text={NPCS[id].name} color={glow} position={[position.x, 2.55, position.z]} width={4.1} />
-    <BillboardLabel text={id === 'village_shop' ? 'TẠP HÓA · PHI HÀNH' : 'LÝ TRƯỞNG · TIN TỨC'}
+    <BillboardLabel text={id === 'village_shop' ? 'TẠP HÓA · PHI HÀNH' : id === 'village_elder' ? 'LÝ TRƯỞNG · TIN TỨC'
+      : id === 'innkeeper' ? 'VÂN LAI KHÁCH ĐIẾM' : 'THANH PHONG TỬU LẦU'}
       color="#f5e6bf" position={[position.x, 2.16, position.z]} width={3.3} />
   </group>;
 }
@@ -98,8 +100,10 @@ export function VillageScene({ playerPosition, onInteract, onTravel }: {
   return <group>
     <SkyAtmosphere zone="village" />
     <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-      <circleGeometry args={[VILLAGE_RADIUS + 16, 96]} /><meshStandardMaterial color="#71907a" roughness={1} />
+      <circleGeometry args={[VILLAGE_RADIUS, 192]} /><meshStandardMaterial color="#71907a" roughness={1} />
     </mesh>
+    <OuterLands zone="village" />
+    <SpiritWells spots={[[-44, 62], [58, 44], [-66, -52]]} />
     <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, -3]}>
       <planeGeometry args={[18, 56]} /><meshStandardMaterial color="#9a937e" roughness={0.98} />
     </mesh>
@@ -175,10 +179,14 @@ export function VillageScene({ playerPosition, onInteract, onTravel }: {
     <PortalGate zone="village" playerPosition={playerPosition} onTravel={onTravel} />
     {VILLAGE_NPCS.map((id) => <VillageNpc key={id} id={id}
       appearance={id === 'village_shop' ? { hair: 'bun', hairColor: 'ash', robeColor: 'ember', height: 0.4, build: 0.6 }
-        : { hair: 'tied', hairColor: 'silver', robeColor: 'jade', face: 'angular', height: 0.62, build: 0.45 }}
-      gender="nam"
-      beard={id !== 'village_shop'} staff={id !== 'village_shop'}
+        : id === 'innkeeper' ? { hair: 'bun', hairColor: 'silver', robeColor: 'lilac', face: 'round', height: 0.45, build: 0.72 }
+          : id === 'tavern' ? { hair: 'tied', hairColor: 'chestnut', robeColor: 'ember', face: 'round', height: 0.5, build: 0.85 }
+            : { hair: 'tied', hairColor: 'silver', robeColor: 'jade', face: 'angular', height: 0.62, build: 0.45 }}
+      gender={id === 'innkeeper' ? 'nu' : 'nam'}
+      beard={id === 'village_elder'}
+      staff={id === 'village_elder'}
       position={NPCS[id].position} rotation={id === 'village_shop' ? 0.7 : -0.5}
-      glow={id === 'village_shop' ? '#ffd39a' : '#a7eccb'} onInteract={onInteract} />)}
+      glow={id === 'village_shop' ? '#ffd39a' : id === 'innkeeper' ? '#ffcf9c' : id === 'tavern' ? '#ffb98a' : '#a7eccb'}
+      onInteract={onInteract} />)}
   </group>;
 }
