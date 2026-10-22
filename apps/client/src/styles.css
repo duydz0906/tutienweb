@@ -857,7 +857,7 @@ body { overscroll-behavior: none; }
 
 /* Altitude buttons, shown only while mounted: Space/Shift for keyboards, these for everything else. */
 .fly-controls {
-  position: fixed; right: 18px; bottom: 168px; z-index: 24;
+  position: fixed; right: 16px; top: 50%; transform: translateY(-50%); z-index: 24;
   display: grid; gap: 8px; justify-items: center;
   touch-action: none;
 }
@@ -871,4 +871,4 @@ body { overscroll-behavior: none; }
   transition: transform .12s ease, background .12s ease;
 }
 .fly-btn:active, .fly-btn:focus-visible { transform: scale(.94); background: rgba(24, 58, 62, .82); }
-@media (max-width: 720px) { .fly-controls { right: 14px; bottom: 150px; } .fly-btn { width: 46px; height: 46px; } }
+@media (max-width: 720px) { .fly-controls { right: 10px; gap: 7px; } .fly-btn { width: 46px; height: 46px; } }
