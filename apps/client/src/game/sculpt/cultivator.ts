@@ -22,6 +22,8 @@ export const RIG = {
   hips: 'rig-hips', torso: 'rig-torso', head: 'rig-head',
   armL: 'rig-armL', armR: 'rig-armR', handL: 'rig-handL', handR: 'rig-handR',
   legL: 'rig-legL', legR: 'rig-legR', skirt: 'rig-skirt', ribbonL: 'rig-ribbonL', ribbonR: 'rig-ribbonR',
+  // Only the real-human rig has ankles; the sculpted body has nothing to hang boots from.
+  footL: 'rig-footL', footR: 'rig-footR',
 } as const;
 
 const HAIR_MESH = {

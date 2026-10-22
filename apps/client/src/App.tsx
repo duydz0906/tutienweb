@@ -13,6 +13,7 @@ import { TouchJoystick } from './components/TouchJoystick';
 import { Panels, PathModal, type ActivePanel, type AdminPlayer } from './components/Panels';
 import { ApiError, api } from './lib/api';
 import { loadHudPrefs, saveHudPrefs, type HudPrefs } from './lib/uiPrefs';
+import { canUseDevTools } from './lib/devTools';
 import { describeAuthError, firebaseEnabled, loginGoogle, loginPassword, logoutFirebase, observeFirebase, registerPassword, resendVerification, resetPassword } from './lib/firebase';
 import type { User } from 'firebase/auth';
 
@@ -21,6 +22,12 @@ type Session = { kind: 'demo'; token: string } | { kind: 'firebase'; token: stri
 type Toast = { id: string; text: string; kind: 'good' | 'bad' | 'info' };
 const DEMO_KEY = 'van-thuong:demo-session';
 const GUEST_KEY = 'van-thuong:local-guest'; // opt-in guest identity survives a local dev restart
+/**
+ * Set as soon as someone chooses a real player account. `npm run dev` normally opens the Daniel965
+ * sandbox automatically; this flag keeps that convenience from stealing the session back after a
+ * logout, so a normal player can log in and only ever sees the normal panels.
+ */
+const PLAYER_MODE_KEY = 'van-thuong:player-mode';
 const initialPreview: PreviewOptions = { name: '', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE }, view: 'body' };
 // Cooldown, mana and miss results are already shown on the skill slot / combat feedback.
 const QUIET_CAST = /(đang hồi|chân khí|không trúng|Đòn đánh trượt|Sinh lực đã đầy|Hãy để chiêu trước)/i;
@@ -40,6 +47,8 @@ export function App() {
   const [bootAttempt, setBootAttempt] = useState(0);
   const [demoAvailable, setDemoAvailable] = useState(false);
   const [localDevAvailable, setLocalDevAvailable] = useState(false);
+  /** True only when the API was started by `npm run dev` (signed local sandbox). */
+  const [devSandbox, setDevSandbox] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [character, setCharacter] = useState<OwnCharacter | null>(null);
   const [preview, setPreview] = useState<PreviewOptions>(initialPreview);
@@ -114,7 +123,10 @@ export function App() {
         if (cancelled) return;
         setDemoAvailable(health.mode === 'demo');
         setLocalDevAvailable(health.mode === 'demo' && health.devAutoLogin === true);
-        if (health.mode === 'demo' && health.devAutoLogin) {
+        setDevSandbox(health.mode === 'demo' && health.devAutoLogin === true);
+        // `npm run dev` opens the sandbox account directly, unless this browser deliberately
+        // switched to a normal player account (logout / guest / email login).
+        if (health.mode === 'demo' && health.devAutoLogin && !sessionStorage.getItem(PLAYER_MODE_KEY)) {
           const { token } = await api<{ token: string }>('/api/dev/session', undefined, { method: 'POST' });
           if (cancelled) return;
           sessionStorage.setItem(DEMO_KEY, token);
@@ -229,6 +241,7 @@ export function App() {
   const enterDemo = async () => {
     setBusy(true);
     setError(null);
+    sessionStorage.setItem(PLAYER_MODE_KEY, '1');
     try {
       // A guest is separate from Daniel965, and can return to the same local save after a restart.
       const guest = localDevAvailable ? localStorage.getItem(GUEST_KEY) : null;
@@ -248,6 +261,18 @@ export function App() {
       sessionStorage.setItem(DEMO_KEY, result.token);
       await attach({ kind: 'demo', token: result.token });
     } catch (e) { setError(e instanceof Error ? e.message : 'Không thể vào bản chơi thử.'); }
+    finally { setBusy(false); }
+  };
+  /** Return to the local `npm run dev` sandbox from the login screen. */
+  const enterDevSandbox = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      sessionStorage.removeItem(PLAYER_MODE_KEY);
+      const { token } = await api<{ token: string }>('/api/dev/session', undefined, { method: 'POST' });
+      sessionStorage.setItem(DEMO_KEY, token);
+      await attach({ kind: 'demo', token });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Không thể mở dev sandbox.'); }
     finally { setBusy(false); }
   };
   const enterGoogle = async () => { setBusy(true); setError(null); try { await loginGoogle(); }
@@ -284,6 +309,8 @@ export function App() {
     touchMovement.current = { right: 0, forward: 0 };
     socketRef.current?.disconnect();
     sessionStorage.removeItem(DEMO_KEY);
+    // Logging out is an explicit choice to leave the sandbox account.
+    sessionStorage.setItem(PLAYER_MODE_KEY, '1');
     if (session?.kind === 'firebase') await logoutFirebase().catch(() => {});
     setSession(null); setCharacter(null); setWorld(null); setTrial(null); setMessages([]); setPanel(null); setSelectedTarget(null);
     setPhase('login'); setError(null); setNotice(null);
@@ -410,6 +437,11 @@ export function App() {
   }, [character?.isAdmin, character?.hotbar, character?.scene, character?.rebirths, character?.realm, character?.minorStage,
     phase, panel, pathModal, skill, basicAttack, action, travel, hudPrefs.chatOpen, hudPrefs.cultivateOpen, hudPrefs.cameraLock, updateHudPrefs]);
 
+  const devTools = canUseDevTools(character, devSandbox);
+  useEffect(() => {
+    // A player who switched accounts must not keep an open dev drawer.
+    if (!devTools && panel === 'dev') setPanel(null);
+  }, [devTools, panel]);
   const showCharacter = inWorld ? character : null;
   const livePosition = world && character && world.scene === character.scene ? world.players.find((p) => p.id === character.id)?.position : null;
   const panelCharacter = character && livePosition ? { ...character, position: livePosition } : character;
@@ -424,7 +456,8 @@ export function App() {
     <div className="vignette" aria-hidden="true" />
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}
     {phase === 'login' && <LoginScreen demoAvailable={demoAvailable} firebaseAvailable={firebaseEnabled && !demoAvailable} busy={busy} error={error}
-      notice={notice} onRegister={enterRegister} onReset={sendReset}
+      notice={notice} onRegister={enterRegister} onReset={sendReset} devSandboxAvailable={localDevAvailable}
+      onDevSandbox={() => { void enterDevSandbox(); }}
       onDemo={() => { void enterDemo(); }} onRetry={retryServer}
       onGoogle={() => { void enterGoogle(); }} onPassword={(email, password) => { void enterPassword(email, password); }} />}
     {(phase === 'create' || phase === 'reveal') && <CharacterCreation preview={preview} onChange={(next) => { setPreview(next); setError(null); }} onCreate={() => { void create(); }}
@@ -440,12 +473,12 @@ export function App() {
     </div>}
     {phase === 'game' && character && <>
       <GameHUD character={character} world={world} trial={trial} connected={connected} cooldowns={cooldowns} messages={messages} panel={panel} selectedTarget={selectedTarget}
-        hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} lastCast={lastCast}
+        hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} lastCast={lastCast} devTools={devTools}
         onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onAttack={basicAttack} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
       <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} onOpenPath={() => { openPanel(null); setPathModal(true); }} character={panelCharacter ?? character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
-        connected={connected} hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} />
-      {pathModal && character.realm >= 2 && (!character.path || character.devMode) && <PathModal devMode={character.devMode} onClose={() => setPathModal(false)} onSelect={selectPath} />}
+        connected={connected} devTools={devTools} hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} />
+      {pathModal && character.realm >= 2 && (!character.path || devTools) && <PathModal devMode={devTools} onClose={() => setPathModal(false)} onSelect={selectPath} />}
     </>}
     <div className="toast-stack" aria-live="polite">{toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.kind === 'bad' ? <AlertCircle size={18} /> : toast.kind === 'good' ? <CheckCircle2 size={18} /> : <Sparkles size={18} />}<span>{toast.text}</span><button aria-label="Đóng thông báo" onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}><X size={14} /></button></div>)}</div>
   </div>;

@@ -15,9 +15,11 @@ const DEV_PATH_LABEL = { kiem: 'Kiếm Tu', phap: 'Pháp Tu', the: 'Thể Tu', t
 const DEV_PATH_HINT = { kiem: 'Ngự kiếm · sát thương đơn', phap: 'Phi đĩa · phép diện rộng', the: 'Phong hỏa luân · cận chiến',
   thu: 'Linh thú · đồng hành', ma: 'Huyết vân · hút máu' } as const;
 
-export function Panels({ panel, onClose, onNavigate, onOpenPath, character, leaderboard, roster, onAction, onLogout, connected,
+export function Panels({ panel, onClose, onNavigate, onOpenPath, character, leaderboard, roster, onAction, onLogout, connected, devTools,
   hudPrefs, onHudPrefs }: {
   panel: ActivePanel; onClose: () => void; onNavigate: (panel: ActivePanel) => void; onOpenPath: () => void; character: OwnCharacter;
+  /** Dev drawers, teleports and "+1 cảnh giới" only exist in the local `npm run dev` sandbox. */
+  devTools: boolean;
   leaderboard: LeaderboardEntry[]; roster: AdminPlayer[];
   onAction: (event: string, payload?: object) => void; onLogout: () => void;
   connected: boolean; hudPrefs: HudPrefs; onHudPrefs: (patch: Partial<HudPrefs>) => void;
@@ -35,7 +37,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
   useEffect(() => {
     if (panel === 'dev') { setDevAppearance(character.appearance); setDevGender(character.gender); }
   }, [panel, character.id]);
-  if (!panel || (panel === 'admin' && !character.isAdmin) || (panel === 'dev' && !character.devMode)) return null;
+  if (!panel || (panel === 'admin' && !character.isAdmin) || (panel === 'dev' && !devTools)) return null;
   const available = (amount: number) => character.devMode ? '∞' : amount.toLocaleString('vi-VN');
 
   const equipped = (slot: string) => {
@@ -77,14 +79,14 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
     { id: 'sect', label: 'Chính Điện', icon: <Crown size={18} /> },
     { id: 'leaderboard', label: 'Xếp hạng', icon: <Trophy size={18} /> },
     { id: 'help', label: 'Hướng dẫn', icon: <BookOpen size={18} /> },
-    ...(character.devMode ? [{ id: 'dev' as ActivePanel, label: 'Dev tools', icon: <Settings2 size={18} /> }] : []),
+    ...(devTools ? [{ id: 'dev' as ActivePanel, label: 'Dev tools', icon: <Settings2 size={18} /> }] : []),
   ];
 
   return <div className="panel-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className={`drawer glass-panel ${panel === 'admin' ? 'drawer-wide' : ''}`} role="dialog" aria-label={title} aria-modal="true">
       <div className="drawer-head"><div><span className="eyebrow">VÂN THƯỢNG · {panel === 'admin' ? 'ADMIN' : 'HÀNH TRANG'}</span><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={19} /></button></div>
 
-      {panel === 'dev' && <div className="drawer-scroll dev-customizer">
+      {panel === 'dev' && devTools && <div className="drawer-scroll dev-customizer">
         <div className="rounded border border-jade/30 bg-jade/10 p-4 text-xs leading-6 text-slate-300"><strong className="text-jade">Thế giới thử nghiệm</strong><p>Thay đổi đạo tu, hình dáng và nam/nữ ngay trên nhân vật {character.name}. Lưu riêng theo UID; không đổi chủ kho, không cấp quyền quản trị, thoát dev mode sẽ khôi phục nguyên trạng.</p></div>
         <div className="drawer-section-heading"><Zap size={16} /> TĂNG NHANH CẢNH GIỚI</div>
         <div className="dev-realm-card">
@@ -136,7 +138,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
               ? 'Nhấn R hoặc nút Phi hành để cất cánh ngoài trời.'
               : character.realm < 2 ? 'Cần đạt Trúc Cơ để bay.' : 'Vật phẩm này không hợp đạo tu của bạn.') : 'Mua ở cửa hàng hoặc thuần hóa linh thú bay (Lôi Vũ Điêu ở Hoang Vực).'}</small></div>
         </div>
-        {character.devMode && <>
+        {devTools && <>
           <div className="drawer-section-heading"><MapPin size={16} /> DEV · DỊCH CHUYỂN NHANH <span>whitelist server</span></div>
           <div className="teleport-grid">{DEV_TELEPORTS.map((point) => <button key={point.id} onClick={() => onAction('dev:teleport', { id: point.id })}>
             <MapPin size={13} /><span>{point.name}</span></button>)}</div>
@@ -294,7 +296,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
             <button onClick={() => onNavigate('craft')}><FlaskConical size={16} /> Chế tạo</button>
             <button onClick={() => onNavigate('alchemy')}><FlaskConical size={16} /> Luyện đan</button>
             <button onClick={() => onNavigate('beast')}><Sparkles size={16} /> Ngự thú</button>
-            {character.devMode && <button onClick={() => onNavigate('dev')}><Sparkles size={16} /> Đổi nhân vật (dev)</button>}
+            {devTools && <button onClick={() => onNavigate('dev')}><Sparkles size={16} /> Đổi nhân vật (dev)</button>}
             <button onClick={() => onNavigate('leaderboard')}><Trophy size={16} /> Xếp hạng</button>
           </div>
         </div>

@@ -3,9 +3,11 @@ import { ArrowRight, Compass, Crown, MailCheck, MousePointer2, RefreshCw, Shield
 
 type AuthMode = 'login' | 'register';
 
-export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, notice, onDemo, onRetry, onGoogle, onPassword, onRegister, onReset }: {
+export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, notice, devSandboxAvailable, onDemo, onDevSandbox, onRetry, onGoogle, onPassword, onRegister, onReset }: {
   demoAvailable: boolean; firebaseAvailable: boolean; busy: boolean; error: string | null; notice?: string | null;
-  onDemo: () => void; onRetry: () => void; onGoogle: () => void;
+  /** `npm run dev` is running, so the local sandbox account can be re-opened from here. */
+  devSandboxAvailable?: boolean;
+  onDemo: () => void; onDevSandbox?: () => void; onRetry: () => void; onGoogle: () => void;
   onPassword: (email: string, password: string) => void;
   onRegister: (email: string, password: string, name: string) => void;
   onReset: (email: string) => void;
@@ -85,6 +87,9 @@ export function LoginScreen({ demoAvailable, firebaseAvailable, busy, error, not
         </>}
         {demoAvailable && <button className="btn btn-gold btn-full" disabled={busy} onClick={onDemo}>
           {busy ? 'Đang mở cánh cổng...' : 'Bước vào chơi thử'} <ArrowRight size={17} />
+        </button>}
+        {devSandboxAvailable && onDevSandbox && <button className="btn btn-outline-gold btn-full dev-entry" disabled={busy} onClick={onDevSandbox}>
+          <Sparkles size={15} /> Vào Dev Sandbox (chỉ máy dev)
         </button>}
         {!demoAvailable && !firebaseAvailable && <div className="login-unavailable">
           Chưa kết nối được máy chủ game. Chạy <code>npm run dev</code> ở thư mục gốc dự án rồi kiểm tra lại.
