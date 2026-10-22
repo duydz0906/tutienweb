@@ -7,15 +7,19 @@ import { BillboardLabel } from './Billboard';
 import { PortalGate } from './PortalGate';
 
 
-const roles: { id: NpcId; gender: Gender; appearance: Partial<Appearance>; glow: string }[] = [
-  { id: 'master', gender: 'nam', appearance: { hair: 'long', hairColor: 'silver', robeColor: 'ivory', face: 'angular', height: 0.8 }, glow: '#ffe2a0' },
+type NpcFlavor = { beard?: boolean; staff?: boolean };
+
+const roles: { id: NpcId; gender: Gender; appearance: Partial<Appearance>; glow: string; flavor?: NpcFlavor }[] = [
+  { id: 'master', gender: 'nam', appearance: { hair: 'long', hairColor: 'silver', robeColor: 'ivory', face: 'angular', height: 0.8 },
+    glow: '#ffe2a0', flavor: { beard: true, staff: true } },
   { id: 'quest', gender: 'nu', appearance: { hair: 'bun', hairColor: 'ink', robeColor: 'jade', face: 'heart', height: 0.55 }, glow: '#9ef0cc' },
   { id: 'shop', gender: 'nam', appearance: { hair: 'tied', hairColor: 'ash', robeColor: 'lilac', face: 'round', build: 0.65 }, glow: '#c9c4ff' },
   { id: 'beast', gender: 'nu', appearance: { hair: 'braid', hairColor: 'chestnut', robeColor: 'jade', face: 'angular', build: 0.7 }, glow: '#adf0b6' },
-  { id: 'alchemist', gender: 'nam', appearance: { hair: 'bun', hairColor: 'silver', robeColor: 'ember', face: 'oval', height: 0.72 }, glow: '#ffd5a0' },
+  { id: 'alchemist', gender: 'nam', appearance: { hair: 'bun', hairColor: 'silver', robeColor: 'ember', face: 'oval', height: 0.72 },
+    glow: '#ffd5a0', flavor: { beard: true } },
 ];
 
-/** NPCs and disciples use the same fitted HumanForge body, hair, clothes and facial morphs as players. */
+/** NPCs and disciples are sculpted from the same cultivator generator as players. */
 function person(id: string, name: string, gender: Gender, appearance: Partial<Appearance>, position: Vector3, rotation = Math.PI): PublicPlayer {
   return {
     id, name, gender, appearance: { ...DEFAULT_APPEARANCE, ...appearance }, position, rotation,
@@ -25,13 +29,13 @@ function person(id: string, name: string, gender: Gender, appearance: Partial<Ap
   };
 }
 
-function SectNpc({ id, gender, appearance, glow, onInteract }: typeof roles[number] & { onInteract: (id: NpcId) => void }) {
+function SectNpc({ id, gender, appearance, glow, flavor, onInteract }: typeof roles[number] & { onInteract: (id: NpcId) => void }) {
   const p = NPCS[id].position;
   const actor = useMemo(() => person(`sect-npc-${id}`, NPCS[id].name, gender, appearance, p), [id, gender]);
   return <group onClick={(event) => { event.stopPropagation(); onInteract(id); }}
     onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
     onPointerOut={() => { document.body.style.cursor = ''; }}>
-    <Avatar player={actor} local />
+    <Avatar player={actor} local beard={flavor?.beard} staff={flavor?.staff} />
     <mesh position={[p.x, 0.095, p.z]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[0.76, 0.82, 42]} /><meshBasicMaterial color={glow} transparent opacity={0.65} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>

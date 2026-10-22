@@ -62,9 +62,9 @@ function Well() {
   </group>;
 }
 
-function VillageNpc({ id, appearance, gender, position, rotation, glow, onInteract }: {
+function VillageNpc({ id, appearance, gender, position, rotation, glow, beard, staff, onInteract }: {
   id: NpcId; appearance: Partial<Appearance>; gender: Gender; position: Vector3; rotation: number; glow: string;
-  onInteract: (id: NpcId) => void;
+  beard?: boolean; staff?: boolean; onInteract: (id: NpcId) => void;
 }) {
   const actor = useMemo<PublicPlayer>(() => ({
     id: `village-npc-${id}`, name: NPCS[id].name, gender, appearance: { ...DEFAULT_APPEARANCE, ...appearance },
@@ -75,7 +75,7 @@ function VillageNpc({ id, appearance, gender, position, rotation, glow, onIntera
   return <group onClick={(event) => { event.stopPropagation(); onInteract(id); }}
     onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
     onPointerOut={() => { document.body.style.cursor = ''; }}>
-    <Avatar player={actor} local />
+    <Avatar player={actor} local beard={beard} staff={staff} />
     <mesh position={[position.x, 0.095, position.z]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[0.76, 0.84, 40]} /><meshBasicMaterial color={glow} transparent opacity={0.7} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
@@ -175,8 +175,9 @@ export function VillageScene({ playerPosition, onInteract, onTravel }: {
     <PortalGate zone="village" playerPosition={playerPosition} onTravel={onTravel} />
     {VILLAGE_NPCS.map((id) => <VillageNpc key={id} id={id}
       appearance={id === 'village_shop' ? { hair: 'bun', hairColor: 'ash', robeColor: 'ember', height: 0.4, build: 0.6 }
-        : { hair: 'tied', hairColor: 'silver', robeColor: 'jade', face: 'heart', height: 0.62 }}
-      gender={id === 'village_shop' ? 'nam' : 'nu'}
+        : { hair: 'tied', hairColor: 'silver', robeColor: 'jade', face: 'angular', height: 0.62, build: 0.45 }}
+      gender="nam"
+      beard={id !== 'village_shop'} staff={id !== 'village_shop'}
       position={NPCS[id].position} rotation={id === 'village_shop' ? 0.7 : -0.5}
       glow={id === 'village_shop' ? '#ffd39a' : '#a7eccb'} onInteract={onInteract} />)}
   </group>;
