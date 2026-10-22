@@ -5,6 +5,7 @@ import { SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gende
   type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { AdminFireTrail, Avatar } from './Avatar';
 import { SceneEngine } from './SceneEngine';
+import { clearFlightInput, flightInput, setFlightInput } from './flightInput';
 import { Overworld, SkillVfx, TrialArena, type VisualEffect } from './WorldDecor';
 import { SectScene } from './SectScene';
 import { SectArchitecture } from './SectArchitecture';
@@ -70,6 +71,32 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   useEffect(() => { engine.current?.setCameraLock(cameraLock, character?.rotation); }, [cameraLock, character?.id]);
   // Space: the engine owns the hop so an avatar re-render can never cancel it mid-air.
   useEffect(() => { if (jumpAt) engine.current?.triggerJump(); }, [jumpAt]);
+
+  /**
+   * Flying height: Space climbs, Shift descends, and the engine lifts the whole avatar group (not
+   * just the mesh) so the chase camera follows. Server positions stay on the ground plane.
+   */
+  const altitude = useRef(0);
+  useEffect(() => {
+    const hold = (event: KeyboardEvent, pressed: boolean): void => {
+      if (event.code === 'Space') setFlightInput('up', pressed);
+      else if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') setFlightInput('down', pressed);
+      else return;
+      if (character?.flying) event.preventDefault();
+    };
+    const onDown = (event: KeyboardEvent) => hold(event, true);
+    const onUp = (event: KeyboardEvent) => hold(event, false);
+    // Losing focus mid-climb must not leave the rider pinned at the ceiling.
+    const onBlur = () => clearFlightInput();
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [character?.flying]);
   // Left click on the ground is the basic attack; dragging still orbits the camera.
   useEffect(() => {
     engine.current?.setPrimaryAction(onAttack);
@@ -112,6 +139,17 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const controller = engine.current;
     if (!controller) return;
     controller.setTouchInput(touch.current.right, touch.current.forward);
+    // Flight height: held Space/Shift steers it, and it settles back to the ground on landing.
+    const dt = Math.min(delta, 0.05);
+    const flying = Boolean(character?.flying) && character?.scene !== 'tribulation';
+    const climb = flying ? (flightInput.up ? 1 : 0) - (flightInput.down ? 1 : 0) : 0;
+    if (climb) altitude.current = Math.min(8, Math.max(0, altitude.current + climb * 3.4 * dt));
+    else if (!flying || altitude.current > 0) {
+      const target = flying ? altitude.current : 0;
+      altitude.current += (target - altitude.current) * Math.min(1, dt * (flying ? 1 : 5));
+      if (!flying && altitude.current < 0.01) altitude.current = 0;
+    }
+    controller.setFlightAltitude(altitude.current);
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
     controller.update(delta, avatar.current, serverPosition, character?.flying ? 10.5 : 6, Boolean(character));
   });
@@ -139,10 +177,12 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
     <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}
-      attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at} />
+      attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at}
+      castAt={effects.filter((e) => e.type === 'cast' && e.sourceId === local.id).at(-1)?.at} />
     {local.devMode && <AdminFireTrail player={local} avatarRef={avatar} />}
     {!inTrial && others.map((player) => <Avatar key={player.id} player={player}
-      attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === player.id).at(-1)?.at} />)}
+      attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === player.id).at(-1)?.at}
+      castAt={effects.filter((e) => e.type === 'cast' && e.sourceId === player.id).at(-1)?.at} />)}
     {!inTrial && others.filter((player) => player.devMode).map((player) => <AdminFireTrail key={`trail-${player.id}`} player={player} />)}
     {effects.filter((effect) => Date.now() - effect.at < 1800).map((effect) => <group key={effect.visualId}>
       <SkillVfx event={effect} />

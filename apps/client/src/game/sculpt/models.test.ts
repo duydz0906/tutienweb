@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { animateCreature } from '../creatures';
 
 /**
  * Guards the model graph against the failure that used to blank the whole page: storing an
@@ -12,6 +13,7 @@ let beasts: typeof import('./beasts');
 let cultivator: typeof import('./cultivator');
 let gear: typeof import('./gear');
 let parts: typeof import('./parts');
+let creatureParts: typeof import('./parts');
 
 beforeAll(async () => {
   // The procedural textures only need a 2D context; they are never uploaded in this environment.
@@ -22,6 +24,7 @@ beforeAll(async () => {
   cultivator = await import('./cultivator');
   gear = await import('./gear');
   parts = await import('./parts');
+  creatureParts = await import('./parts');
 });
 
 const QUALITY = 0.55;
@@ -70,6 +73,48 @@ describe('sculpted models', () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('lays the flying sword along the direction of flight, tip first', () => {
+    // Riding a sword that points sideways (or backwards) was the reported bug: the blade has to
+    // lead the flight, lying flat and level under the rider's feet.
+    const mount = beasts.buildMountModel('flying_sword', 1);
+    const blade = mount.getObjectByName('flying-sword-blade');
+    expect(blade).toBeTruthy();
+    const box = new THREE.Box3().setFromObject(blade!);
+    const span = { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z };
+    expect(span.z).toBeGreaterThan(2);          // long axis runs front-to-back
+    expect(span.z).toBeGreaterThan(span.x * 2); // not across the rider's path
+    expect(span.y).toBeLessThan(0.4);           // lying flat, not standing on its point
+    expect(box.max.z).toBeGreaterThan(1.5);     // the tip leads, the hilt trails
+    // The rider stands just behind the crossguard, not on the pommel.
+    expect(box.min.z).toBeLessThan(-0.4);
+    expect(box.min.z).toBeGreaterThan(-1.6);
+  });
+
+  it('gives every creature moving legs, wings, tails or a head', () => {
+    const fox = beasts.buildPetModel('spirit_fox', 1);
+    const parts = creatureParts.partsOf(fox);
+    expect(parts.legs.length).toBe(4);
+    expect(parts.tails.length).toBeGreaterThan(0);
+    const leg = parts.legs[0]!;
+    const rest = leg.rotation.x;
+    animateCreature(fox, { time: 0, moving: 1 });
+    const first = leg.rotation.x;
+    animateCreature(fox, { time: 0.35, moving: 1 });
+    expect(leg.rotation.x).not.toBeCloseTo(first, 4);
+    // Animation is an offset from the authored pose, so it always comes back inside a small arc.
+    expect(Math.abs(leg.rotation.x - rest)).toBeLessThan(0.6);
+    expect(Math.abs(parts.tails[0]!.rotation.y)).toBeLessThan(Math.PI);
+
+    // Birds beat their wings instead of stepping.
+    const crane = beasts.buildPetModel('cloud_crane_pet', 1);
+    const craneParts = creatureParts.partsOf(crane);
+    expect(craneParts.wings.length).toBeGreaterThan(0);
+    animateCreature(crane, { time: 0, moving: 0.6, flying: true });
+    const wingDown = craneParts.wings[0]!.rotation.z;
+    animateCreature(crane, { time: 0.12, moving: 0.6, flying: true });
+    expect(Math.abs(craneParts.wings[0]!.rotation.z - wingDown)).toBeGreaterThan(0.05);
   });
 
   it('can be cloned, which is how every actor gets its own copy', () => {

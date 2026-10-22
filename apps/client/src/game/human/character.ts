@@ -178,6 +178,19 @@ const FACE_SCALE: Record<HumanLook['face'], [number, number, number]> = {
   oval: [1, 1, 1], round: [1.04, 0.975, 1.02], angular: [0.96, 1.025, 1.01], heart: [1.02, 1.005, 0.97],
 };
 
+/**
+ * The shipped GLBs store positions, UVs and skin data only — no NORMAL attribute. `three` lights a
+ * `MeshStandardMaterial` from that attribute, so a mesh without normals is shaded from a zero
+ * vector, comes out NaN in the shader and is drawn pitch black: every skin/hair/robe colour then
+ * looks identical. The packed vertices are already in bind space, so computing the normals there
+ * once per shared geometry is enough for every clone and every look.
+ */
+function ensureNormals(geometry: THREE.BufferGeometry): boolean {
+  if (geometry.getAttribute('normal')) return false;
+  geometry.computeVertexNormals();
+  return true;
+}
+
 const proxyUrl = (name: string) => `proxies/${name}.glb.gz`;
 const textureUrl = (name: string) => `textures/${name}.webp`;
 
@@ -205,6 +218,8 @@ async function loadBody(source: HumanSource): Promise<BodyBlueprint> {
   const body = skinnedMeshes(scene)[0];
   if (!body) throw new Error('Tài nguyên nhân vật thiếu lưới có xương.');
   body.skeleton.update();
+  // Normals are missing from every shipped GLB (see `ensureNormals`); the body is the biggest mesh.
+  for (const mesh of skinnedMeshes(scene)) ensureNormals(mesh.geometry);
   // Every bone shares this affine at rest: it converts the packed int16 vertex space to metres.
   const affine = new THREE.Matrix4().multiplyMatrices(body.skeleton.bones[0].matrixWorld, body.skeleton.boneInverses[0]);
   const affineScale = affine.elements[0];
@@ -327,6 +342,7 @@ function proxyGeometry(mesh: THREE.Mesh): THREE.BufferGeometry | null {
   geometry.setAttribute('skinIndex', joints);
   geometry.setAttribute('skinWeight', weights);
   for (const unused of ['_joints', '_weights', '_refs', '_refw', '_offs']) geometry.deleteAttribute(unused);
+  ensureNormals(geometry);
   proxyGeometries.set(mesh, geometry);
   return geometry;
 }
@@ -479,8 +495,8 @@ export async function buildHuman(look: HumanLook, quality = 1, source: HumanSour
   }
 
   // Proportions: height stretches the whole body, build widens shoulders/hips.
-  const stretch = 0.93 + look.height * 0.14;
-  const width = 0.92 + look.build * 0.18;
+  const stretch = 0.9 + look.height * 0.2;
+  const width = 0.88 + look.build * 0.26;
   root.scale.set(width, stretch, width);
 
   const rig = rigOf(root);

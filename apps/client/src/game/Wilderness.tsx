@@ -7,6 +7,7 @@ import { HabitatGround } from './HabitatDecor';
 import { PortalGate } from './PortalGate';
 import { buildMonsterModel } from './sculpt/beasts';
 import { clonePrototype } from './sculpt/cache';
+import { animateCreature, creatureKindTraits } from './creatures';
 
 function Monster({ monster, selected, onSelect }: { monster: MonsterState; selected: boolean; onSelect: (id: string) => void }) {
   const group = useRef<THREE.Group>(null);
@@ -29,9 +30,20 @@ function Monster({ monster, selected, onSelect }: { monster: MonsterState; selec
     return clonePrototype(key, () => buildMonsterModel(monster.kind, { color, glow, quality: 0.55 }));
   }, [monster.kind, color, glow]);
   const barHeight = isCrane ? 2.9 : isStone ? 3.5 : isGhost ? 2.9 : isSerpent ? 2.6 : isStag ? 2.35 : 1.95;
-  useFrame(({ clock, camera }) => {
+  // The server only moves a monster a few times a second; keep a smoothed speed so the gait matches.
+  const motion = useRef({ x: monster.position.x, z: monster.position.z, speed: 0.15 });
+  useFrame(({ clock, camera }, delta) => {
     if (group.current) group.current.position.y = Math.sin(clock.elapsedTime * 2.2 + monster.position.x) * 0.06;
     if (health.current) health.current.quaternion.copy(camera.quaternion);
+    const moved = Math.hypot(monster.position.x - motion.current.x, monster.position.z - motion.current.z);
+    motion.current.x = monster.position.x;
+    motion.current.z = monster.position.z;
+    const wanted = moved > 0.004 ? 1 : 0.15;
+    motion.current.speed += (wanted - motion.current.speed) * Math.min(1, delta * 4);
+    const traits = creatureKindTraits(monster.kind);
+    animateCreature(beast, { time: clock.elapsedTime, moving: motion.current.speed, ...traits,
+      // A serpent's whole body weaves; a bird riding the wind beats slowly.
+      tempo: traits.flying ? 0.8 : 1 });
   });
   if (!alive) return <group position={[monster.position.x, 0, monster.position.z]}>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.095, 0]}>

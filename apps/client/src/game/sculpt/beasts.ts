@@ -449,12 +449,27 @@ export function buildDragonBoss(quality = 1): THREE.Group {
 
 /* ------------------------------- mounts ---------------------------------- */
 
+/**
+ * Phi kiếm: the rider stands on the flat of the blade, tip pointing the way they fly.
+ *
+ * The old version rotated the sword (π/2, 0, π/2), which laid the blade across the rider's path —
+ * the character appeared to ride the sword sideways, or backwards. +Y is the blade axis, so the
+ * whole sword only needs a pitch of +π/2: the tip goes to +Z (forward), the wide side of the blade
+ * stays horizontal and the guard ends up just in front of the feet.
+ */
 export function buildFlyingSwordMount(quality = 1): THREE.Group {
   const group = new THREE.Group();
-  const sword = buildDetailedSword(MATS.jade, MATS.gold, 1.5, quality);
-  sword.rotation.set(Math.PI / 2, 0, Math.PI / 2);
-  group.add(sword);
-  group.add(meshOf(new THREE.TorusGeometry(1.5, 0.02, 12, 48), MATS.glowCyan, [0, -0.12, 0], [Math.PI / 2, 0, 0]));
+  const holder = new THREE.Group();
+  holder.name = 'flying-sword-blade';
+  // Slide the blade through the holder so ~0.9 m of sword sticks out behind the rider's heels and
+  // the tip leads the flight; the guard then sits right under the feet.
+  const sword = buildDetailedSword(MATS.jade, MATS.gold, 1.05, quality);
+  sword.position.y = 0.83;
+  holder.add(sword);
+  holder.rotation.x = Math.PI / 2;
+  group.add(holder);
+  // A qi ring hugging the blade under the feet (was a 1.5 m hoop the sword cut through).
+  group.add(meshOf(new THREE.TorusGeometry(0.62, 0.018, 10, 44), MATS.glowCyan, [0, -0.1, -0.12], [Math.PI / 2, 0, 0], [1, 2.4, 1]));
   markParts({});
   return group;
 }

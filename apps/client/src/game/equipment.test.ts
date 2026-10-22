@@ -78,10 +78,11 @@ describe('equipment on the real-human rig', () => {
   it('puts the sword in the fist, hanging down the side instead of through the legs', () => {
     const weapon = mountOf('weapon')!;
     expect(weapon.parent?.name).toBe('rig-gripR');
-    // A held blade points down, back and slightly outward once the idle arm pose is applied.
+    // A held blade hangs down and slightly FORWARD once the idle arm pose is applied. Pointing it
+    // backwards (the hand bone's own axis) made the sword look like it was held in reverse.
     const blade = new THREE.Vector3(0, 1, 0).applyQuaternion(weapon.getWorldQuaternion(new THREE.Quaternion()));
     expect(blade.y).toBeLessThan(-0.5);
-    expect(blade.z).toBeLessThan(-0.1);
+    expect(blade.z).toBeGreaterThan(0.25);
     expect(Math.abs(blade.x)).toBeGreaterThan(0.15);
     // A human-scale jian: ~1 m from tip to pommel, not the old 2.6 m slab.
     expect(size(weapon).length()).toBeGreaterThan(0.9);
@@ -102,13 +103,16 @@ describe('equipment on the real-human rig', () => {
     };
     const grip = worldPosition(rig.sockets.gripR!);
     expect(tip().distanceTo(grip)).toBeLessThan(0.1);
+    // The wrist is turned by the blade-aim constraint, so it is deliberately not at rest...
+    expect(hand.quaternion.equals(rig.rest.get(hand)!)).toBe(false);
     animate.resetHumanPose(rig);
     character.updateMatrixWorld(true);
     expect(tip().distanceTo(grip)).toBeGreaterThan(0.12);
-    // Restore the pose the other tests measured.
+    // ...but resetting the pose has to undo it, or a recycled actor keeps a sword-shaking wrist.
+    expect(hand.quaternion.equals(rig.rest.get(hand)!)).toBe(true);
     animate.applyHumanPose(rig, { time: 0.6, walk: 0, phase: 0, grip: 'R' });
     character.updateMatrixWorld(true);
-    expect(hand.quaternion.equals(rig.rest.get(hand)!)).toBe(true);
+    expect(tip().distanceTo(grip)).toBeLessThan(0.1);
   });
 
   it('wears the circlet on the forehead rather than around the neck', () => {
@@ -172,6 +176,51 @@ describe('equipment on the real-human rig', () => {
     // In front of the robe, not buried inside it.
     expect(point.z).toBeGreaterThan(0.1);
     expect(Math.abs(point.x)).toBeLessThan(0.2);
+  });
+
+  it('swings the sword forward, never behind the back', () => {
+    const weapon = mountOf('weapon')!;
+    const axis = (): THREE.Vector3 => new THREE.Vector3(0, 1, 0)
+      .applyQuaternion(weapon.getWorldQuaternion(new THREE.Quaternion()));
+    const grip = new THREE.Vector3();
+    const tip = (): THREE.Vector3 => {
+      character.updateMatrixWorld(true);
+      weapon.getWorldPosition(grip);
+      return grip.clone().addScaledVector(axis(), 0.95);
+    };
+    const samples: { p: number; tip: THREE.Vector3; blade: THREE.Vector3 }[] = [];
+    for (let p = 0; p <= 1.0001; p += 0.05) {
+      animate.applyHumanPose(rig, { time: 0.6, walk: 0, phase: 0, grip: 'R', attack: Math.min(1, p) });
+      samples.push({ p, tip: tip(), blade: axis().clone() });
+    }
+    // Every part of the swing happens in front of the body: the old curve carried the tip round
+    // through the character's back (z ≈ -0.7), which players read as "attacking backwards".
+    for (const { p, tip: point, blade } of samples) {
+      expect(point.z, `tip at ${p.toFixed(2)}`).toBeGreaterThan(0.15);
+      expect(blade.z, `blade at ${p.toFixed(2)}`).toBeGreaterThan(0.1);
+    }
+    // It is a real arc: the point rises above the head and comes down past the knees.
+    const high = Math.max(...samples.map((sample) => sample.tip.y));
+    const low = Math.min(...samples.slice(6).map((sample) => sample.tip.y));
+    expect(high).toBeGreaterThan(1.8);
+    expect(low).toBeLessThan(0.7);
+    // ...and it sweeps across the body, not straight through it.
+    expect(Math.max(...samples.map((sample) => sample.tip.x)) - Math.min(...samples.map((sample) => sample.tip.x))).toBeGreaterThan(0.6);
+    // The last frame returns to the idle guard, so a repeated attack does not snap.
+    animate.applyHumanPose(rig, { time: 0.6, walk: 0, phase: 0, grip: 'R' });
+    const idle = axis().clone();
+    expect(samples[0]!.blade.distanceTo(idle)).toBeLessThan(0.02);
+    expect(samples.at(-1)!.blade.distanceTo(idle)).toBeLessThan(0.02);
+  });
+
+  it('raises the blade for a skill instead of leaving it hanging', () => {
+    const weapon = mountOf('weapon')!;
+    animate.applyHumanPose(rig, { time: 0.6, walk: 0, phase: 0, grip: 'R', cast: 0.5 });
+    character.updateMatrixWorld(true);
+    const blade = new THREE.Vector3(0, 1, 0).applyQuaternion(weapon.getWorldQuaternion(new THREE.Quaternion()));
+    expect(blade.y).toBeGreaterThan(0.8);
+    animate.applyHumanPose(rig, { time: 0.6, walk: 0, phase: 0, grip: 'R' });
+    character.updateMatrixWorld(true);
   });
 
   it('keeps the sculpted body’s own placements, which were authored for it', () => {

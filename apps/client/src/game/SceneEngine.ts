@@ -12,6 +12,7 @@ export class SceneEngine {
   private readonly loader = new GLTFLoader();
   private readonly hemisphere: THREE.HemisphereLight;
   private readonly sun: THREE.DirectionalLight;
+  private flightAltitude = 0;
   private readonly direction = new THREE.Vector3();
   private readonly desiredCamera = new THREE.Vector3();
   private readonly lookAt = new THREE.Vector3();
@@ -120,6 +121,15 @@ export class SceneEngine {
   /** Space: hop in place. The server position never leaves the ground plane. */
   triggerJump(): void { this.jumpStartedAt = performance.now(); }
 
+  /**
+   * Flight height above the server position, in metres. Applied to the avatar group *after* the
+   * snapshot lerp, so the chase camera rises with the rider instead of watching them leave frame.
+   * The authoritative position the server knows about is still on the ground plane.
+   */
+  setFlightAltitude(metres: number): void { this.flightAltitude = Math.max(0, Math.min(9, metres)); }
+
+  getFlightAltitude(): number { return this.flightAltitude; }
+
   private jumpOffset(): number {
     if (!this.jumpStartedAt) return 0;
     const progress = (performance.now() - this.jumpStartedAt) / SceneEngine.JUMP_MS;
@@ -135,6 +145,7 @@ export class SceneEngine {
   enterZone(zone: GameScene, position: Vector3): void {
     this.keys.clear();
     this.touchInput = { right: 0, forward: 0 };
+    this.flightAltitude = 0; // never arrive in a new zone floating
     // Place the camera to the side of the room's entry door. Otherwise the exit door
     // blocks the avatar and its sprite fills the screen on arrival.
     const interior = zone === 'residence' || zone === 'sanctum';
@@ -216,8 +227,8 @@ export class SceneEngine {
       if (avatar.position.distanceTo(this.target) > 6) avatar.position.copy(this.target);
       else avatar.position.lerp(this.target, Math.min(1, dt * 5));
       // Applied after the reconciliation lerp so the hop is not pulled back to the ground.
-      const hop = this.jumpOffset();
-      if (hop > 0) avatar.position.y += hop;
+      const lift = this.jumpOffset() + this.flightAltitude;
+      if (lift > 0) avatar.position.y += lift;
       this.lookAt.copy(avatar.position).add(new THREE.Vector3(0, this.previewView === 'face' ? 1.62 : this.previewView ? 1.03 : 1.65, 0));
     } else {
       this.lookAt.set(0, this.previewView === 'face' ? 1.62 : 1.65, 0);

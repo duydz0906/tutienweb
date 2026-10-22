@@ -9,6 +9,7 @@ import { humanLookKey, instantiateHuman, rigOf, type HumanRig } from './human/ch
 import { applyHumanPose } from './human/animation';
 import { buildArtifactModel } from './sculpt/gear';
 import { mountEquipment, weaponHand } from './equipment';
+import { animateCreature, creatureKindTraits } from './creatures';
 import { clonePrototype } from './sculpt/cache';
 
 /**
@@ -132,9 +133,9 @@ function SwordHalo() {
   </instancedMesh>;
 }
 
-function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering = false, meditating = false,
+function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 0, wandering = false, meditating = false,
   beard = false, staff = false }: {
-  player: PublicPlayer; local: boolean; preview: boolean; attackAt?: number;
+  player: PublicPlayer; local: boolean; preview: boolean; attackAt?: number; castAt?: number;
   wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
   beard?: boolean; staff?: boolean;
 }) {
@@ -213,10 +214,13 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     if (model) phase.current += dt * (walking ? 9 : 2.2);
     if (kind === 'human' && human.current) {
       // Real skeleton: poses are deltas from the mixamo bind pose, plus a pelvis drop for the gait.
-      const swingProgress = attackAt && Date.now() - attackAt < 480 ? 1 - (Date.now() - attackAt) / 480 : 0;
+      // Both one-shots run 0 → 1 so the pose curves read as wind-up then follow-through.
+      const swingProgress = attackAt ? Math.min(1, Math.max(0, (Date.now() - attackAt) / 480)) : 0;
+      const castProgress = castAt ? Math.min(1, Math.max(0, (Date.now() - castAt) / 760)) : 0;
       const drop = applyHumanPose(human.current, {
         time, walk: walking || wandering ? 1 : 0, phase: phase.current,
-        flying, meditating, attack: swingProgress,
+        flying, meditating, attack: swingProgress > 0 && swingProgress < 1 ? swingProgress : 0,
+        cast: castProgress > 0 && castProgress < 1 ? castProgress : 0,
         // A held weapon closes that hand into a fist around the grip socket.
         grip: weaponHand(kind, player.equipment),
       });
@@ -265,11 +269,20 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, wandering
     if (mountRef.current) {
       mountRef.current.position.y = (MOUNT_OFFSET[mountId ?? ''] ?? -0.12) + Math.sin(time * 2.2) * 0.05;
       if (mountId === 'wind_fire_wheel' || mountId === 'cloud_disc') mountRef.current.rotation.y += dt * 0.6;
+      // The mount banks and dips with the flight instead of hanging rigid under the feet.
+      mountRef.current.rotation.z = Math.sin(time * 1.5) * (flying ? 0.1 : 0.03);
+      mountRef.current.rotation.x = Math.sin(time * 1.1 + 0.6) * (flying ? 0.06 : 0.02);
     }
     if (petRef.current) {
       petRef.current.position.set(-0.85 + Math.sin(time * 1.1) * 0.12, 0.02 + Math.sin(time * 2.2) * 0.04, -0.72);
       petRef.current.rotation.y = 0.35 + Math.sin(time * 0.9) * 0.18;
     }
+    // Living companions: legs step, wings beat, tails and heads follow the clock.
+    if (mount && mountRef.current?.children[0]) {
+      animateCreature(mountRef.current.children[0], { time, moving: flying ? 0.75 : 0.2,
+        tempo: flying ? 1.25 : 1, ...creatureKindTraits(mountId ?? '') });
+    }
+    if (pet) animateCreature(pet, { time, moving: 0.35, ...creatureKindTraits(petId ?? '') });
     if (artifactRef.current) {
       artifactRef.current.position.set(Math.cos(time * 1.45) * 0.95, 1.65 + Math.sin(time * 2) * 0.14, Math.sin(time * 1.45) * 0.95);
       artifactRef.current.rotation.y += dt;
@@ -336,7 +349,7 @@ function useArtifactModel(): THREE.Group {
   return model;
 }
 
-export function Avatar(props: { player: PublicPlayer; local?: boolean; preview?: boolean; attackAt?: number;
+export function Avatar(props: { player: PublicPlayer; local?: boolean; preview?: boolean; attackAt?: number; castAt?: number;
   wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
   beard?: boolean; staff?: boolean }) {
   return <InnerAvatar {...props} local={props.local ?? false} preview={props.preview ?? false} />;
