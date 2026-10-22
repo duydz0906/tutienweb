@@ -15,7 +15,8 @@ import { clonePrototype } from './sculpt/cache';
  * Phones render at 1K skin/hair textures and skip the fine facial proxies (lashes, teeth), which
  * halves the download and is invisible on a small screen. Desktop keeps the 2K detail.
  */
-const SMALL_SCREEN = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
+const SMALL_SCREEN = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  && window.matchMedia('(max-width: 720px)').matches;
 const avatarQuality = (local: boolean, preview: boolean): number => local || preview ? (SMALL_SCREEN ? 0.8 : 1) : 0.55;
 
 /** Socket-relative equipment placement. Joint origins differ between the two body types. */
