@@ -1,11 +1,12 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { HABITATS, WORLD_RADIUS, type HerbState, type MonsterState, type Vector3 } from '@van-thuong/shared';
 import { BillboardLabel } from './Billboard';
 import { HabitatGround } from './HabitatDecor';
 import { PortalGate } from './PortalGate';
-import { SpiritBeast } from './models';
+import { buildMonsterModel } from './sculpt/beasts';
+import { clonePrototype } from './sculpt/cache';
 
 function Monster({ monster, selected, onSelect }: { monster: MonsterState; selected: boolean; onSelect: (id: string) => void }) {
   const group = useRef<THREE.Group>(null);
@@ -22,6 +23,12 @@ function Monster({ monster, selected, onSelect }: { monster: MonsterState; selec
     : isStone ? monster.kind === 'star_guardian' ? '#9aa2bb' : '#888375' : isCrane ? monster.kind === 'thunder_bird' ? '#c9dcf2' : '#dbe9e1' : monster.kind === 'sky_wraith' ? '#85aac1' : '#584773';
   const glow = isWolf ? '#bbdff0' : isBoar ? '#e1a888' : isStag ? '#b8f7dc' : isSerpent ? '#95ffdc'
     : isStone ? '#ffe4b2' : isCrane ? monster.kind === 'thunder_bird' ? '#b9e2ff' : '#d7f4ff' : monster.kind === 'sky_wraith' ? '#a3e7f8' : '#c28bff';
+  // One sculpted prototype per kind+palette, cloned per spawn: shared geometry, own transform.
+  const beast = useMemo(() => {
+    const key = `monster:${monster.kind}:${color}:${glow}`;
+    return clonePrototype(key, () => buildMonsterModel(monster.kind, { color, glow, quality: 0.55 }));
+  }, [monster.kind, color, glow]);
+  const barHeight = isCrane ? 2.9 : isStone ? 3.5 : isGhost ? 2.9 : isSerpent ? 2.6 : isStag ? 2.35 : 1.95;
   useFrame(({ clock, camera }) => {
     if (group.current) group.current.position.y = Math.sin(clock.elapsedTime * 2.2 + monster.position.x) * 0.06;
     if (health.current) health.current.quaternion.copy(camera.quaternion);
@@ -35,51 +42,14 @@ function Monster({ monster, selected, onSelect }: { monster: MonsterState; selec
     onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'crosshair'; }}
     onPointerOut={() => { document.body.style.cursor = ''; }}>
     <group ref={group}>
-      {isGhost ? <>
-        <mesh castShadow position={[0, 1.25, 0]}><coneGeometry args={[0.9, 2.15, 32]} /><meshStandardMaterial color={color} roughness={0.68} emissive="#2c1642" emissiveIntensity={0.7} /></mesh>
-        <mesh position={[0, 2.27, 0]}><sphereGeometry args={[0.46, 32, 24]} /><meshStandardMaterial color="#3f3059" emissive="#4e2a79" emissiveIntensity={1} /></mesh>
-        {[-0.22, 0.22].map((x) => <mesh key={x} position={[x, 2.28, 0.42]}><sphereGeometry args={[0.075, 20, 14]} /><meshBasicMaterial color={glow} /></mesh>)}
-      </> : isSerpent ? <>
-        {Array.from({ length: 5 }, (_, index) => <mesh key={index} castShadow
-          position={[Math.sin(index * 1.3) * 0.41, 0.39 + (4 - index) * 0.12, (2 - index) * 0.37]}
-          scale={[0.44 - index * 0.025, 0.46 - index * 0.022, 0.52]}>
-          <sphereGeometry args={[1, 28, 20]} /><meshStandardMaterial color={color} roughness={0.44} metalness={0.14} /></mesh>)}
-        <mesh castShadow position={[0, 1.11, 1.13]} scale={[0.56, 0.31, 0.6]}><sphereGeometry args={[1, 28, 20]} />
-          <meshStandardMaterial color={color} roughness={0.4} metalness={0.2} /></mesh>
-        {[-0.32, 0.32].map((x) => <mesh key={x} position={[x, 1.23, 1.53]}><sphereGeometry args={[0.084, 20, 14]} /><meshBasicMaterial color={glow} /></mesh>)}
-        <mesh position={[0, 1.06, 1.69]} rotation={[Math.PI / 2, 0, 0]}><coneGeometry args={[0.12, 0.36, 16]} /><meshStandardMaterial color="#edd8bf" /></mesh>
-      </> : isStone ? <>
-        <mesh castShadow position={[0, 1.36, 0]} scale={[1, 1.23, 0.76]}><dodecahedronGeometry args={[1, 1]} />
-          <meshStandardMaterial color={color} roughness={0.82} metalness={0.08} flatShading /></mesh>
-        <mesh castShadow position={[0, 2.56, 0.25]} scale={[0.68, 0.56, 0.55]}><dodecahedronGeometry args={[1, 1]} />
-          <meshStandardMaterial color={color} roughness={0.85} flatShading /></mesh>
-        {[-1, 1].map((sign) => <group key={sign}>
-          <mesh castShadow position={[sign * 1.02, 1.43, 0]} rotation={[0, 0, sign * 0.12]} scale={[0.47, 0.85, 0.58]}>
-            <dodecahedronGeometry args={[1, 1]} /><meshStandardMaterial color={color} roughness={0.88} flatShading /></mesh>
-          <mesh position={[sign * 0.3, 2.67, 0.75]}><sphereGeometry args={[0.1, 20, 14]} /><meshBasicMaterial color={glow} /></mesh>
-        </group>)}
-        <mesh position={[0, 1.49, 0.83]}><octahedronGeometry args={[0.37, 0]} /><meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={1} /></mesh>
-      </> : isCrane ? <>
-        <mesh castShadow position={[0, 1.4, 0]} scale={[0.48, 0.64, 0.8]}><sphereGeometry args={[1, 28, 20]} />
-          <meshStandardMaterial color={color} roughness={0.86} /></mesh>
-        <mesh castShadow position={[0, 2.25, 0.48]} scale={[0.16, 0.78, 0.18]} rotation={[0.36, 0, 0]}><sphereGeometry args={[1, 24, 18]} />
-          <meshStandardMaterial color={color} roughness={0.9} /></mesh>
-        <mesh position={[0, 2.75, 0.7]}><sphereGeometry args={[0.22, 20, 14]} /><meshStandardMaterial color={color} /></mesh>
-        <mesh position={[0, 2.65, 1.02]} rotation={[Math.PI / 2, 0, 0]}><coneGeometry args={[0.15, 0.54, 16]} /><meshStandardMaterial color="#e1ad74" /></mesh>
-        {[-1, 1].map((sign) => <group key={sign}>
-          <mesh castShadow position={[sign * 0.75, 1.63, 0]} rotation={[0, 0, sign * 0.34]} scale={[0.87, 0.11, 0.47]}>
-            <sphereGeometry args={[1, 20, 14]} /><meshStandardMaterial color={color} /></mesh>
-          <mesh position={[sign * 0.16, 0.45, 0.21]}><cylinderGeometry args={[0.027, 0.038, 0.85, 16]} /><meshStandardMaterial color="#cfaa82" /></mesh>
-        </group>)}
-      </> : <SpiritBeast kind={isBoar ? 'boar' : isStag ? 'stag' : 'wolf'} color={color} glow={glow}
-        scale={isBoar ? 1.18 : isStag ? 1.14 : 1.05} />}
+      <primitive object={beast} />
     </group>
-    <group ref={health} position={[0, isGhost ? 3.36 : 2.22, 0]}>
+    <group ref={health} position={[0, barHeight, 0]}>
       <mesh position={[0, 0, 0]}><planeGeometry args={[1.5, 0.14]} /><meshBasicMaterial color="#142328" side={THREE.DoubleSide} depthTest={false} /></mesh>
       <mesh position={[-(1 - monster.hp / monster.maxHp) * 0.72, 0, 0.008]} scale={[Math.max(0.001, monster.hp / monster.maxHp), 1, 1]}>
         <planeGeometry args={[1.44, 0.095]} /><meshBasicMaterial color={glow} side={THREE.DoubleSide} depthTest={false} /></mesh>
     </group>
-    <BillboardLabel text={`LV.${monster.level} ${monster.name}`} position={[0, isGhost ? 3.78 : 2.65, 0]} width={3.3} color={selected ? '#fff2ae' : glow} />
+    <BillboardLabel text={`LV.${monster.level} ${monster.name}`} position={[0, barHeight + 0.45, 0]} width={3.3} color={selected ? '#fff2ae' : glow} />
     <mesh position={[0, 0.095, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[monster.radius + 0.24, monster.radius + 0.31, 30]} />
       <meshBasicMaterial color={selected ? '#ffe4a0' : '#ee8877'} transparent opacity={selected ? 0.85 : 0.26} side={THREE.DoubleSide} depthWrite={false} />

@@ -3,6 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SectLandscape } from './MountainLandscape';
 import { SkyAtmosphere } from './SkyAtmosphere';
+import { buildDragonBoss } from './sculpt/beasts';
+import { clonePrototype } from './sculpt/cache';
 import { ITEMS, SECT_BUILDINGS, SECT_RADIUS, SKILLS, WORLD_RADIUS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
 
 const JADE = '#82cdbb';
@@ -259,24 +261,17 @@ function FormationPillars({ formation }: { formation: FormationState }) {
 
 function BossModel({ boss }: { boss: BossState }) {
   const ref = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => { if (ref.current) {
-    ref.current.position.y = boss.hp > 0 ? 0.5 + Math.sin(clock.elapsedTime * 1.2) * 0.24 : -5;
-    ref.current.rotation.y = Math.sin(clock.elapsedTime * 0.43) * 0.2;
-  } });
-  return <group ref={ref} position={[boss.position.x, 0.5, boss.position.z]} visible={boss.hp > 0}>
-    <mesh castShadow position={[0, 2.05, 0]}><icosahedronGeometry args={[1.55, 1]} /><meshStandardMaterial color="#334f55" metalness={0.7} roughness={0.34} flatShading /></mesh>
-    <mesh position={[0, 2.3, 1.35]}><octahedronGeometry args={[0.68, 1]} /><meshStandardMaterial color="#e38d68" emissive="#e96845" emissiveIntensity={2.1} metalness={0.55} roughness={0.2} /></mesh>
-    <mesh castShadow position={[0, 4.13, 0.32]} rotation={[-0.22, 0, 0]}><dodecahedronGeometry args={[0.96, 0]} /><meshStandardMaterial color="#394d53" flatShading metalness={0.5} /></mesh>
-    <mesh position={[0, 4.19, 1.14]}><sphereGeometry args={[0.42, 20, 14]} /><meshBasicMaterial color="#ffc781" /></mesh>
-    {[-1, 1].map((side) => <group key={side}>
-      <mesh castShadow position={[side * 1.5, 2.8, 0]} rotation={[0, 0, side * 0.46]}><coneGeometry args={[0.38, 2.7, 16]} /><meshStandardMaterial color="#527775" metalness={0.6} /></mesh>
-      <mesh castShadow position={[side * 0.55, 5.23, 0]} rotation={[0, 0, -side * 0.38]}><coneGeometry args={[0.24, 1.78, 16]} /><meshStandardMaterial color="#e6d6aa" roughness={0.45} /></mesh>
-      <mesh castShadow position={[side * 2.2, 1.35, 0.25]} rotation={[0, 0, side * 0.2]}><cylinderGeometry args={[0.27, 0.43, 2.8, 16]} /><meshStandardMaterial color="#344b52" metalness={0.5} /></mesh>
-      <mesh castShadow position={[side * 0.83, 0.64, 0.25]}><cylinderGeometry args={[0.34, 0.46, 1.35, 16]} /><meshStandardMaterial color="#41565a" metalness={0.5} /></mesh>
-      <mesh position={[side * 0.3, 4.25, 0.98]}><sphereGeometry args={[0.1, 20, 14]} /><meshBasicMaterial color="#fff1b1" /></mesh>
-    </group>)}
-    <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 2.4, 0]}><torusGeometry args={[2.15, 0.035, 6, 56]} /><meshBasicMaterial color="#eea36a" transparent opacity={0.8} /></mesh>
-    <pointLight color="#f99d60" intensity={8} distance={15} position={[0, 3.5, 1]} />
+  const dragon = useMemo(() => clonePrototype('boss:dragon', () => buildDragonBoss(0.75)), []);
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    const time = clock.elapsedTime;
+    ref.current.visible = boss.hp > 0;
+    ref.current.position.y = boss.hp > 0 ? 0.2 + Math.sin(time * 1.2) * 0.16 : -8;
+    ref.current.rotation.y = time * 0.14;
+  });
+  return <group ref={ref} position={[boss.position.x, 0.2, boss.position.z]}>
+    <primitive object={dragon} scale={1.35} />
+    <pointLight color="#f99d60" intensity={9} distance={18} position={[0, 3.5, 1]} />
   </group>;
 }
 
