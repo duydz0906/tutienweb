@@ -126,16 +126,28 @@ function poseMeditate(acc: Accumulator, pose: HumanPose): void {
 }
 
 function poseFly(acc: Accumulator, pose: HumanPose): void {
-  const flow = Math.sin(pose.time * 2.4) * 0.05;
-  add(acc, 'legL', 'z', 0.12 + flow);
-  add(acc, 'legR', 'z', -0.12 - flow);
-  add(acc, 'kneeL', 'x', -0.22);
+  // Riding stance: weight forward over the front foot, knees soft, arms out for balance, and a
+  // slow sway so a hovering rider never looks like a statue nailed to the sword.
+  const flow = Math.sin(pose.time * 1.6) * 0.06;
+  const drift = Math.sin(pose.time * 0.9) * 0.04;
+  add(acc, 'chest', 'x', 0.16 + flow * 0.4);
+  add(acc, 'spine', 'x', 0.06);
+  add(acc, 'hips', 'x', -0.04);
+  // Front foot forward, back foot braced: a sword rider stands across the blade, not on it.
+  add(acc, 'legL', 'z', 0.34 + flow);
+  add(acc, 'legR', 'z', -0.14 - flow * 0.6);
+  add(acc, 'kneeL', 'x', -0.3);
   add(acc, 'kneeR', 'x', -0.22);
-  add(acc, 'armL', 'z', -0.24);
-  add(acc, 'armR', 'z', 0.24);
-  add(acc, 'chest', 'x', 0.1);
-  add(acc, 'armL', 'x', -0.12 - flow);
-  add(acc, 'armR', 'x', -0.12 - flow);
+  add(acc, 'footL', 'x', 0.16);
+  add(acc, 'footR', 'x', 0.1);
+  // Arms: one trailing, one leading, gently riding the air.
+  add(acc, 'armL', 'z', -0.4 - drift);
+  add(acc, 'armR', 'z', 0.3 + drift);
+  add(acc, 'armL', 'x', -0.18 - flow);
+  add(acc, 'armR', 'x', 0.12 + flow);
+  add(acc, 'foreArmL', 'z', 0.3);
+  add(acc, 'foreArmR', 'z', -0.24);
+  add(acc, 'head', 'x', -0.1 + flow * 0.5);
 }
 
 function smoothstep(edge0: number, edge1: number, value: number): number {
