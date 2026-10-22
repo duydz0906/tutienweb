@@ -10,6 +10,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { CharacterCreation } from './components/CharacterCreation';
 import { GameHUD } from './components/GameHUD';
 import { TouchJoystick } from './components/TouchJoystick';
+import { FlightControls } from './components/FlightControls';
 import { Panels, PathModal, type ActivePanel, type AdminPlayer } from './components/Panels';
 import { ApiError, api } from './lib/api';
 import { loadHudPrefs, saveHudPrefs, type HudPrefs } from './lib/uiPrefs';
@@ -518,6 +519,7 @@ export function App() {
         hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} lastCast={lastCast} devTools={devTools}
         onPanel={openPanel} onAction={(event, payload) => { void action(event, payload); }} onSkill={skill} onAttack={basicAttack} onChat={chat} onOpenPath={() => setPathModal(true)} onPickup={pickup} now={now} />
       <TouchJoystick movement={touchMovement} />
+      {character.flying && character.scene !== 'tribulation' && <FlightControls />}
       <Panels panel={panel} onClose={() => openPanel(null)} onNavigate={openPanel} onOpenPath={() => { openPanel(null); setPathModal(true); }} character={panelCharacter ?? character} leaderboard={leaderboard} roster={roster} onAction={(event, payload) => { void action(event, payload); }} onLogout={() => { void logout(); }}
         connected={connected} devTools={devTools} hudPrefs={hudPrefs} onHudPrefs={updateHudPrefs} />
       {pathModal && character.realm >= 2 && (!character.path || devTools) && <PathModal devMode={devTools} onClose={() => setPathModal(false)} onSelect={selectPath} />}

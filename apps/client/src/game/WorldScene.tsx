@@ -5,6 +5,7 @@ import { SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gende
   type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { AdminFireTrail, Avatar } from './Avatar';
 import { SceneEngine } from './SceneEngine';
+import { clearFlightInput, flightInput, setFlightInput } from './flightInput';
 import { Overworld, SkillVfx, TrialArena, type VisualEffect } from './WorldDecor';
 import { SectScene } from './SectScene';
 import { SectArchitecture } from './SectArchitecture';
@@ -75,17 +76,18 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
    * Flying height: Space climbs, Shift descends, and the engine lifts the whole avatar group (not
    * just the mesh) so the chase camera follows. Server positions stay on the ground plane.
    */
-  const flight = useRef({ up: false, down: false, altitude: 0 });
+  const altitude = useRef(0);
   useEffect(() => {
     const hold = (event: KeyboardEvent, pressed: boolean): void => {
-      if (event.code === 'Space') flight.current.up = pressed;
-      else if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') flight.current.down = pressed;
+      if (event.code === 'Space') setFlightInput('up', pressed);
+      else if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') setFlightInput('down', pressed);
       else return;
       if (character?.flying) event.preventDefault();
     };
     const onDown = (event: KeyboardEvent) => hold(event, true);
     const onUp = (event: KeyboardEvent) => hold(event, false);
-    const onBlur = () => { flight.current.up = false; flight.current.down = false; };
+    // Losing focus mid-climb must not leave the rider pinned at the ceiling.
+    const onBlur = () => clearFlightInput();
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
     window.addEventListener('blur', onBlur);
@@ -140,14 +142,14 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     // Flight height: held Space/Shift steers it, and it settles back to the ground on landing.
     const dt = Math.min(delta, 0.05);
     const flying = Boolean(character?.flying) && character?.scene !== 'tribulation';
-    const climb = flying ? (flight.current.up ? 1 : 0) - (flight.current.down ? 1 : 0) : 0;
-    if (climb) flight.current.altitude = Math.min(8, Math.max(0, flight.current.altitude + climb * 3.4 * dt));
-    else if (!flying || flight.current.altitude > 0) {
-      const target = flying ? flight.current.altitude : 0;
-      flight.current.altitude += (target - flight.current.altitude) * Math.min(1, dt * (flying ? 1 : 5));
-      if (!flying && flight.current.altitude < 0.01) flight.current.altitude = 0;
+    const climb = flying ? (flightInput.up ? 1 : 0) - (flightInput.down ? 1 : 0) : 0;
+    if (climb) altitude.current = Math.min(8, Math.max(0, altitude.current + climb * 3.4 * dt));
+    else if (!flying || altitude.current > 0) {
+      const target = flying ? altitude.current : 0;
+      altitude.current += (target - altitude.current) * Math.min(1, dt * (flying ? 1 : 5));
+      if (!flying && altitude.current < 0.01) altitude.current = 0;
     }
-    controller.setFlightAltitude(flight.current.altitude);
+    controller.setFlightAltitude(altitude.current);
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
     controller.update(delta, avatar.current, serverPosition, character?.flying ? 10.5 : 6, Boolean(character));
   });
