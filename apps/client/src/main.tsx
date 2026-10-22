@@ -26,6 +26,10 @@ function hintsFor(message: string): string[] {
   if (/WebGL|context lost|WebGLRenderer/i.test(message)) {
     hints.push('Trình duyệt chưa bật WebGL: bật "Hardware acceleration" trong Chrome/Edge rồi mở lại game.');
   }
+  if (/circular structure/i.test(message)) {
+    hints.push('Dữ liệu mô hình 3D đang chứa tham chiếu vòng nên không thể nhân bản. Đây là lỗi mã nguồn: '
+      + 'hãy báo lại kèm nguyên văn thông điệp trên.');
+  }
   if (/fetch|NetworkError|ECONNREFUSED|Failed to load resource/i.test(message)) {
     hints.push('Máy chủ API (cổng 3001) chưa chạy: chạy "npm run dev" ở thư mục gốc dự án rồi tải lại.');
   }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { assertCloneSafe } from './parts';
 
 /**
  * Sculpted models are expensive to build and identical for identical looks, so each unique
@@ -13,6 +14,9 @@ export function clonePrototype(key: string, build: () => THREE.Group): THREE.Gro
   let prototype = prototypes.get(key);
   if (!prototype) {
     prototype = build();
+    // A userData block holding an Object3D cannot be cloned; fail here, with a readable message,
+    // instead of during a render where it would blank the page.
+    if (import.meta.env.DEV) assertCloneSafe(prototype);
     prototypes.set(key, prototype);
     // Clones keep their own reference to the shared geometry, so evicting the oldest entry is safe.
     while (prototypes.size > LIMIT) {
