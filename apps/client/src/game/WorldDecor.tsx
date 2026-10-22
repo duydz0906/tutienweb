@@ -5,6 +5,7 @@ import { SectLandscape } from './MountainLandscape';
 import { SkyAtmosphere } from './SkyAtmosphere';
 import { buildDragonBoss } from './sculpt/beasts';
 import { clonePrototype } from './sculpt/cache';
+import { animateCreature } from './creatures';
 import { ITEMS, SECT_BUILDINGS, SECT_RADIUS, SKILLS, WORLD_RADIUS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
 
 const JADE = '#82cdbb';
@@ -268,6 +269,8 @@ function BossModel({ boss }: { boss: BossState }) {
     ref.current.visible = boss.hp > 0;
     ref.current.position.y = boss.hp > 0 ? 0.2 + Math.sin(time * 1.2) * 0.16 : -8;
     ref.current.rotation.y = time * 0.14;
+    // Head, whiskers and the dragon pearl keep moving even while the coil turns.
+    animateCreature(dragon, { time, moving: 0.5, flying: true, tempo: 0.9 });
   });
   return <group ref={ref} position={[boss.position.x, 0.2, boss.position.z]}>
     <primitive object={dragon} scale={1.35} />

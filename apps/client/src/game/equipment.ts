@@ -79,6 +79,28 @@ const PLACEMENT: Record<BodyKind, Record<Slot, Placement | Sided>> = {
   },
 };
 
+/**
+ * Sculpt each item once and clone it per mount. Equipping used to rebuild every torus and spline on
+ * each change (and again for every actor), which stuttered the frame the item appeared in.
+ */
+const prototypes = new Map<string, THREE.Object3D>();
+
+function cached(key: string, build: () => THREE.Object3D): THREE.Object3D {
+  let prototype = prototypes.get(key);
+  if (!prototype) {
+    prototype = build();
+    prototypes.set(key, prototype);
+    while (prototypes.size > 48) {
+      const oldest = prototypes.keys().next();
+      if (oldest.done) break;
+      prototypes.delete(oldest.value);
+    }
+  }
+  return prototype.clone(true);
+}
+
+export function resetEquipmentPrototypes(): void { prototypes.clear(); }
+
 function mount(model: THREE.Object3D, host: THREE.Object3D, placement: Placement, name: string): THREE.Object3D {
   const group = new THREE.Group();
   // Named per slot so tests (and the debug scene) can find one item without guessing by size.
@@ -112,14 +134,15 @@ export function mountEquipment(root: THREE.Object3D, kind: BodyKind, equipment: 
     add(build(1), right, `${slot}:R`);
   };
 
-  if (equipment.weapon) add(buildWeaponModel(equipment.weapon, quality), table.weapon as Placement, 'weapon');
-  if (equipment.head) add(buildCrownModel(quality), table.head as Placement, 'head');
-  if (equipment.shoulder) addSided('shoulder', (side) => buildPauldronModel(side, quality));
-  if (equipment.boots) addSided('boots', (side) => buildBootModel(side, quality));
+  if (equipment.weapon) add(cached(`weapon:${equipment.weapon}:${quality}`, () => buildWeaponModel(equipment.weapon!, quality)),
+    table.weapon as Placement, 'weapon');
+  if (equipment.head) add(cached(`head:${quality}`, () => buildCrownModel(quality)), table.head as Placement, 'head');
+  if (equipment.shoulder) addSided('shoulder', (side) => cached(`shoulder:${side}:${quality}`, () => buildPauldronModel(side, quality)));
+  if (equipment.boots) addSided('boots', (side) => cached(`boots:${side}:${quality}`, () => buildBootModel(side, quality)));
   // The ring goes on the gripping hand: the human holds steel in the right one.
-  if (equipment.ring) add(buildRingModel(quality), table.ring as Placement, 'ring');
-  if (equipment.necklace) add(buildNecklaceModel(quality), table.necklace as Placement, 'necklace');
-  if (equipment.talisman) add(buildTalismanModel(quality), table.talisman as Placement, 'talisman');
+  if (equipment.ring) add(cached(`ring:${quality}`, () => buildRingModel(quality)), table.ring as Placement, 'ring');
+  if (equipment.necklace) add(cached(`necklace:${quality}`, () => buildNecklaceModel(quality)), table.necklace as Placement, 'necklace');
+  if (equipment.talisman) add(cached(`talisman:${quality}`, () => buildTalismanModel(quality)), table.talisman as Placement, 'talisman');
 
   // The sculpted body carries a bare blade in its right hand; an equipped weapon replaces it.
   const bare = root.getObjectByName('cultivator-sword');

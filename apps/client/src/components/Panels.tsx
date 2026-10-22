@@ -135,7 +135,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
           <span className="flight-info-icon">{mount?.icon ?? '✈'}</span>
           <div><strong>{mount?.name ?? 'Chưa trang bị vật phẩm phi hành'}</strong>
             <small>{mount ? (canRideMount(character.path, mount, character.realm, character.devMode)
-              ? 'Nhấn R hoặc nút Phi hành để cất cánh ngoài trời.'
+              ? 'Nhấn R hoặc nút Phi hành để cất cánh ngoài trời. Khi bay: giữ Space để lên cao, Shift để hạ thấp.'
               : character.realm < 2 ? 'Cần đạt Trúc Cơ để bay.' : 'Vật phẩm này không hợp đạo tu của bạn.') : 'Mua ở cửa hàng hoặc thuần hóa linh thú bay (Lôi Vũ Điêu ở Hoang Vực).'}</small></div>
         </div>
         {devTools && <>

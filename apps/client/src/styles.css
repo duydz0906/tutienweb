@@ -817,3 +817,40 @@ body { overscroll-behavior: none; }
   .skill-slot > kbd, .hotbar-caption, .guard-hint, .help-row kbd { display: none; }
   .splash-footnote { display: none; }
 }
+
+/* Travel curtain: shown whenever the character changes scene, with a real percentage. It covers the
+   first frames of the new zone (models, textures, VFX) so a teleport never flashes a half-built map. */
+.travel-curtain {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 45%, rgba(10, 26, 30, .78), rgba(4, 11, 14, .95));
+  backdrop-filter: blur(3px);
+  animation: travel-fade .18s ease-out;
+  transition: opacity .28s ease;
+}
+.travel-curtain.done { opacity: 0; pointer-events: none; }
+.travel-card {
+  display: grid; justify-items: center; gap: 11px; padding: 26px 34px; border-radius: 6px;
+  border: 1px solid rgba(234, 197, 139, .35); background: rgba(9, 20, 24, .86);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55); min-width: 264px;
+}
+.travel-seal {
+  display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+  color: #f4e6c4; border: 1px solid rgba(234, 197, 139, .5); font-size: 24px;
+  box-shadow: 0 0 22px rgba(234, 197, 139, .25);
+  animation: travel-spin 2.6s linear infinite;
+}
+.travel-card .eyebrow { color: #9fd6c6; letter-spacing: .16em; font-size: 9px; }
+.travel-card strong { color: #f6ecd6; font-size: 15px; }
+.travel-bar { width: 224px; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.travel-bar > i {
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #6fc7b4, #eac58b);
+  box-shadow: 0 0 14px rgba(234, 197, 139, .5); transition: width .12s linear;
+}
+.travel-percent { color: #cfe6dc; font-size: 11px; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+@keyframes travel-spin { to { transform: rotate(360deg); } }
+@keyframes travel-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 720px) {
+  .travel-card { padding: 20px 22px; min-width: 0; width: min(84vw, 300px); }
+  .travel-bar { width: 100%; }
+}

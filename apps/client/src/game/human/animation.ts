@@ -21,6 +21,8 @@ export type HumanPose = {
   meditating?: boolean;
   /** 0..1 progress of a sword swing; 0 means no attack. */
   attack?: number;
+  /** 0..1 progress of a skill cast (hand seals); 0 means the character is not casting. */
+  cast?: number;
   /** Extra head yaw in radians (look toward the camera target). */
   look?: number;
   /** Hand that holds a weapon; its fingers close into a fist around the grip. */
@@ -136,13 +138,156 @@ function poseFly(acc: Accumulator, pose: HumanPose): void {
   add(acc, 'armR', 'x', -0.12 - flow);
 }
 
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Where the blade should point, in character space (+Z forward, +X to the character's left).
+ * The grip socket aims the blade along the hand bone's own X axis, and that axis turns with the
+ * shoulder: raise the arm and the sword points sideways, drop it and the sword trails behind the
+ * leg. Rather than fight the skeleton with magic wrist offsets, every pose states the blade
+ * direction it wants and `aimGrip` rotates the wrist to match — which is exactly the freedom a real
+ * wrist has, and the reason a swing now reads as a swing instead of a windmill.
+ */
+const IDLE_AIM: Record<'L' | 'R', THREE.Vector3> = {
+  L: new THREE.Vector3(0.28, -0.88, 0.38).normalize(),
+  R: new THREE.Vector3(-0.28, -0.88, 0.38).normalize(),
+};
+/** Vertical guard used by skill casts: blade up beside the shoulder, tip clear of the head. */
+const CAST_AIM: Record<'L' | 'R', THREE.Vector3> = {
+  L: new THREE.Vector3(0.16, 0.95, 0.26).normalize(),
+  R: new THREE.Vector3(-0.16, 0.95, 0.26).normalize(),
+};
+/**
+ * The slash, as a sequence of blade directions. It lifts the point in FRONT of the body, drives it
+ * down and across the chest, and only then returns to the idle guard — the old curve carried on
+ * through the front and finished behind the character's back, which is what read as "attacking
+ * backwards". Keyframes are `[progress, direction]` and are interpolated with a smoothstep.
+ */
+const ATTACK_AIM: [number, THREE.Vector3][] = [
+  [0, IDLE_AIM.R.clone()],
+  [0.2, new THREE.Vector3(-0.46, 0.78, 0.3).normalize()],
+  [0.4, new THREE.Vector3(-0.12, 0.62, 0.36).normalize()],
+  [0.62, new THREE.Vector3(0.52, -0.52, 0.38).normalize()],
+  [0.8, new THREE.Vector3(0.42, -0.78, 0.3).normalize()],
+  [1, IDLE_AIM.R.clone()],
+];
+
+const _aim = new THREE.Vector3();
+const _blade = new THREE.Vector3();
+const _world = new THREE.Quaternion();
+const _parent = new THREE.Quaternion();
+const _socket = new THREE.Quaternion();
+const _aimDelta = new THREE.Quaternion();
+const _hand = new THREE.Quaternion();
+const _root = new THREE.Quaternion();
+const _chain: THREE.Object3D[] = [];
+
+/** Accumulated rotation of every ancestor of `node` (root first), without needing matrixWorld. */
+function parentQuaternion(node: THREE.Object3D, out: THREE.Quaternion): THREE.Object3D {
+  _chain.length = 0;
+  for (let current = node.parent; current; current = current.parent) _chain.push(current);
+  out.identity();
+  for (let i = _chain.length - 1; i >= 0; i--) out.multiply(_chain[i]!.quaternion);
+  return _chain[_chain.length - 1]!;
+}
+
+/**
+ * Rotate the gripping wrist so the equipped blade (+Y of the grip socket) points along `aim`.
+ * Runs after the pose has been written, so it also inherits every ancestor rotation — the avatar's
+ * yaw, the torso twist — and is therefore a rotation *relative to the body*, not to the world.
+ */
+function aimGrip(rig: HumanRig, side: 'L' | 'R', aim: THREE.Vector3): void {
+  const bone = rig.bones[side === 'L' ? 'handL' : 'handR'];
+  const socket = rig.sockets[side === 'L' ? 'gripL' : 'gripR'];
+  if (!bone || !socket) return;
+  // `parentQuaternion` walks to the outermost ancestor; its own local rotation *is* the world one
+  // (read from `quaternion`, not from `matrixWorld`, which the render loop updates a frame later).
+  const root = parentQuaternion(bone, _parent);
+  _root.copy(root.quaternion);
+  // Blade direction in world space, from the socket we are about to correct.
+  _world.copy(_parent).multiply(bone.quaternion);
+  _blade.set(0, 1, 0).applyQuaternion(_socket.copy(_world).multiply(socket.quaternion));
+  _aim.copy(aim).normalize().applyQuaternion(_root);
+  _aimDelta.setFromUnitVectors(_blade, _aim);
+  _hand.copy(_aimDelta).multiply(_world);
+  bone.quaternion.copy(_parent).invert().multiply(_hand);
+}
+
+/** Blade direction for the current pose, or undefined when nothing is held. */
+function bladeAim(pose: HumanPose): THREE.Vector3 | undefined {
+  const side = pose.grip;
+  if (!side) return undefined;
+  if (pose.attack) {
+    const p = Math.min(1, Math.max(0, pose.attack));
+    for (let i = 1; i < ATTACK_AIM.length; i++) {
+      const [end, direction] = ATTACK_AIM[i]!;
+      const [start, previous] = ATTACK_AIM[i - 1]!;
+      if (p > end) continue;
+      const t = smoothstep(start, end, p);
+      const lerped = previous.clone().lerp(direction, t).normalize();
+      return side === 'L' ? new THREE.Vector3(-lerped.x, lerped.y, lerped.z) : lerped;
+    }
+  }
+  if (pose.cast) return CAST_AIM[side];
+  return IDLE_AIM[side];
+}
+
+/**
+ * One handed slash, in the direction a player expects: the sword is lifted in FRONT of the body
+ * and then sweeps down and forward. The old version pitched the arm to -1.75 rad, i.e. it swung
+ * behind the character's back, which read as attacking backwards.
+ *
+ * `progress` runs 0 → 1 over the swing: 0-0.3 lift, 0.3-0.62 cut, 0.62-1 recover.
+ */
 function poseAttack(acc: Accumulator, progress: number): void {
-  const arc = Math.sin(Math.min(1, Math.max(0, progress)) * Math.PI);
-  add(acc, 'armR', 'x', -1.75 * arc);
-  add(acc, 'armR', 'z', -0.3 * arc);
-  add(acc, 'foreArmR', 'z', -0.5 * arc);
-  add(acc, 'chest', 'y', 0.42 * arc);
-  add(acc, 'spine', 'y', 0.2 * arc);
+  const p = Math.min(1, Math.max(0, progress));
+  // Lift the fist to the shoulder (0-0.3), drive it forward and down (0.3-0.64), recover (0.64-1).
+  // +X on this rig pitches the arm forward (measured); negative X would swing it behind the back,
+  // so the cut stops at +0.3 instead of continuing through zero into the character's back.
+  const lift = smoothstep(0, 0.3, p);
+  const cut = smoothstep(0.3, 0.64, p);
+  const back = smoothstep(0.64, 1, p);
+  const raise = lift * (1 - cut);
+  const drive = cut * (1 - back);
+  const settle = back;
+  const pitch = 1.3 * raise + 0.42 * drive + 0.1 * settle;
+  add(acc, 'armR', 'x', pitch);
+  // Elbow out on the wind-up, tucked in as the cut passes the chest.
+  add(acc, 'armR', 'z', -0.55 * raise + 0.34 * drive + 0.1 * settle);
+  add(acc, 'foreArmR', 'z', -1.0 * raise + 0.55 * drive - 0.2 * settle);
+  add(acc, 'foreArmR', 'x', 0.25 * raise - 0.3 * drive);
+  // The torso winds over the back foot and follows the blade through the cut.
+  add(acc, 'chest', 'y', -0.34 * raise + 0.5 * cut * (1 - back));
+  add(acc, 'spine', 'y', -0.15 * raise + 0.22 * cut * (1 - back));
+  add(acc, 'chest', 'x', 0.06 * raise + 0.1 * cut * (1 - back));
+  add(acc, 'head', 'y', 0.2 * cut * (1 - back) - 0.12 * raise);
+  // Weight shifts onto the front foot for the strike.
+  add(acc, 'legR', 'z', -0.14 * cut * (1 - back));
+  add(acc, 'legL', 'z', 0.12 * cut * (1 - back));
+}
+
+/**
+ * Skill cast: both hands come up in front of the chest into a seal (ấn quyết), the shoulders open,
+ * then the arms push the technique forward. This is the pose the game was missing — skills used to
+ * play only their VFX while the character stood still.
+ */
+function poseCast(acc: Accumulator, progress: number): void {
+  const p = Math.min(1, Math.max(0, progress));
+  const raise = smoothstep(0, 0.4, p) * (1 - smoothstep(0.8, 1, p));
+  const push = smoothstep(0.38, 0.62, p) * (1 - smoothstep(0.72, 1, p));
+  // Arms forward (X+) and tucked inwards (Z towards the chest), elbows deeply bent.
+  add(acc, 'armL', 'x', 1.05 * raise + 0.3 * push);
+  add(acc, 'armR', 'x', 1.05 * raise + 0.3 * push);
+  add(acc, 'armL', 'z', 0.3 * raise + 0.05 * push);
+  add(acc, 'armR', 'z', -0.3 * raise - 0.05 * push);
+  add(acc, 'foreArmL', 'z', 1.05 * raise - 0.55 * push);
+  add(acc, 'foreArmR', 'z', -1.05 * raise + 0.55 * push);
+  add(acc, 'chest', 'x', 0.05 * raise - 0.1 * push);
+  add(acc, 'spine', 'x', 0.03 * raise);
+  add(acc, 'head', 'x', -0.05 * raise - 0.05 * push);
 }
 
 /**
@@ -158,7 +303,11 @@ export function applyHumanPose(rig: HumanRig, pose: HumanPose): number {
 
   if (!pose.meditating && !pose.flying) poseWalk(acc, pose);
   if (pose.attack) poseAttack(acc, pose.attack);
+  if (pose.cast) poseCast(acc, pose.cast);
   flush(rig, acc, pose.grip);
+  // The blade follows the pose's intent, not the shoulder's accident.
+  const aim = bladeAim(pose);
+  if (aim && pose.grip) aimGrip(rig, pose.grip, aim);
 
   if (pose.meditating) return MEDITATE_HOVER + Math.sin(pose.time * 1.1) * 0.012;
   if (pose.flying) return 0;

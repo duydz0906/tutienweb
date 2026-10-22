@@ -30,6 +30,10 @@ const GUEST_KEY = 'van-thuong:local-guest'; // opt-in guest identity survives a 
 const PLAYER_MODE_KEY = 'van-thuong:player-mode';
 const initialPreview: PreviewOptions = { name: '', gender: 'nu', appearance: { ...DEFAULT_APPEARANCE }, view: 'body' };
 // Cooldown, mana and miss results are already shown on the skill slot / combat feedback.
+const SCENE_LABEL: Record<string, string> = {
+  overworld: 'Tông Môn · Vân Thượng', wilderness: 'Hoang Vực', ascendant: 'Thượng Giới',
+  village: 'Vân Cốc thôn', residence: 'Đệ Tử Xá', sanctum: 'Mật Thất Tái Sinh', tribulation: 'Lôi Kiếp',
+};
 const QUIET_CAST = /(đang hồi|chân khí|không trúng|Đòn đánh trượt|Sinh lực đã đầy|Hãy để chiêu trước)/i;
 
 /** A dead API is by far the most common "cannot enter" cause; say what to do about it. */
@@ -56,6 +60,10 @@ export function App() {
   /** Friendly, non-blocking confirmation (verification mail, reset link, registration done). */
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Scene transition curtain: percentage feedback while the next zone's props stream in. */
+  const [travelCurtain, setTravelCurtain] = useState<{ key: number; name: string } | null>(null);
+  const [travelPercent, setTravelPercent] = useState(0);
+  const lastSceneRef = useRef<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [world, setWorld] = useState<WorldSnapshot | null>(null);
   const [trial, setTrial] = useState<TribulationState | null>(null);
@@ -212,6 +220,31 @@ export function App() {
     if (phase === 'game' && character && character.realm >= 2 && !character.path && previousRealm.current < 2) setPathModal(true);
     if (character) previousRealm.current = character.realm;
   }, [character?.realm, character?.path, phase]);
+
+  useEffect(() => {
+    const scene = character?.scene;
+    if (!scene) { lastSceneRef.current = null; return; }
+    const previous = lastSceneRef.current;
+    lastSceneRef.current = scene;
+    // Tribulation fades in on its own; every real move (portal, home, village, sanctum) gets the
+    // travel curtain, which also hides the first frames of the new zone while props stream in.
+    if (!previous || previous === scene || scene === 'tribulation') return;
+    setTravelPercent(0);
+    setTravelCurtain({ key: Date.now(), name: SCENE_LABEL[scene] ?? 'Đang chuyển cảnh' });
+  }, [character?.scene]);
+
+  useEffect(() => {
+    if (!travelCurtain) return;
+    const started = performance.now();
+    const tick = window.setInterval(() => {
+      const progress = Math.min(1, (performance.now() - started) / 900);
+      setTravelPercent(Math.round(progress * 100));
+      if (progress >= 1) window.clearInterval(tick);
+    }, 55);
+    // A short tail after 100% so nobody sees the new zone half-built.
+    const clear = window.setTimeout(() => setTravelCurtain(null), 1080);
+    return () => { window.clearInterval(tick); window.clearTimeout(clear); };
+  }, [travelCurtain?.key]);
 
   useEffect(() => {
     if (!character) { previousScene.current = null; return; }
@@ -454,6 +487,15 @@ export function App() {
       onAttack={basicAttack} cameraLock={hudPrefs.cameraLock} jumpAt={jumpAt}
       onWorldAction={(event) => { void action(event); }} onOpenPanel={openPanel} />
     <div className="vignette" aria-hidden="true" />
+    {travelCurtain && <div className={`travel-curtain ${travelPercent >= 100 ? 'done' : ''}`} role="status" aria-live="polite">
+      <div className="travel-card">
+        <span className="travel-seal" aria-hidden="true">雲</span>
+        <span className="eyebrow">DỊCH CHUYỂN · ĐANG TẢI</span>
+        <strong>{travelCurtain.name}</strong>
+        <div className="travel-bar"><i style={{ width: `${travelPercent}%` }} /></div>
+        <span className="travel-percent">{travelPercent}%</span>
+      </div>
+    </div>}
     {phase === 'loading' && <div className="loading-screen"><div className="loading-mark">雲</div><LoaderCircle size={24} className="spinner" /><span>Đang mở cổng Vân Thượng...</span></div>}
     {phase === 'login' && <LoginScreen demoAvailable={demoAvailable} firebaseAvailable={firebaseEnabled && !demoAvailable} busy={busy} error={error}
       notice={notice} onRegister={enterRegister} onReset={sendReset} devSandboxAvailable={localDevAvailable}
