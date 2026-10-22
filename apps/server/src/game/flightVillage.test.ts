@@ -22,6 +22,19 @@ function next<T>(socket: ClientSocket, event: string): Promise<T> {
   });
 }
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Flight drain happens on the world tick, so a fixed sleep is a race: a busy CI runner can read the
+ * character between two ticks (mp still 60) and fail for no reason. Poll with a deadline instead —
+ * the assertion itself stays strict.
+ */
+async function waitFor(condition: () => Promise<boolean>, timeout = 6000): Promise<void> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await sleep(50);
+  }
+  throw new Error('Timed out waiting for the server tick.');
+}
 /** Move an already-connected character the same way the movement tick would, without a long walk. */
 function place(world: World, characterId: string, position: { x: number; y: number; z: number }) {
   const live = [...(world as unknown as { players: Map<string, { character: { position: typeof position } }> })
@@ -83,7 +96,7 @@ describe('flight and the Vân Cốc village (authoritative server)', () => {
       expect((await store.get(swordsman.ownerUid))?.flying).toBe(true);
       // A Tà tu may ride any flight treasure, including a sword.
       expect((await ack(d, 'flight:toggle')).ok).toBe(true);
-      await sleep(1200);
+      await waitFor(async () => ((await store.get(swordsman.ownerUid))?.mp ?? 60) < 60);
       const airborne = (await store.get(swordsman.ownerUid))!;
       expect(airborne.flying).toBe(true);
       expect(airborne.mp).toBeLessThan(60); // chân khí is spent by the tick, not by the browser
