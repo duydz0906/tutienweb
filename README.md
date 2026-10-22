@@ -89,6 +89,15 @@ npm run dev
 
 Nếu npm không có Internet hoặc quá trình cài thất bại, sửa lỗi npm được in ở bước cài rồi chạy lại hai lệnh trên. Không cần cài Tailwind global, không cần sửa PostCSS config, và không xóa source hoặc `.git`.
 
+### Không vào được game (trang trắng, "không kết nối được máy chủ")
+
+`npm run dev` mở **hai** tiến trình: API/socket ở cổng **3001** và giao diện Vite ở cổng **5173**. Chỉ mở `http://localhost:5173` khi cả hai đang chạy. Các bước kiểm tra nhanh:
+
+1. Terminal phải còn chạy `npm run dev`; nếu cổng 3001 đang bị một tiến trình cũ chiếm, script `predev` sẽ cảnh báo — tắt tiến trình cũ rồi chạy lại.
+2. Nếu trang **trắng trơn**, mở DevTools (F12) → Console: từ bản này lỗi khởi động được hiển thị ngay trên trang kèm nút **Tải lại trang**, không còn im lặng.
+3. Lỗi `Outdated Optimize Dep` / `Failed to fetch dynamically imported module` là cache phụ thuộc cũ của Vite: xoá `apps/client/node_modules/.vite` rồi chạy lại `npm run dev` (script `predev` cũng tự xoá cache khi `package.json` mới hơn).
+4. Kiểm tra API trực tiếp: `curl http://localhost:3001/api/health` phải trả `{"ok":true,...}`. Nếu không, xem log `[server]` trong terminal.
+
 Mở **http://localhost:5173** (trong Arena dùng live preview cổng **5173**). Vite proxy `/api` và `/socket.io` về Express cổng **3001**, trình duyệt chỉ dùng đường dẫn tương đối, không gọi `localhost` để tới backend. Khi không có `.env` và không phải `NODE_ENV=production`, server tự bật demo; hoặc `cp .env.example .env` và giữ `DEMO_MODE=true`.
 
 **Riêng `npm run dev` ở chế độ demo:** trình duyệt tự vào **Daniel965**, không phải đăng nhập hay tạo/rút Linh Căn lại. Server dùng UID sandbox cố định, tìm nhân vật đã lưu trước, chỉ tạo nếu chưa có; ID, Linh Căn gốc, trang bị, ngoại hình, nhiệm vụ và vị trí được giữ lại. Dev mode tự bật: Tiên Đế tầng 9, HP/MP bất tử, không cooldown; linh thạch, thảo, quặng, phù mực và điểm cống hiến hiển thị **∞**, chế tạo/mua mọi nguyên liệu/thăng đệ tử không trừ số dư; tốc độ đi bộ vẫn là **6 đơn vị/giây** như mọi người. Nút **Đổi đạo · nhân vật · công pháp** trong HUD mở bảng dev: chọn lại 5 đạo, gán kỹ năng đã cấp theo cảnh giới và đổi giới tính/dung mạo; shop và đan lô hoạt động từ xa cho dev. Tất cả đều được kiểm tra trên server; nhân vật sandbox không chiếm bảng xếp hạng, **không ghi số dư ảo 999.999.999 vào save**. Nhân vật lưu trong **`.local-data/players/Daniel965/character.json`**; mỗi khách demo khác có thư mục riêng `players/user-<hash UID>/character.json`. Lưu sau hành động, khi rời game và định kỳ; dữ liệu còn sau khi dừng/chạy lại `npm run dev`. Tệp ký phiên nằm trong `.local-data/.session-key`; **toàn bộ `.local-data/` bị Git ignore và Vite từ chối đọc qua `/@fs/`**. Đừng xóa thư mục này nếu muốn giữ nhân vật. Bản demo RAM từ các phiên cũ trước thay đổi này đã mất khi tiến trình cũ tắt thì không thể khôi phục.

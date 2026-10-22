@@ -27,7 +27,8 @@ function resolveRig(model: THREE.Object3D): RigNodes {
 }
 
 function appearanceKey(player: PublicPlayer, quality: number, robeOverride?: string, flavor = ''): string {
-  const a = player.appearance;
+  // Old saves (and packets from older clients) may predate the appearance block entirely.
+  const a = normalizeAppearance(player.appearance);
   return [player.gender, a.hair, a.hairColor, a.face, a.skinTone, robeOverride ?? a.robeColor,
     a.height.toFixed(2), a.build.toFixed(2), quality, flavor].join('|');
 }
