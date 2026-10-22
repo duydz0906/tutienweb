@@ -83,6 +83,63 @@ describe('real human character', () => {
     expect(names).toContain('human-teeth');
   });
 
+  it('lights every mesh: the shipped GLBs carry no normals, so the builder must add them', () => {
+    // Without a NORMAL attribute three shades the mesh from a zero vector and draws it black —
+    // which is exactly how the whole character used to appear, no matter what skin/hair/robe
+    // colour was chosen.
+    for (const mesh of meshesOf(character)) {
+      const normal = mesh.geometry.getAttribute('normal');
+      expect(normal, `${mesh.name} has no normals`).toBeTruthy();
+      const value = new THREE.Vector3();
+      let nonZero = 0;
+      const sample = Math.min(normal.count, 400);
+      for (let i = 0; i < sample; i++) {
+        value.fromBufferAttribute(normal as THREE.BufferAttribute, i);
+        if (value.lengthSq() > 0.5) nonZero += 1;
+      }
+      expect(nonZero, `${mesh.name} has unusable normals`).toBeGreaterThan(sample * 0.9);
+    }
+  });
+
+  it('writes the chosen skin, hair and robe colour into the materials', async () => {
+    // A stub source answers every texture slot with a tagged placeholder (Node cannot decode WebP).
+    const stub: HumanSource = {
+      ...nodeSource,
+      texture(path) {
+        const texture = new THREE.Texture();
+        texture.userData.path = path;
+        return texture;
+      },
+    };
+    const build = async (look: HumanLook) => {
+      resetHumanPrototypes();
+      const root = await buildHuman(look, 0.5, stub);
+      const material = (name: string) => {
+        const mesh = meshesOf(root).find((candidate) => candidate.name === name);
+        return mesh?.material as THREE.MeshStandardMaterial;
+      };
+      return { root, body: material('human-body'), hair: material('human-hair'), robe: material('human-robe') };
+    };
+    const light = await build({ ...LOOK, skinTone: 'light', hairColor: 'silver', robeColor: 'ivory', height: 0.1, build: 0.1 });
+    const deep = await build({ ...LOOK, skinTone: 'deep', hairColor: 'ink', robeColor: 'midnight', height: 0.9, build: 0.9 });
+    // Skin: a different tone picks a different baked skin texture.
+    expect(light.body.map?.userData.path).toContain('young_caucasian');
+    expect(deep.body.map?.userData.path).toContain('young_african');
+    // Hair and robe tint the shared cloth/hair texture with the swatch colour.
+    expect(light.hair.color.getHex()).not.toBe(deep.hair.color.getHex());
+    expect(light.robe.color.getHex()).not.toBe(deep.robe.color.getHex());
+    // Neither may collapse to black, which is what a lost tint looks like.
+    const brightest = (material: THREE.MeshStandardMaterial) => Math.max(material.color.r, material.color.g, material.color.b);
+    expect(brightest(light.hair)).toBeGreaterThan(0.3);   // silver
+    expect(brightest(light.robe)).toBeGreaterThan(0.3);   // ivory
+    expect(brightest(deep.robe)).toBeGreaterThan(0.05);   // midnight still reads as navy
+    expect(brightest(deep.hair)).toBeGreaterThan(0);      // ink is dark but tinted
+    // Height/build stretch the whole body.
+    expect(light.root.scale.y).toBeLessThan(deep.root.scale.y);
+    expect(light.root.scale.x).toBeLessThan(deep.root.scale.x);
+    resetHumanPrototypes();
+  });
+
   it('is a life-sized body, not a pile of boxes', () => {
     const body = meshesOf(character).find((mesh) => mesh.name === 'human-body')!;
     expect(body.geometry.attributes.position.count).toBeGreaterThan(10_000);
