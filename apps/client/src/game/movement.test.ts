@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { PRIVATE_RADIUS, SECT_BUILDINGS, TRIAL_RADIUS, VILLAGE_RADIUS, WALK_SPEED, WORLD_RADIUS,
+import { FLIGHT_SPEED, PRIVATE_RADIUS, SECT_BUILDINGS, TRIAL_RADIUS, VILLAGE_RADIUS, WALK_SPEED, WORLD_RADIUS,
   canWalkInSect, resolveMove } from '@van-thuong/shared';
+import { predictMove } from './SceneEngine';
+import { reconcileStep } from './interpolation';
 
 /**
  * Movement is shared so that the client's prediction and the server's integration cannot disagree —
@@ -78,5 +80,38 @@ describe('shared movement rule', () => {
     for (let tick = 0; tick < 20; tick++) server = resolveMove(server, at(server.x, server.z + WALK_SPEED * 0.05), { scene: 'wilderness' });
     expect(client.z).toBeCloseTo(WALK_SPEED, 5);
     expect(server.z).toBeCloseTo(client.z, 5);
+  });
+});
+
+describe('a long frame must not leave the body behind', () => {
+  it('advances the full real frame time, not a 50 ms slice of it', () => {
+    const speed = FLIGHT_SPEED;
+    const normal = predictMove({ x: 0, z: 0 }, { x: 0, z: -1 }, speed, 1 / 60);
+    const hitch = predictMove({ x: 0, z: 0 }, { x: 0, z: -1 }, speed, 0.14);
+    expect(normal.z).toBeCloseTo(-speed / 60, 5);
+    // The old behaviour moved 50 ms worth (0.525 m) and the server moved 140 ms worth (1.47 m); the
+    // 0.9 m gap was paid back later as a visible jolt.
+    expect(hitch.z).toBeCloseTo(-speed * 0.14, 5);
+    expect(Math.abs(hitch.z)).toBeGreaterThan(speed * 0.05);
+  });
+
+  it('still cannot tunnel through a wall or another body during a long frame', () => {
+    // A body 0.4 m in front, straight ahead, over 140 ms at flight speed.
+    const blocked = predictMove({ x: 0, z: 1 }, { x: 0, z: -1 }, FLIGHT_SPEED, 0.14,
+      { scene: 'overworld', obstacles: [], collide: false });
+    expect(blocked.z).toBeLessThan(1); // flying ignores walls…
+    const onFoot = predictMove({ x: 0, z: 1 }, { x: 0, z: -1 }, WALK_SPEED, 0.14,
+      { scene: 'overworld', obstacles: [{ position: { x: 0, z: 0.6 }, radius: 0.6 }], collide: true });
+    expect(onFoot.z).toBeCloseTo(1, 5); // …but a walk into a body is stopped by the sub-steps
+  });
+
+  it('a correction can never look like the body reversing', () => {
+    // Moving at flight speed with a two-and-a-half metre disagreement: the fix is capped well below
+    // the speed, so the drawn body always keeps moving forward while it is being corrected.
+    const own = { x: 0, z: 0 };
+    const ref = { x: 0, z: -2.5 };
+    const fix = reconcileStep(own, ref, 1 / 60, FLIGHT_SPEED, false);
+    expect(Math.hypot(fix.x, fix.z)).toBeLessThanOrEqual(FLIGHT_SPEED * 0.45 / 60 + 1e-6);
+    expect(Math.hypot(fix.x, fix.z)).toBeGreaterThan(0);
   });
 });

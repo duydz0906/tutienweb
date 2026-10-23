@@ -24,6 +24,28 @@ export function jumpHeight(progress: number, rise = 0.34): number {
 }
 
 /**
+ * One frame of client-side prediction, in the exact units the server integrates with.
+ *
+ * `seconds` is the *real* frame time. Clamping it to a 50 ms slice made a long frame (a shader
+ * compiling, a chunk of map appearing, a garbage collection) advance the body less than the server
+ * did, and the difference was paid back as a correction — a jolt after flying for a while. The step
+ * is subdivided instead, so a long frame cannot tunnel through a wall.
+ */
+export function predictMove(from: { x: number; z: number }, direction: { x: number; z: number },
+  speed: number, seconds: number, collision?: MoveContext): { x: number; z: number } {
+  let position = { x: from.x, z: from.z };
+  let remaining = Math.max(0, Math.min(seconds, 0.25));
+  const steps = Math.max(1, Math.ceil(seconds / 0.05));
+  for (let i = 0; i < steps && remaining > 0; i++) {
+    const slice = Math.min(remaining, 0.05);
+    remaining -= slice;
+    const target = { x: position.x + direction.x * speed * slice, y: 0, z: position.z + direction.z * speed * slice };
+    position = collision ? resolveMove({ ...position, y: 0 }, target, collision) : { x: target.x, z: target.z };
+  }
+  return position;
+}
+
+/**
  * Owns the browser-only 3D controls. React Three Fiber supplies the renderer,
  * scene and camera; the server, NOT this class, owns the actual world position.
  */
@@ -276,7 +298,13 @@ export class SceneEngine {
     /** Playback delay of the reference the caller passes, in ms (see `MotionTrack.delayMs`). */
     referenceDelay = LOCAL_DELAY_MS,
   ): void {
-    const dt = Math.min(delta, 0.05);
+    // Movement uses the *real* frame time, not a 50 ms slice of it. A frame that takes 140 ms — a
+    // shader compiling, a chunk of the map appearing, a garbage collection — used to move the body
+    // 50 ms worth while the server moved it 140 ms worth, so the client fell behind and the gap was
+    // paid back later as a correction: the single "giật lại một cái" a rider sees every so often
+    // after flying for a while. The camera and the smoothing below still use a capped dt.
+    const frame = Math.min(Math.max(delta, 0), 0.25);
+    const dt = Math.min(frame, 0.05);
     if (avatar) {
       // While the server insists the body cannot follow its input (a late obstacle, a closed gate) the
       // input is ignored until it agrees again: without this the two would push against each other
@@ -285,18 +313,16 @@ export class SceneEngine {
         const { x, z, rotation } = this.getMovement();
         // Predict with the server's own movement rule (`resolveMove`): map clamp, sect walls, other
         // bodies. Without this every wall the server refused came back as a correction — a slide.
-        const target = { x: avatar.position.x + x * movementSpeed * dt, y: 0,
-          z: avatar.position.z + z * movementSpeed * dt };
-        const resolved = collision ? resolveMove(avatar.position, target, collision) : target;
-        avatar.position.x = resolved.x;
-        avatar.position.z = resolved.z;
+        const next = predictMove(avatar.position, { x, z }, movementSpeed, frame, collision);
+        avatar.position.x = next.x;
+        avatar.position.z = next.z;
         // A locked camera also turns a standing body so it keeps facing away from the view. The turn
         // itself is rate limited: WASD only offers eight directions, and snapping between them read
         // as the body twitching whenever the player changed their mind.
         if (x !== 0 || z !== 0 || this.cameraLocked) {
-          const delta = Math.atan2(Math.sin(rotation - avatar.rotation.y), Math.cos(rotation - avatar.rotation.y));
-          const maxTurn = SceneEngine.TURN_RATE * dt;
-          avatar.rotation.y += Math.abs(delta) <= maxTurn ? delta : Math.sign(delta) * maxTurn;
+          const deltaAngle = Math.atan2(Math.sin(rotation - avatar.rotation.y), Math.cos(rotation - avatar.rotation.y));
+          const maxTurn = SceneEngine.TURN_RATE * frame;
+          avatar.rotation.y += Math.abs(deltaAngle) <= maxTurn ? deltaAngle : Math.sign(deltaAngle) * maxTurn;
         }
       }
       // Reconcile on the HORIZONTAL plane only. Doing it in 3D meant that once a rider climbed more

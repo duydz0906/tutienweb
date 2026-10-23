@@ -28,9 +28,9 @@ export const REMOTE_DELAY_MS = 130;
 /** Extra slack for other players' bodies on top of their measured packet interval. */
 export const REMOTE_EXTRA_MS = 40;
 /** Never guess further ahead than this past the newest sample, or a stop would overshoot. */
-export const MAX_EXTRAPOLATION_MS = 100;
+export const MAX_EXTRAPOLATION_MS = 140;
 /** Older than this, the newest sample is treated as the truth and the body stops dead. */
-export const STALE_MS = 340;
+export const STALE_MS = 600;
 /** Faster than any mount; a velocity above this is a teleport, not motion. */
 const MAX_SPEED = 14;
 
@@ -58,6 +58,12 @@ export class MotionTrack {
   }
 
   get size(): number { return this.times.length; }
+
+  /** How long ago the newest sample arrived; a stale track is not worth reconciling against. */
+  ageMs(now: number): number {
+    const newest = this.newestAt();
+    return newest === null ? Number.POSITIVE_INFINITY : now - newest;
+  }
 
   /** Newest sample time, or null when the track is empty. */
   newestAt(): number | null { return this.times.length ? this.times[this.times.length - 1]! : null; }
@@ -159,14 +165,15 @@ export const RECONCILE = {
   idleBandBonus: 0.3,
   /** Beyond this the two disagree so completely that only a teleport explains it. */
   snapDistance: 6,
-  /** How fast a body may be pulled towards the server, in m/s, when nothing else is moving it. */
-  minCatchUpSpeed: 2.5,
+  /** How fast a stopped body may be pulled towards the server, in m/s. */
+  minCatchUpSpeed: 3,
   /**
-   * …plus the body's own speed, so a correction is always able to outweigh the input that caused the
-   * disagreement. Without this a body that the server refused to move would walk further away every
-   * frame and only come back in a teleport-sized jump.
+   * While the player is moving, a correction is capped at this fraction of their own speed. Any more
+   * and the body would visibly slow down or slide backwards while it is being corrected — which is
+   * exactly what a "jolt back" is. Correcting at half speed still closes a two-metre gap in under a
+   * second and is invisible.
    */
-  catchUpOver: 3,
+  catchUpShare: 0.45,
   /** Fraction of the deadband over which a correction ramps from nothing to full strength. */
   ramp: 0.8,
 } as const;
@@ -192,7 +199,7 @@ export function reconcileStep(own: MotionPoint, reference: MotionPoint, dt: numb
   // never produces a step in velocity (which is what a player actually perceives as a jolt).
   const over = drift - band;
   const strength = Math.min(1, over / (band * RECONCILE.ramp));
-  const catchUp = Math.max(RECONCILE.minCatchUpSpeed, speed + RECONCILE.catchUpOver);
+  const catchUp = idle ? RECONCILE.minCatchUpSpeed : Math.max(2, speed * RECONCILE.catchUpShare);
   const move = Math.min(over * strength, catchUp * dt);
   return { x: errorX * (move / drift), z: errorZ * (move / drift), snap: false, engaged: true };
 }

@@ -17,7 +17,7 @@ import { CombatFeedback } from './CombatEffects';
 import { LandingPuff } from './LandingPuff';
 import { stepFlight } from './flight';
 import type { MoveContext } from './SceneEngine';
-import { LOCAL_DELAY_MS, clearPlayerTracks, playerTrack, recordMotion } from './interpolation';
+import { LOCAL_DELAY_MS, STALE_MS, clearPlayerTracks, playerTrack, recordMotion } from './interpolation';
 
 const BloomEffects = lazy(() => import('./BloomEffects'));
 
@@ -215,7 +215,11 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     // The delay adapts to the measured packet interval, so the playback point always sits between
     // two real samples instead of guessing past the newest one.
     const delay = character ? playerTrack(character.id).delayMs : LOCAL_DELAY_MS;
-    const path = character ? playerTrack(character.id).at(now - delay) : null;
+    const track = character ? playerTrack(character.id) : null;
+    // A track whose newest packet is old (the tab stalled, the socket hiccuped) says nothing useful:
+    // reconciling against it would drag the body to a place it left half a second ago.
+    const fresh = !track || track.ageMs(now) < STALE_MS;
+    const path = track && fresh ? track.at(now - delay) : null;
     const reference = path ? { x: path.x, y: serverPosition.y, z: path.z } : serverPosition;
     // Predict with the server's own movement rule and the same obstacles it collides with, so the
     // body stops at a wall here exactly where the server does — no correction, no slide.

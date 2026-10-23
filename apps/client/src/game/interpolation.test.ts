@@ -87,7 +87,7 @@ describe('motion track: 10 Hz packets drawn at 60 Hz', () => {
     const fast = new MotionTrack();
     fast.push(0, 0, 0);
     fast.push(100, 60, 0);
-    expect(fast.at(200)!.x).toBeCloseTo(60 + 14 * (MAX_EXTRAPOLATION_MS / 1000), 5);
+    expect(fast.at(400)!.x).toBeCloseTo(60 + 14 * (MAX_EXTRAPOLATION_MS / 1000), 5);
   });
 
   it('does not interpolate across a teleport once it is reset', () => {
