@@ -12,8 +12,8 @@
  * continuous function of time, so drawing a body on it is smooth by construction: the per-frame
  * step is constant instead of pulsing at the snapshot rate.
  *
- * The local player is still predicted from input (that is what keeps the controls instant); the
- * engine merely pulls that prediction towards this smooth path instead of towards the raw packet.
+ * The local player is still predicted from input — that is what keeps the controls instant — and is
+ * only pulled towards the smooth path when the two genuinely disagree (see `LocalReconciler`).
  */
 export type MotionPoint = { x: number; z: number };
 
@@ -111,38 +111,113 @@ function clampSpeed(speed: number): number {
   return Math.max(-MAX_SPEED, Math.min(MAX_SPEED, speed));
 }
 
-/** Beyond this the two disagree so completely that only a teleport explains it. */
-export const SNAP_DISTANCE = 6;
-/** Below this the difference is not worth moving the body for. */
-const DEAD_ZONE = 0.02;
 /**
- * While the player is standing still, only a real disagreement is worth correcting. The server keeps
- * walking for the time it takes the released key to reach it (one tick plus the network), and its
- * packet is extrapolated a little further besides, so a stopped body sits a few decimetres behind
- * the path — pulling it forward there would be a visible glide after every stop ("trượt").
+ * Reconciliation constants.
+ *
+ * The important one is the deadband. A predicted body is *always* a little ahead of the server: the
+ * client's input takes one 50 ms packet to arrive, plus the network's own delay. At walking speed
+ * that is ~0.5 m and at flight speed ~0.9 m, and it is not an error — it is the price of instant
+ * controls. Pulling it back every frame turned that constant offset into a permanent drag: the body
+ * moved slower than its input, the gap grew, and the correction grew with it. Players read that as
+ * "the character slides / judders" (trôi, giật) rather than as a network detail.
+ *
+ * So a disagreement smaller than the deadband is ignored outright; larger ones (a body that appeared
+ * in the way, a clamp, a closed gate) are corrected gently and speed limited, and only a real
+ * teleport snaps.
  */
-const IDLE_DEAD_ZONE = 1.2;
+export const RECONCILE = {
+  /** Ignored error while the player is moving: the input-delay offset plus a margin. */
+  band: 0.55,
+  bandPerSpeed: 0.1,
+  /** A stopped body is never dragged back, so it may keep a little more slack. */
+  idleBandBonus: 0.3,
+  /** Beyond this the two disagree so completely that only a teleport explains it. */
+  snapDistance: 6,
+  /** How fast a body may be pulled towards the server, in m/s, when nothing else is moving it. */
+  minCatchUpSpeed: 2.5,
+  /**
+   * …plus the body's own speed, so a correction is always able to outweigh the input that caused the
+   * disagreement. Without this a body that the server refused to move would walk further away every
+   * frame and only come back in a teleport-sized jump.
+   */
+  catchUpOver: 3,
+  /** Fraction of the deadband over which a correction ramps from nothing to full strength. */
+  ramp: 0.8,
+} as const;
 
 /**
- * How far to move a predicted body this frame so it stays glued to the server's own path.
+ * How far to move a predicted body this frame so it stays on the server's own path.
  *
  * Both points are the *same instant* (`LOCAL_DELAY_MS` ago): the body's remembered position and the
- * server's interpolated one. That is the whole trick — comparing "now" with "the last packet" bakes
- * the latency into the error, and the body is then dragged backwards every single frame.
+ * server's interpolated one. Comparing "now" with "the last packet" would bake the latency into the
+ * error and drag the body backwards on every frame.
  */
-export function correctionStep(own: MotionPoint, reference: MotionPoint, dt: number, speed: number,
-  idle = false): { x: number; z: number; snap: boolean } {
+export type ReconcileFix = { x: number; z: number; snap: boolean; engaged: boolean };
+
+export function reconcileStep(own: MotionPoint, reference: MotionPoint, dt: number, speed: number,
+  idle = false): ReconcileFix {
   const errorX = reference.x - own.x;
   const errorZ = reference.z - own.z;
   const drift = Math.hypot(errorX, errorZ);
-  if (drift > SNAP_DISTANCE) return { x: errorX, z: errorZ, snap: true };
-  if (drift <= (idle ? IDLE_DEAD_ZONE : DEAD_ZONE)) return { x: 0, z: 0, snap: false };
-  // Gentle for the odd centimetre, firm when the client is genuinely wrong, and never faster than a
-  // run, so the correction itself can never look like a slide.
-  const gain = drift > 1.2 ? 14 : 6;
-  const budget = Math.max(8, speed * 2) * dt;
-  const move = Math.min(drift * Math.min(1, gain * dt), budget);
-  return { x: errorX * (move / drift), z: errorZ * (move / drift), snap: false };
+  if (drift > RECONCILE.snapDistance) return { x: errorX, z: errorZ, snap: true, engaged: true };
+  const band = RECONCILE.band + speed * RECONCILE.bandPerSpeed + (idle ? RECONCILE.idleBandBonus : 0);
+  if (drift <= band) return { x: 0, z: 0, snap: false, engaged: false };
+  // Ramped rather than switched: corrections fade in over `ramp × band`, so crossing the deadband
+  // never produces a step in velocity (which is what a player actually perceives as a jolt).
+  const over = drift - band;
+  const strength = Math.min(1, over / (band * RECONCILE.ramp));
+  const catchUp = Math.max(RECONCILE.minCatchUpSpeed, speed + RECONCILE.catchUpOver);
+  const move = Math.min(over * strength, catchUp * dt);
+  return { x: errorX * (move / drift), z: errorZ * (move / drift), snap: false, engaged: true };
+}
+
+/**
+ * How long a disagreement must persist before the body stops walking into whatever refuses it, and
+ * how fast that timer drains once the disagreement is gone (twice real time, so a single late packet
+ * never freezes the controls).
+ */
+const HOLD_AFTER_MS = 380;
+const RELEASE_PER_MS = 2;
+
+/**
+ * Reconciliation for one predicted body: its own short history plus the "am I pushing against
+ * something the server refuses" state.
+ *
+ * The history is what makes the comparison meaningful — the body's position `LOCAL_DELAY_MS` ago
+ * against the server's path at the same instant. The hold covers the case prediction cannot know
+ * about (a body that appeared from nowhere, a gate that closed): if the disagreement refuses to go
+ * away, the input is ignored until it does, which turns an endless push-and-be-pulled-back cycle
+ * into "the character stops, slides back two paces and carries on".
+ */
+export class LocalReconciler {
+  private readonly history: MotionTrack;
+  private since = 0;
+  private holdMs = 0;
+
+  constructor(capacity = 240) { this.history = new MotionTrack(capacity); }
+
+  get held(): boolean { return this.holdMs > HOLD_AFTER_MS; }
+
+  reset(time: number, x: number, z: number): void {
+    this.history.reset(time, x, z);
+    this.since = time;
+    this.holdMs = 0;
+  }
+
+  /** Record where the body is, then return how far to move it towards the server. */
+  step(now: number, body: MotionPoint, dt: number, speed: number, reference: MotionPoint | null,
+    idle: boolean): ReconcileFix {
+    if (!this.history.size) this.reset(now, body.x, body.z);
+    // Only meaningful once the history reaches back a full delay; before that the "past" sample
+    // would just be the present and the difference would be latency rather than disagreement.
+    const own = now - this.since >= LOCAL_DELAY_MS ? this.history.at(now - LOCAL_DELAY_MS) : null;
+    this.history.push(now, body.x, body.z);
+    if (!own || !reference) return { x: 0, z: 0, snap: false, engaged: false };
+    const fix = reconcileStep(own, reference, dt, speed, idle);
+    if (fix.snap) this.reset(now, body.x + fix.x, body.z + fix.z);
+    this.holdMs = fix.engaged ? this.holdMs + dt * 1000 : Math.max(0, this.holdMs - dt * RELEASE_PER_MS);
+    return fix;
+  }
 }
 
 /**

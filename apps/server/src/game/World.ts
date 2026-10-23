@@ -3,7 +3,8 @@ import type { Server, Socket } from 'socket.io';
 import {
   CONSUMABLES, DAILY_QUESTS, HERB_NODES, ASCENDANT_HERBS, ASCENDANT_GATE, HOME_GATE, HOME_EXIT, SECRET_GATE, INN_NPCS, INN_RADIUS, innRestCost,
   SANCTUM_EXIT, HABITATS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PATH_LABEL, PORTALS, PUBLIC_ZONES, REALMS, RECIPES, SHOP_STOCK, SKILLS,
-  TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_RADIUS, DEV_TELEPORTS, HOTBAR_SLOTS, SLOT_LABEL, canRideMount, expForStage, flightItemOf, isSafeScene, normalizeHotbar, skillRealm, skillsForPath, isWorldZone,
+  TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_RADIUS, DEV_TELEPORTS, HOTBAR_SLOTS, SLOT_LABEL, FLIGHT_SPEED, WALK_SPEED, canRideMount,
+  expForStage, flightItemOf, isSafeScene, normalizeHotbar, resolveMove, skillRealm, skillsForPath, isWorldZone,
   type ActionResult, type BossState, type CharacterState, type ChatMessage, type DailyQuestId,
   type CombatEvent, type FormationState, type GameScene, type MonsterState, type MotionUpdate, type OwnCharacter, type Path, type PublicPlayer,
   type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot, type WorldZone,
@@ -1163,30 +1164,24 @@ export class World {
       }
       if (now - s.lastInputAt <= 400 && (s.character.hp > 0 || this.god(s))) {
         // Flight is a real mount speed; walking pace stays identical for admins and players.
-        const speed = s.character.flying ? 10.5 : 6;
+        const speed = s.character.flying ? FLIGHT_SPEED : WALK_SPEED;
+        const zone = s.character.scene;
         const previous = { ...s.character.position };
-        s.character.position.x += s.input.x * speed * dt;
-        s.character.position.z += s.input.z * speed * dt;
-        clampToWorld(s.character.position, s.trial ? TRIAL_RADIUS : isWorldZone(s.character.scene) ? worldRadius(s.character.scene) : PRIVATE_RADIUS);
-        if (!s.trial) {
-          const zone = s.character.scene;
-          const obstacles = [
-            ...(zone === 'wilderness' && this.boss.hp > 0 ? [{ position: this.boss.position, radius: 2.7 }] : []),
-            ...(zone === 'wilderness' || zone === 'ascendant' ? [...this.monsters.values()].filter((m) => m.scene === zone && m.hp > 0)
-              .map((m) => ({ position: m.position, radius: m.radius + 0.35 })) : []),
-            ...[...this.players.values()].filter((p) => isWorldZone(zone) && p !== s && p.character.scene === zone)
-              .map((p) => ({ position: p.character.position, radius: 1.05 })),
-          ];
-          // Walls are swept AABBs: the only passage into each building is its visible doorway.
-          // An already-overlapping spawn is allowed to walk OUT, not further in.
-          if ((zone === 'overworld' && !canWalkInSect(previous, s.character.position)) ||
-            obstacles.some((obstacle) => {
-              const nextDistance = distanceXZ(s.character.position, obstacle.position);
-              return nextDistance < obstacle.radius && nextDistance < distanceXZ(previous, obstacle.position);
-            })) s.character.position = previous;
-          if (zone === 'overworld' && isAtSpiritLake(zone, previous) !== isAtSpiritLake(zone, s.character.position))
-            bankCultivation(s.character, now, { scene: zone, position: previous });
-        }
+        const obstacles = s.trial ? [] : [
+          ...(zone === 'wilderness' && this.boss.hp > 0 ? [{ position: this.boss.position, radius: 2.7 }] : []),
+          ...(zone === 'wilderness' || zone === 'ascendant' ? [...this.monsters.values()].filter((m) => m.scene === zone && m.hp > 0)
+            .map((m) => ({ position: m.position, radius: m.radius + 0.35 })) : []),
+          ...[...this.players.values()].filter((p) => isWorldZone(zone) && p !== s && p.character.scene === zone)
+            .map((p) => ({ position: p.character.position, radius: 1.05 })),
+        ];
+        // One shared movement rule (`resolveMove`): clamp to the map, sweep the sect walls, refuse to
+        // walk into another body. The client predicts with the very same function, which is what keeps
+        // its body from ever needing a correction in the first place.
+        s.character.position = resolveMove(previous, {
+          x: previous.x + s.input.x * speed * dt, y: 0, z: previous.z + s.input.z * speed * dt,
+        }, { scene: zone, obstacles, collide: !s.trial, radius: s.trial ? TRIAL_RADIUS : undefined });
+        if (zone === 'overworld' && isAtSpiritLake(zone, previous) !== isAtSpiritLake(zone, s.character.position))
+          bankCultivation(s.character, now, { scene: zone, position: previous });
       }
       // Sky-riding spends chân khí. Running dry lands the rider instead of leaving them stranded.
       if (s.character.flying) {

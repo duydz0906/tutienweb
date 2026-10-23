@@ -128,6 +128,115 @@ export const SECT_BUILDINGS = [
   { id: 'beast', name: 'NGỰ THÚ VIỆN', x: -17, z: -4, width: 12, depth: 10, doorway: 4.2, height: 4.8 },
   { id: 'alchemy', name: 'PHÒNG LUYỆN ĐAN', x: 17, z: -8, width: 13, depth: 11, doorway: 4.4, height: 5.0 },
 ] as const;
+
+/*
+ * Authoritative movement, shared by the server that owns it and the client that predicts it.
+ *
+ * The client used to predict with its own private idea of the world — no walls, no bounds, no other
+ * bodies — so every wall the server refused and every clamp it applied came back as a correction,
+ * and a correction is exactly what a player sees as a jitter or a slide. Both sides now run this one
+ * function on the same data, which is why walking into a building stops the body in the same place
+ * twice and never needs correcting.
+ */
+/** Metres per second on foot and mounted; the server integrates with these too. */
+export const WALK_SPEED = 6;
+export const FLIGHT_SPEED = 10.5;
+/** How far the body is allowed from the centre of a private room or the trial arena. */
+export const TRIAL_RADIUS = 17;
+export const PRIVATE_RADIUS = 8.5;
+/** Half the width of a body, i.e. how much clearance a wall needs. */
+const PLAYER_RADIUS = 0.43;
+const WALL_THICKNESS = 0.42;
+export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number };
+/** The sect walls, straight from the same table the 3D buildings are built from. */
+export const SECT_WALLS: readonly Bounds[] = SECT_BUILDINGS.flatMap(({ x, z, width, depth, doorway }) => {
+  const left = x - width / 2, right = x + width / 2;
+  const front = z - depth / 2, back = z + depth / 2;
+  const wall = WALL_THICKNESS / 2;
+  return [
+    { minX: left - wall, maxX: x - doorway / 2, minZ: front - wall, maxZ: front + wall },
+    { minX: x + doorway / 2, maxX: right + wall, minZ: front - wall, maxZ: front + wall },
+    { minX: left - wall, maxX: right + wall, minZ: back - wall, maxZ: back + wall },
+    { minX: left - wall, maxX: left + wall, minZ: front, maxZ: back },
+    { minX: right - wall, maxX: right + wall, minZ: front, maxZ: back },
+  ];
+});
+
+function insideWall(p: Vector3, wall: Bounds): boolean {
+  return p.x >= wall.minX - PLAYER_RADIUS && p.x <= wall.maxX + PLAYER_RADIUS &&
+    p.z >= wall.minZ - PLAYER_RADIUS && p.z <= wall.maxZ + PLAYER_RADIUS;
+}
+
+function segmentHitsWall(from: Vector3, to: Vector3, wall: Bounds): boolean {
+  // A save or a summon that already overlaps a wall may move OUT of it, never further in.
+  if (insideWall(from, wall)) {
+    const centreX = (wall.minX + wall.maxX) / 2, centreZ = (wall.minZ + wall.maxZ) / 2;
+    return insideWall(to, wall) && Math.hypot(to.x - centreX, to.z - centreZ) < Math.hypot(from.x - centreX, from.z - centreZ);
+  }
+  let enter = 0, exit = 1;
+  for (const [start, delta, min, max] of [
+    [from.x, to.x - from.x, wall.minX - PLAYER_RADIUS, wall.maxX + PLAYER_RADIUS],
+    [from.z, to.z - from.z, wall.minZ - PLAYER_RADIUS, wall.maxZ + PLAYER_RADIUS],
+  ]) {
+    if (Math.abs(delta) < 1e-9) { if (start < min || start > max) return false; continue; }
+    const t1 = (min - start) / delta, t2 = (max - start) / delta;
+    enter = Math.max(enter, Math.min(t1, t2));
+    exit = Math.min(exit, Math.max(t1, t2));
+    if (enter > exit) return false;
+  }
+  return true;
+}
+
+/** Walls are swept segments: the only way into a building is through its visible doorway. */
+export function canWalkInSect(from: Vector3, to: Vector3): boolean {
+  return !SECT_WALLS.some((wall) => segmentHitsWall(from, to, wall));
+}
+
+/** Map boundary of a public zone. */
+export function worldRadiusFor(scene: WorldZone): number {
+  return scene === 'overworld' ? SECT_RADIUS : scene === 'village' ? VILLAGE_RADIUS : WORLD_RADIUS;
+}
+
+/** A round body the player may not walk through (monster, another player, the boss). */
+export type MoveObstacle = { position: { x: number; z: number }; radius: number };
+
+export type MoveOptions = {
+  scene: GameScene;
+  /** Radius the position is clamped to; defaults to the scene's own boundary. */
+  radius?: number;
+  obstacles?: readonly MoveObstacle[];
+  /** Off while flying: the rider is above walls and monster heads. */
+  collide?: boolean;
+};
+
+/**
+ * Where a body actually ends up after trying to move from `from` to `to`.
+ *
+ * One function for both sides: clamp to the map, sweep the sect walls, refuse to walk into another
+ * body, and otherwise accept the step. Without obstacles or walls (`collide: false`) it is a plain
+ * clamp, which is what the air and the private rooms need.
+ */
+export function resolveMove(from: Vector3, to: Vector3, options: MoveOptions): Vector3 {
+  const radius = options.radius ?? (options.scene === 'tribulation' ? TRIAL_RADIUS
+    : options.scene === 'residence' || options.scene === 'sanctum' ? PRIVATE_RADIUS
+    : isWorldZone(options.scene) ? worldRadiusFor(options.scene) : PRIVATE_RADIUS);
+  const position: Vector3 = { x: to.x, y: 0, z: to.z };
+  const length = Math.hypot(position.x, position.z);
+  if (length > radius) {
+    position.x = (position.x / length) * radius;
+    position.z = (position.z / length) * radius;
+  }
+  if (options.collide === false) return position;
+  // Walls only exist in the sect plateau; the village, the wilds and the upper realm are open.
+  if (options.scene === 'overworld' && !canWalkInSect(from, position)) return { x: from.x, y: 0, z: from.z };
+  for (const obstacle of options.obstacles ?? []) {
+    const next = Math.hypot(position.x - obstacle.position.x, position.z - obstacle.position.z);
+    // Walking out of an overlap is allowed; walking further in is not.
+    const was = Math.hypot(from.x - obstacle.position.x, from.z - obstacle.position.z);
+    if (next < obstacle.radius && next < was) return { x: from.x, y: 0, z: from.z };
+  }
+  return position;
+}
 export const LEVEL_CONFIG = levelConfig;
 export const REALMS = levelConfig.realms;
 export const MAX_REALM = REALMS.length - 1;
