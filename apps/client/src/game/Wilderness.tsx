@@ -37,12 +37,19 @@ const Monster = memo(function Monster({ monster, selected, onSelect }: { monster
   const barHeight = isCrane ? 2.9 : isStone ? 3.5 : isGhost ? 2.9 : isSerpent ? 2.6 : isStag ? 2.35 : 1.95;
   // The server only moves a monster a few times a second; keep a smoothed speed so the gait matches.
   const motion = useRef({ x: monster.position.x, z: monster.position.z, speed: 0.15 });
+  const tick = useRef(0);
   useFrame(({ clock, camera }, delta) => {
     if (group.current) group.current.position.y = Math.sin(clock.elapsedTime * 2.2 + monster.position.x) * 0.06;
     if (health.current) health.current.quaternion.copy(camera.quaternion);
     const moved = Math.hypot(monster.position.x - motion.current.x, monster.position.z - motion.current.z);
     motion.current.x = monster.position.x;
     motion.current.z = monster.position.z;
+    // Distant beasts step their skeleton every third frame. Driving dozens of full walk cycles per
+    // frame is real CPU work while flying over the hunting grounds, and at this distance the gait is
+    // a few pixels wide — the saving costs nothing visible.
+    tick.current++;
+    const farAway = Math.hypot(camera.position.x - monster.position.x, camera.position.z - monster.position.z) > 70;
+    if (farAway && tick.current % 3 !== 0) return;
     const wanted = moved > 0.004 ? 1 : 0.15;
     motion.current.speed += (wanted - motion.current.speed) * Math.min(1, delta * 4);
     const traits = creatureKindTraits(monster.kind);

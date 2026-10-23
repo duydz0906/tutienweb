@@ -257,7 +257,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .quest-status-circle { display: grid; place-items: center; border: 1px solid var(--jade); border-radius: 50%; height: 17px; width: 17px; font-size: 11px; }
 .trial-card { border-color: rgba(229,107,144,.39); }
 .trial-card-head { display: flex; align-items: center; gap: 8px; color: #ffabbc; font-size: 11px; font-weight: 850; letter-spacing: .09em; }
-.trial-wave { display: flex; justify-content: space-between; margin: 17px 0 12px; color: var(--muted); font-size: 11px; }.trial-wave strong { color: #f8bfd0; }
+.trial-wave { display: flex; justify-content: space-between; margin: 17px 0 12px; color: var(--muted); font-size: 11px; }.trial-wave strong { color: #f8bfd0; }.trial-volley { color: #ffb3c4; font-weight: 600; }
 .trial-pips { display: flex; gap: 4px; }.trial-pips span { flex: 1; height: 6px; background: #56526a; border-radius: 3px; }.trial-pips .done { background: #a8d6b3; }.trial-pips .current { background: #fd758e; box-shadow: 0 0 9px #fd758e; }
 .trial-card p { margin: 13px 0 0; color: #f9bec8; font-size: 10px; line-height: 1.7; }
 /* Lower HUD: chat and the skill bar */

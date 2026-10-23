@@ -56,6 +56,20 @@ export const SPIRIT_LAKE = { position: { x: -10, y: 0, z: -24 }, radius: 7.2, bo
 export const REBIRTH_BONUS = 0.5;
 export const ASCENDANT_BONUS = 0.35;
 /**
+ * A reborn cultivator walks the same road twice, so the road is half as long: every breakthrough
+ * (a minor stage, a tribulation, the whole climb back to Tiên Đế) costs `REBIRTH_COST_FACTOR` of the
+ * tu vi it cost before the first rebirth. The discount does not compound — the second, third and
+ * tenth rebirth all cost the same half — because a compounding fraction would turn a prestige loop
+ * into a free climb after a handful of cycles.
+ *
+ * One shared function drives the server's charge, the server's "do you have enough?" check and the
+ * HUD's progress bar, so the number the player sees can never disagree with the number taken.
+ */
+export const REBIRTH_COST_FACTOR = 0.5;
+export function cultivationCost(base: number, rebirths = 0): number {
+  return Math.max(1, Math.round(base * (rebirths > 0 ? REBIRTH_COST_FACTOR : 1)));
+}
+/**
  * The four orthodox sects of Linh Giới (Thượng Giới). They are the "tông môn chính phái khác cảnh
  * giới cao hơn" the higher realm needed: each has its own walled courtyard, main hall, side halls
  * and a tĩnh tọa terrace where a cultivator can sit and drink in the denser qi of the upper world.
@@ -640,7 +654,18 @@ export type WorldDrop = { id: string; itemId: string; scene: WorldZone; position
 export type FormationState = { id: string; ownerId: string; scene: WorldZone; position: Vector3; radius: number; expiresAt: number };
 export type WorldSnapshot = { scene: GameScene; players: PublicPlayer[]; boss: BossState | null; monsters: MonsterState[]; herbs: HerbState[];
   drops: WorldDrop[]; formations: FormationState[]; at: number };
-export type TribulationState = { active: boolean; wave: number; phase: 'waiting' | 'warning' | 'strike'; target: Vector3 | null; nextAt: number; hits: number; guarding: boolean; pillUsed: boolean };
+/**
+ * Độ Kiếp is a volley now, not a single bolt: `targets` holds every strike point of the current
+ * wave, all landing on the same beat. The client draws one red circle per entry — which is also the
+ * server's hit test — so "many thiên lôi at once" is a real rule and not only a visual.
+ */
+export type TribulationState = { active: boolean; wave: number; phase: 'waiting' | 'warning' | 'strike'; targets: Vector3[]; nextAt: number; hits: number; guarding: boolean; pillUsed: boolean };
+/** Every strike covers this radius; the warning circle on screen is drawn from the same number. */
+export const TRIBULATION_STRIKE_RADIUS = 2.55;
+/** Three bolts for the early waves, four in the middle, five at the end (9 waves total). */
+export function tribulationBolts(wave: number): number {
+  return 3 + Math.min(2, Math.floor(Math.max(0, wave) / 3));
+}
 export type CombatEvent = {
   type: 'cast' | 'swing' | 'hit' | 'monster-hit' | 'monster-attack' | 'boss-hit' | 'lightning' | 'heal';
   skillId?: string; sourceId?: string; targetId?: string; position: Vector3; origin?: Vector3;

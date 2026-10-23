@@ -5,6 +5,7 @@ import {
   SANCTUM_EXIT, HABITATS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PATH_LABEL, PORTALS, PUBLIC_ZONES, REALMS, RECIPES, SHOP_STOCK, SKILLS,
   TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_RADIUS, DEV_TELEPORTS, HOTBAR_SLOTS, SLOT_LABEL, FLIGHT_SPEED, WALK_SPEED, canRideMount,
   expForStage, flightItemOf, isSafeScene, normalizeHotbar, resolveMove, skillRealm, skillsForPath, isWorldZone,
+  TRIBULATION_STRIKE_RADIUS, tribulationBolts,
   type ActionResult, type BossState, type CharacterState, type ChatMessage, type DailyQuestId,
   type CombatEvent, type FormationState, type GameScene, type MonsterState, type MotionUpdate, type OwnCharacter, type Path, type PublicPlayer,
   type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot, type WorldZone,
@@ -237,7 +238,8 @@ export class World {
       reincarnate(s.character);
       await this.sync(s);
       this.sendSnapshots();
-      return 'Tái sinh thành công! Giữ nhà, kho, trang bị và Linh Căn; +50% hấp thụ vĩnh viễn. Cổng Thượng Giới đã mở.';
+      return 'Tái sinh thành công! Giữ nhà, kho, trang bị và Linh Căn; +50% hấp thụ vĩnh viễn. '
+        + 'Từ nay mỗi lần đột phá chỉ cần một nửa tu vi, và Cổng Thượng Giới đã mở trong mật thất.';
     }));
     socket.on('cast', action(async (payload: unknown) => this.cast(s, payload)));
     socket.on('basic-attack', action(async (payload: unknown) => this.basicAttack(s, payload)));
@@ -964,7 +966,7 @@ export class World {
 
   private async beginTrial(s: LivePlayer, payload: unknown): Promise<string> {
     const c = s.character;
-    const cost = breakthroughCost(c.realm, c.minorStage);
+    const cost = breakthroughCost(c.realm, c.minorStage, c.rebirths);
     if (!cost) throw new Error(c.realm >= MAX_REALM ? 'Bạn đã đạt Tiên Đế Đỉnh Phong.' : 'Cần đạt tầng 9 trước khi đột phá Đại cảnh giới.');
     if (!isWorldZone(c.scene) || s.trial || c.hp <= 0) throw new Error('Hãy ra ngoài để độ kiếp.');
     if (c.cultivation < cost) throw new Error(`Cần ${cost.toLocaleString('vi-VN')} tu vi để đột phá ${REALMS[c.realm + 1]}.`);
@@ -978,7 +980,7 @@ export class World {
     s.guardUntil = 0;
     s.trial = {
       returnPosition: { ...c.position }, returnScene: c.scene,
-      state: { active: true, wave: 0, phase: 'waiting', target: null, nextAt: Date.now() + 1100, hits: 0, guarding: false, pillUsed: usePill },
+      state: { active: true, wave: 0, phase: 'waiting', targets: [], nextAt: Date.now() + 1100, hits: 0, guarding: false, pillUsed: usePill },
     };
     c.scene = 'tribulation';
     c.position = { x: 0, y: 0, z: 0 };
@@ -986,7 +988,7 @@ export class World {
     await this.sync(s);
     s.socket.emit('tribulation', s.trial.state);
     this.sendSnapshots();
-    return `Lôi kiếp đã bắt đầu! Né chín vùng sấm đỏ; tỉ lệ thành công sau khi sống sót: ${Math.min(LEVEL_CONFIG.tribulation.maxSuccessPercent, LEVEL_CONFIG.tribulation.baseSuccessPercent + (usePill ? LEVEL_CONFIG.tribulation.pillBonusPercent : 0))}%.`;
+    return `Lôi kiếp đã bắt đầu! Mỗi đợt thiên lôi giáng nhiều đạo cùng lúc — né hết các vùng sấm đỏ; tỉ lệ thành công sau khi sống sót: ${Math.min(LEVEL_CONFIG.tribulation.maxSuccessPercent, LEVEL_CONFIG.tribulation.baseSuccessPercent + (usePill ? LEVEL_CONFIG.tribulation.pillBonusPercent : 0))}%.`;
   }
 
   private cancelTrial(s: LivePlayer): void {
@@ -998,6 +1000,31 @@ export class World {
     s.trial = null;
   }
 
+  /**
+   * One wave of thiên lôi: several bolts, all landing on the same beat.
+   *
+   * The first bolt falls exactly where the player stands (they *must* move), the rest ring them at a
+   * comfortable distance — far enough that stepping out of the first circle never drops them straight
+   * into another, close enough that the whole arena reads as a storm. Every bolt is a real hit test
+   * and a real red circle on the client, so the volley is one rule on both sides.
+   */
+  private stormTargets(origin: Vector3, wave: number): Vector3[] {
+    const count = tribulationBolts(wave);
+    const spin = randomInt(0, 360) * Math.PI / 180;
+    const targets: Vector3[] = [{ x: origin.x, y: 0, z: origin.z }];
+    for (let i = 1; i < count; i++) {
+      const angle = spin + (i / (count - 1)) * Math.PI * 2;
+      const distance = 7.5 + randomInt(0, 26) / 10;
+      const x = origin.x + Math.sin(angle) * distance;
+      const z = origin.z + Math.cos(angle) * distance;
+      // The trial ring is 19 m across; keep every bolt inside it.
+      const reach = Math.hypot(x, z);
+      const scale = reach > 16 ? 16 / reach : 1;
+      targets.push({ x: x * scale, y: 0, z: z * scale });
+    }
+    return targets;
+  }
+
   private advanceTrial(s: LivePlayer, now: number): void {
     const trial = s.trial;
     if (!trial || now < trial.state.nextAt) return;
@@ -1005,25 +1032,29 @@ export class World {
     if (state.guarding && s.guardUntil <= now) state.guarding = false;
     if (state.phase === 'waiting') {
       state.phase = 'warning';
-      state.target = { ...s.character.position };
+      state.targets = this.stormTargets(s.character.position, state.wave);
       state.nextAt = now + 1650;
     } else if (state.phase === 'warning') {
       state.phase = 'strike';
       state.nextAt = now + 500;
-      if (state.target && distanceXZ(s.character.position, state.target) < 2.55) {
-        const protectedByArtifact = s.guardUntil > now;
-        if (protectedByArtifact) {
-          s.guardUntil = 0;
-          state.guarding = false;
-          s.socket.emit('notice', 'Pháp Bảo Bản Mệnh đã chắn một đạo thiên lôi!');
-        } else {
-          state.hits++;
-          if (!this.god(s)) s.character.hp = Math.max(0, s.character.hp - 24 - s.character.realm * 6);
-        }
-        this.combat({ type: 'lightning', targetId: s.character.id, position: state.target,
-          damage: protectedByArtifact || this.god(s) ? 0 : 24 + s.character.realm * 6, at: now }, s.socket);
+      const damage = 24 + s.character.realm * 6;
+      const caught = state.targets.find((target) =>
+        distanceXZ(s.character.position, target) < TRIBULATION_STRIKE_RADIUS);
+      const protectedByArtifact = Boolean(caught) && s.guardUntil > now;
+      if (protectedByArtifact) {
+        s.guardUntil = 0;
+        state.guarding = false;
+        s.socket.emit('notice', 'Pháp Bảo Bản Mệnh đã chắn cả đợt thiên lôi!');
+      } else if (caught) {
+        state.hits++;
+        if (!this.god(s)) s.character.hp = Math.max(0, s.character.hp - damage);
       } else {
-        s.socket.emit('notice', 'Né được một đạo thiên lôi!');
+        s.socket.emit('notice', `Né được cả ${state.targets.length} đạo thiên lôi!`);
+      }
+      // Every bolt gets its own visual, so a five-bolt wave really draws five strikes.
+      for (const target of state.targets) {
+        this.combat({ type: 'lightning', targetId: s.character.id, position: target,
+          damage: caught === target && !protectedByArtifact && !this.god(s) ? damage : 0, at: now }, s.socket);
       }
       if (s.character.hp <= 0 && !this.god(s)) {
         this.finishTrial(s, false);
@@ -1033,7 +1064,7 @@ export class World {
       state.wave++;
       if (state.wave >= 9) { this.finishTrial(s, true); return; }
       state.phase = 'waiting';
-      state.target = null;
+      state.targets = [];
       state.nextAt = now + 650;
     }
     s.socket.emit('tribulation', { ...state });
@@ -1045,7 +1076,7 @@ export class World {
     if (!trial) return;
     const c = s.character;
     this.cancelTrial(s);
-    const cost = breakthroughCost(c.realm, c.minorStage) ?? 0;
+    const cost = breakthroughCost(c.realm, c.minorStage, c.rebirths) ?? 0;
     const chance = Math.min(LEVEL_CONFIG.tribulation.maxSuccessPercent,
       LEVEL_CONFIG.tribulation.baseSuccessPercent + (trial.state.pillUsed ? LEVEL_CONFIG.tribulation.pillBonusPercent : 0));
     const passed = success && randomInt(100) < chance;
@@ -1058,7 +1089,7 @@ export class World {
       s.socket.emit('notice', success ? `Vượt qua lôi kiếp nhưng đạo cơ không thành (${chance}% cơ hội). Hãy dưỡng thương và thử lại.` :
         'Độ kiếp thất bại. Tổn thất một phần tu vi; hãy dưỡng thương và thử lại.');
     }
-    s.socket.emit('tribulation', { ...trial.state, active: false, target: null });
+    s.socket.emit('tribulation', { ...trial.state, active: false, targets: [] });
     s.socket.emit('character', own(s));
     void this.sync(s).catch((error) => console.error('[world] Trial save failed:', error));
     this.sendSnapshots();

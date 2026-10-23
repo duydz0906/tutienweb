@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APPEARANCE, type ActionResult, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
+import { DEFAULT_APPEARANCE, tribulationBolts, type ActionResult, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
 import { MemoryStore } from '../db/store.js';
@@ -125,6 +125,13 @@ describe('authoritative multiplayer world', () => {
       });
       expect(thunder.hits).toBe(0); // server-consumed artifact protected the first strike
       expect(thunder.guarding).toBe(false);
+      // Thiên lôi now falls as a volley: several strike points, all inside the 19 m trial ring.
+      expect(thunder.targets.length).toBe(tribulationBolts(thunder.wave));
+      expect(thunder.targets.length).toBeGreaterThanOrEqual(3);
+      for (const target of thunder.targets) expect(Math.hypot(target.x, target.z)).toBeLessThanOrEqual(16.01);
+      // Distinct points, so "three bolts" is not three circles drawn on top of each other.
+      const unique = new Set(thunder.targets.map((target) => `${target.x.toFixed(2)}|${target.z.toFixed(2)}`));
+      expect(unique.size).toBe(thunder.targets.length);
       a.disconnect();
       await sleep(130);
       expect((await store.get(first.identity.uid))?.scene).toBe('wilderness');

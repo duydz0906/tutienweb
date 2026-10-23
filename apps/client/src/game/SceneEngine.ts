@@ -120,14 +120,17 @@ export class SceneEngine {
     this.sun = new THREE.DirectionalLight('#ffebc8', 2.35);
     this.sun.position.set(-16, 28, 12);
     this.sun.castShadow = true;
-    const shadowResolution = window.matchMedia('(max-width: 720px)').matches ? 1024 : 2048;
+    // One shadow texture for everyone. A 2048² map covering the same 68 m box bought sharpness the
+    // scene never showed, at four times the fill rate of a 1024² map — and the shadow pass redraws
+    // every caster in view on every frame, so this is a per-frame cost, not a one-off.
+    const shadowResolution = 1024;
     this.sun.shadow.mapSize.set(shadowResolution, shadowResolution);
-    this.sun.shadow.camera.left = -42;
-    this.sun.shadow.camera.right = 42;
-    this.sun.shadow.camera.top = 42;
-    this.sun.shadow.camera.bottom = -42;
+    this.sun.shadow.camera.left = -34;
+    this.sun.shadow.camera.right = 34;
+    this.sun.shadow.camera.top = 34;
+    this.sun.shadow.camera.bottom = -34;
     this.sun.shadow.camera.near = 0.5;
-    this.sun.shadow.camera.far = 90;
+    this.sun.shadow.camera.far = 78;
     this.sun.shadow.bias = -0.0002;
     scene.add(this.hemisphere, this.sun, this.sun.target);
 

@@ -69,6 +69,8 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   const flight = useRef({ altitude: 0, velocity: 0 });
   /** Where and when the last touchdown happened, for the dust ring. */
   const [landing, setLanding] = useState<{ at: number; x: number; z: number } | null>(null);
+  /** Set by the frame governor when even the lowest resolution is not enough: bloom is the first thing to go. */
+  const [lowQuality, setLowQuality] = useState(false);
   const lastCinematic = useRef('');
   const inTrial = character?.scene === 'tribulation';
   const zone = character && isWorldZone(character.scene) ? character.scene : 'overworld';
@@ -171,6 +173,12 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     equipment: { robe: 'novice_robe' }, isAdmin: false, devMode: false,
   }, [character, preview]);
   const others = useMemo(() => (visibleWorld?.players ?? []).filter((player) => player.id !== character?.id), [visibleWorld?.players, character?.id]);
+  // A shared empty array and memoised slices: an inline `?? []` is a new identity every snapshot,
+  // which defeats the memo on every component that consumes it.
+  const drops = useMemo(() => visibleWorld?.drops ?? [], [visibleWorld?.drops]);
+  const formations = useMemo(() => visibleWorld?.formations ?? [], [visibleWorld?.formations]);
+  const monsters = useMemo(() => visibleWorld?.monsters ?? [], [visibleWorld?.monsters]);
+  const herbs = useMemo(() => visibleWorld?.herbs ?? [], [visibleWorld?.herbs]);
   // A stable callback: a fresh arrow every render made the avatar re-render with the HUD's 10 Hz
   // snapshot, for no benefit — it only ever reads the engine's current steering.
   const movementIntent = useCallback(() => engine.current?.movementInput() ?? 0, []);
@@ -241,12 +249,13 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       <ResidenceInterior name={character.name} level={houseLevel(character.devMode ? MAX_REALM : character.highestRealm)}
         playerPosition={serverPosition} onOpenStorage={() => onOpenPanel('home')} onExit={() => onWorldAction('home:exit')} /> :
       character?.scene === 'sanctum' ? <SanctumInterior playerPosition={serverPosition} reborn={character.rebirths > 0}
+        canRebirth={character.realm === MAX_REALM && character.minorStage === 9}
         onOpenRebirth={() => onOpenPanel('rebirth')} onAscend={() => onWorldAction('sanctum:ascend')}
         onExit={() => onWorldAction('sanctum:exit')} /> : character?.scene === 'village' ? <>
       <VillageScene playerPosition={serverPosition} onInteract={onNpc} onTravel={onPortal} />
     </> : <>
       <Overworld zone={zone} playerPosition={serverPosition} boss={visibleWorld?.boss ?? null}
-        drops={visibleWorld?.drops ?? []} formations={visibleWorld?.formations ?? []} onPickup={onPickup} />
+        drops={drops} formations={formations} onPickup={onPickup} />
       {zone === 'overworld' ? <>
         <SectArchitecture playerPosition={serverPosition} />
         {character && <>
@@ -255,7 +264,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
             onEnterHome={() => onWorldAction('home:enter')} onEnterSanctum={() => onWorldAction('sanctum:enter')}
             onEnterVillage={() => onWorldAction('village:enter')} />
         </>}
-      </> : character && <Wilderness zone={zone === 'ascendant' ? 'ascendant' : 'wilderness'} monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
+      </> : character && <Wilderness zone={zone === 'ascendant' ? 'ascendant' : 'wilderness'} monsters={monsters} herbs={herbs}
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
     <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar} intent={movementIntent}
@@ -271,9 +280,59 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       <SkillVfx event={effect} />
       <CombatFeedback event={effect} facing={visibleWorld?.players.find((p) => p.id === effect.sourceId)?.rotation ?? local.rotation} />
     </group>)}
-    {!window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches &&
+    {!lowQuality && !window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches &&
       <Suspense fallback={null}><BloomEffects /></Suspense>}
+    <FrameGovernor onLowQuality={setLowQuality} />
   </>;
+}
+
+/**
+ * Frame-time governor: the one place that decides how many pixels this machine can afford.
+ *
+ * The scene is large (a 600 m map, hundreds of static meshes, a shadow pass and a bloom pass), so on
+ * a weaker GPU the frame time — not the movement maths — is what makes a long flight feel uneven.
+ * Instead of guessing a fixed resolution for everyone, this watches the real frame rate and, in
+ * order, lowers the render resolution (invisible in motion, cheap) and finally drops the bloom pass
+ * (a pure cosmetic overlay). When the machine is comfortable again it walks the resolution back up
+ * slowly, so a single lucky second never causes an oscillation.
+ *
+ * It only ever lowers quality because the *movement* must stay smooth: a blurred scene at 60 fps
+ * reads far better than a crisp one that hitches every few seconds.
+ */
+function FrameGovernor({ onLowQuality }: { onLowQuality: (low: boolean) => void }) {
+  const setDpr = useThree((state) => state.setDpr);
+  const mobile = useMemo(() => window.matchMedia('(max-width: 720px)').matches, []);
+  const ceiling = mobile ? 1.15 : 1.5;
+  const state = useRef({ frames: 0, elapsed: 0, ratio: 0, low: false, calm: 0 });
+  useFrame((_, delta) => {
+    const s = state.current;
+    s.frames += 1;
+    s.elapsed += Math.min(delta, 0.5); // a tab that was asleep must not count as a slow second
+    if (s.elapsed < 1) return;
+    const fps = s.frames / s.elapsed;
+    s.frames = 0;
+    s.elapsed = 0;
+    if (s.ratio === 0) s.ratio = Math.min(ceiling, window.devicePixelRatio || 1);
+    if (fps < 45) {
+      s.calm = 0;
+      if (s.ratio > 0.8) {
+        s.ratio = Math.max(0.8, Number((s.ratio - 0.15).toFixed(2)));
+        setDpr(s.ratio);
+      } else if (!s.low) {
+        s.low = true;
+        onLowQuality(true);
+      }
+    } else if (fps > 57) {
+      s.calm += 1;
+      if (s.calm < 4) return; // four calm seconds before spending pixels again
+      if (s.low) { s.low = false; onLowQuality(false); }
+      else if (s.ratio < ceiling) {
+        s.ratio = Math.min(ceiling, Number((s.ratio + 0.1).toFixed(2)));
+        setDpr(s.ratio);
+      }
+    }
+  });
+  return null;
 }
 
 function supportsWebGL2(): boolean {

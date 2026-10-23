@@ -451,7 +451,8 @@ export function App() {
         else if (character.scene === 'residence' && near(HOME_CHEST)) { event.preventDefault(); openPanel('home'); }
         else if (character.scene === 'residence' && near(HOME_EXIT)) { event.preventDefault(); void action('home:exit'); }
         else if (character.scene === 'sanctum' && character.rebirths > 0 && near(ASCENDANT_GATE)) { event.preventDefault(); void action('sanctum:ascend'); }
-        else if (character.scene === 'sanctum' && !character.rebirths && near(REBIRTH_ALTAR)) { event.preventDefault(); openPanel('rebirth'); }
+        // The altar only responds at Tiên Đế tầng 9 — the same rule the server enforces.
+        else if (character.scene === 'sanctum' && character.realm === MAX_REALM && character.minorStage === 9 && near(REBIRTH_ALTAR)) { event.preventDefault(); openPanel('rebirth'); }
         else if (character.scene === 'sanctum' && near(SANCTUM_EXIT)) { event.preventDefault(); void action('sanctum:exit'); }
       }
       if (event.code === 'KeyJ' && !panel && !pathModal &&

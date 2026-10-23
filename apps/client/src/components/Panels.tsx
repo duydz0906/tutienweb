@@ -181,18 +181,23 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
 
       {panel === 'rebirth' && <div className="drawer-scroll rebirth-panel">
         <div className="rebirth-orb"><RotateCcw size={43} /></div>
-        <span className="eyebrow">TIÊN ĐẾ TẦNG 9 · MẬT THẤT TRÊN NÚI</span><h3>Một lần tái sinh. Một thiên mệnh mới.</h3>
-        <p>Tái sinh đưa cảnh giới, EXP hiện tại và HP/MP cơ bản về Phàm Nhân. Linh Căn, đạo tu, công pháp, trang bị, kho riêng, nhà cấp cao nhất và tổng tu vi vẫn giữ nguyên.</p>
+        <span className="eyebrow">TIÊN ĐẾ TẦNG 9 · MẬT THẤT TRÊN NÚI</span>
+        <h3>{character.rebirths ? `Tái sinh lần ${character.rebirths + 1}. Đạo tâm chưa dừng lại.` : 'Một thiên mệnh mới, một vòng tu luyện mới.'}</h3>
+        <p>Tái sinh đưa cảnh giới, EXP hiện tại và HP/MP cơ bản về Phàm Nhân. Linh Căn, đạo tu, công pháp, trang bị, kho riêng, nhà cấp nhất và tổng tu vi vẫn giữ nguyên.</p>
         <div className="housing-stats"><span><Sparkles size={17} /> Hấp thụ vĩnh viễn <b>+50%</b></span>
+          <span><Zap size={17} /> Đột phá sau tái sinh <b>−50% tu vi</b></span>
           <span><Gem size={17} /> Thượng Giới <b>+35% linh khí</b></span></div>
-        <p>Sau khi tái sinh, cổng Thượng Giới trong mật thất mở ra: quái cấp cao, EXP lớn hơn và tỉ lệ pháp bảo hiếm tăng mạnh. Chỉ tái sinh <b>một lần</b> trên mỗi nhân vật.</p>
-        {character.rebirths ? <div className="housing-hint">Bạn đã tái sinh. Hãy đến Cổng Thượng Giới ở phía đông mật thất.</div> : <>
-          <label className="rebirth-confirm"><input type="checkbox" checked={reincarnationConfirmed} onChange={(event) => setReincarnationConfirmed(event.target.checked)} />
-            Tôi hiểu cảnh giới, EXP và HP/MP sẽ bắt đầu lại từ Phàm Nhân.</label>
-          <button className="btn btn-gold btn-full" disabled={!connected || !altarNear || character.realm !== MAX_REALM || character.minorStage !== 9 || !reincarnationConfirmed}
-            onClick={() => { onAction('rebirth:choose'); setReincarnationConfirmed(false); }}>Lựa chọn tái sinh <ArrowRight size={16} /></button>
-          {!altarNear && <div className="housing-hint">Đứng trước Tái Sinh Đài trong mật thất để thực hiện.</div>}
-        </>}
+        <p>Tái sinh được lặp lại: cứ mỗi lần lên lại <b>Tiên Đế tầng 9</b> là Tái Sinh Đài mở. Mỗi lần lên tầng và đột phá đại cảnh giới chỉ cần <b>một nửa tu vi</b> so với lần đầu (không cộng dồn). Cổng Thượng Giới trong mật thất mở ngay sau lần tái sinh đầu tiên.</p>
+        {character.realm !== MAX_REALM || character.minorStage !== 9
+          ? <div className="housing-hint">Tái Sinh Đài chỉ hiện khi đang ở <b>Tiên Đế tầng 9</b>. Hiện tại: {REALMS[character.realm]} · tầng {character.minorStage}.</div>
+          : <>
+            <label className="rebirth-confirm"><input type="checkbox" checked={reincarnationConfirmed} onChange={(event) => setReincarnationConfirmed(event.target.checked)} />
+              Tôi hiểu cảnh giới, EXP và HP/MP sẽ bắt đầu lại từ Phàm Nhân.</label>
+            <button className="btn btn-gold btn-full" disabled={!connected || !altarNear || !reincarnationConfirmed}
+              onClick={() => { onAction('rebirth:choose'); setReincarnationConfirmed(false); }}>Lựa chọn tái sinh <ArrowRight size={16} /></button>
+            {!altarNear && <div className="housing-hint">Đứng trước Tái Sinh Đài trong mật thất để thực hiện.</div>}
+          </>}
+        {character.rebirths > 0 && <div className="housing-hint">Cổng Thượng Giới ở phía đông mật thất vẫn mở.</div>}
       </div>}
 
       {panel === 'inventory' && <div className="drawer-scroll">

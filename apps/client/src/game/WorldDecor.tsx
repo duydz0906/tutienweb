@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SectLandscape } from './MountainLandscape';
@@ -7,7 +7,7 @@ import { OuterLands, SpiritWells } from './OuterLands';
 import { buildDragonBoss } from './sculpt/beasts';
 import { clonePrototype } from './sculpt/cache';
 import { animateCreature } from './creatures';
-import { ITEMS, SECT_BUILDINGS, SECT_RADIUS, SKILLS, WORLD_RADIUS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
+import { ITEMS, SECT_BUILDINGS, SECT_RADIUS, SKILLS, SPIRIT_LAKE, TRIBULATION_STRIKE_RADIUS, WORLD_RADIUS, type BossState, type CombatEvent, type FormationState, type TribulationState, type Vector3, type WorldDrop, type WorldZone } from '@van-thuong/shared';
 
 const JADE = '#82cdbb';
 const GOLD = '#eac58b';
@@ -176,10 +176,15 @@ function SpiritParticles({ storm = false }: { storm?: boolean }) {
   return <points ref={group} geometry={geometry} material={material} />;
 }
 
-export function Overworld({ zone, playerPosition, boss, drops, formations, onPickup }: {
-  zone: WorldZone; playerPosition: Vector3; boss: BossState | null; drops: WorldDrop[];
-  formations: FormationState[]; onPickup: (id: string) => void;
-}) {
+/**
+ * Everything on a map that never changes: sky, horizon, ground, roads, stones, trees, lanterns.
+ *
+ * It is split out and memoised because the world snapshot re-renders the scene ten times a second;
+ * re-describing several hundred static meshes at that rate costs a frame each time, which is exactly
+ * the periodic hitch that showed up while flying over the scenery. The only live input is `nearLake`
+ * (a boolean), so the whole subtree is skipped unless the player actually reaches the lake.
+ */
+const ZoneScenery = memo(function ZoneScenery({ zone, nearLake }: { zone: WorldZone; nearLake: boolean }) {
   const sect = zone === 'overworld';
   return <>
     <SkyAtmosphere zone={zone} />
@@ -189,7 +194,7 @@ export function Overworld({ zone, playerPosition, boss, drops, formations, onPic
     </mesh>
     <OuterLands zone={zone} />
     <SpiritWells spots={[[-58, 122], [64, 148], [-96, -46], [108, 96]]} />
-    {sect ? <SectLandscape playerPosition={playerPosition} /> : <>
+    {sect ? <SectLandscape nearLake={nearLake} /> : <>
       <mesh castShadow receiveShadow position={[0, -1.45, 0]}>
         <cylinderGeometry args={[WORLD_RADIUS, WORLD_RADIUS - 6, 3.1, 96]} /><meshStandardMaterial color="#434b50" roughness={1} flatShading />
       </mesh>
@@ -237,10 +242,23 @@ export function Overworld({ zone, playerPosition, boss, drops, formations, onPic
         <CherryTree key={i} x={x} z={z} scale={scale} />)}
       {[-1, 1].flatMap((side) => [8, 12, 22].map((z) => <Lantern key={`${side}-${z}`} x={side * 5.6} z={z} />))}
     </>}
+    <SpiritParticles storm={!sect} />
+  </>;
+});
+
+export function Overworld({ zone, playerPosition, boss, drops, formations, onPickup }: {
+  zone: WorldZone; playerPosition: Vector3; boss: BossState | null; drops: WorldDrop[];
+  formations: FormationState[]; onPickup: (id: string) => void;
+}) {
+  const sect = zone === 'overworld';
+  const nearLake = sect && Math.hypot(playerPosition.x - SPIRIT_LAKE.position.x,
+    playerPosition.z - SPIRIT_LAKE.position.z) <= SPIRIT_LAKE.radius + 8;
+  return <>
+    <ZoneScenery zone={zone} nearLake={nearLake} />
     {!sect && boss && <BossModel boss={boss} />}
     {formations.map((formation) => <FormationPillars key={formation.id} formation={formation} />)}
     {drops.map((drop) => <GroundDrop key={drop.id} drop={drop} onPickup={onPickup} />)}
-    <SpiritParticles storm={!sect} />
+
   </>;
 }
 
@@ -314,21 +332,29 @@ export function TrialArena({ trial, playerPosition }: { trial: TribulationState 
       <mesh position={[0, 1.35, 0]}><octahedronGeometry args={[0.27, 0]} /><meshStandardMaterial color="#c4faff" emissive="#9becff" emissiveIntensity={2} /></mesh>
       <pointLight color="#9ae8ff" intensity={5} distance={6} />
     </group>}
-    {trial?.active && trial.target && <group position={[trial.target.x, 0, trial.target.z]}>
+    {/*
+      Every bolt of the wave gets its own warning circle and its own strike — the server sends one
+      strike point per bolt and hit-tests each of them, so what is drawn here is exactly what can
+      hurt the player. The flash light stays a single light for the whole volley: adding one light
+      per bolt would change the scene's light count every wave and force every material to recompile
+      mid-tribulation, which is a stall, not a spectacle.
+    */}
+    {trial?.active && trial.targets.map((target, index) => <group key={`${trial.wave}-${index}`} position={[target.x, 0, target.z]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
-        <circleGeometry args={[2.45, 40]} />
+        <circleGeometry args={[TRIBULATION_STRIKE_RADIUS - 0.05, 40]} />
         <meshBasicMaterial color="#ff4a66" transparent opacity={trial.phase === 'warning' ? 0.34 : 0.2} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.09, 0]}>
-        <ringGeometry args={[2.38, 2.51, 48]} />
+        <ringGeometry args={[TRIBULATION_STRIKE_RADIUS - 0.12, TRIBULATION_STRIKE_RADIUS + 0.01, 48]} />
         <meshBasicMaterial color="#ff6970" transparent opacity={0.95} side={THREE.DoubleSide} />
       </mesh>
       {trial.phase === 'strike' && <>
         <mesh position={[0, 11, 0]}><cylinderGeometry args={[0.25, 0.61, 22, 16]} /><meshBasicMaterial color="#f2ecff" toneMapped={false} /></mesh>
         <mesh position={[0, 11, 0]}><cylinderGeometry args={[0.7, 1.5, 22, 16]} /><meshBasicMaterial color="#a88ff9" transparent opacity={0.25} depthWrite={false} /></mesh>
-        <pointLight color="#d7c0ff" intensity={18} distance={26} position={[0, 2.5, 0]} />
       </>}
-    </group>}
+    </group>)}
+    {trial?.active && trial.phase === 'strike' && trial.targets.length > 0 &&
+      <pointLight color="#d7c0ff" intensity={18} distance={26} position={[0, 2.5, 0]} />}
     <SpiritParticles storm />
   </>;
 }

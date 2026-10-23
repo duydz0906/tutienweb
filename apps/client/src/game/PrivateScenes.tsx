@@ -127,14 +127,27 @@ function RebirthAltar({ onOpen, active }: { onOpen: () => void; active: boolean 
   </group>;
 }
 
-export function SanctumInterior({ playerPosition, reborn, onOpenRebirth, onAscend, onExit }: {
-  playerPosition: Vector3; reborn: boolean; onOpenRebirth: () => void; onAscend: () => void; onExit: () => void;
+/**
+ * `canRebirth` is Tiên Đế tầng 9 — the altar only exists in the chamber for a cultivator standing at
+ * the very top of the mountain. Anyone else still walks into the room (the Thượng Giới gate lives
+ * here), but they find a sealed plinth where the altar would be.
+ */
+export function SanctumInterior({ playerPosition, reborn, canRebirth, onOpenRebirth, onAscend, onExit }: {
+  playerPosition: Vector3; reborn: boolean; canRebirth: boolean; onOpenRebirth: () => void; onAscend: () => void; onExit: () => void;
 }) {
   const near = (v: Vector3) => Math.hypot(playerPosition.x - v.x, playerPosition.z - v.z);
   return <Room dark>
     <mesh position={[0, 0.054, -2.6]} rotation={[-Math.PI / 2, 0, 0]}>
       <circleGeometry args={[6.6, 48]} /><meshStandardMaterial color="#4b435d" metalness={0.18} roughness={0.6} side={THREE.DoubleSide} /></mesh>
-    <RebirthAltar onOpen={onOpenRebirth} active={!reborn && near(REBIRTH_ALTAR.position) <= REBIRTH_ALTAR.radius} />
+    {canRebirth
+      ? <RebirthAltar onOpen={onOpenRebirth} active={near(REBIRTH_ALTAR.position) <= REBIRTH_ALTAR.radius} />
+      : <group position={[REBIRTH_ALTAR.position.x, 0, REBIRTH_ALTAR.position.z]}>
+        <mesh castShadow position={[0, 0.16, 0]}><cylinderGeometry args={[1.5, 1.66, 0.32, 16]} />
+          <meshStandardMaterial color="#4a4254" metalness={0.3} roughness={0.85} /></mesh>
+        <mesh position={[0, 0.4, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.95, 1.08, 40]} />
+          <meshBasicMaterial color="#6c6188" transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} /></mesh>
+        <BillboardLabel text="TÁI SINH ĐÀI · PHONG ẤN" position={[0, 2.1, 0]} width={4.4} color="#918d9f" />
+      </group>}
     <group position={[ASCENDANT_GATE.position.x, 0, ASCENDANT_GATE.position.z]}
       onClick={(event) => { event.stopPropagation(); onAscend(); }}
       onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
