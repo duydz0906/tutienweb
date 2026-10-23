@@ -287,16 +287,16 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
             // nine greyed ⊘ boxes (which on a phone also ate most of the bottom of the screen).
             .filter((slot): slot is { index: number; id: string } => Boolean(slot.id && Object.hasOwn(SKILLS, slot.id)))
             .map(({ index, id }) => {
-            const skill = SKILLS[id];
-            const remaining = skill && !character.devMode ? Math.max(0, Math.ceil(((cooldowns[skill.id] ?? 0) - now) / 1000)) : 0;
-            return <button key={index} className={`skill-slot ${character.realm < skillRealm(skill) || skill.path && skill.path !== character.path ? 'locked' : ''} ${skill.ultimate ? 'ultimate' : ''}`}
-              disabled={!connected || character.realm < skillRealm(skill) || Boolean(skill.path && skill.path !== character.path) || !isWorldZone(character.scene) || ((inSect || inVillage) && skill.id !== 'healing_bloom') || character.hp <= 0 || Boolean(remaining)}
-              onClick={() => onSkill(skill.id)} title={`${skill.name} — ${skill.description} (từ ${REALMS[skillRealm(skill)]}; ${skill.mana} MP)`}>
-              <kbd>{index + 1}</kbd><span className="skill-symbol" style={{ color: skill.color }}>{skill.icon}</span>{hudPrefs.skillLabels && <span className="skill-name">{skill.name}</span>}
-              {/* A cooling skill only shows its remaining seconds inside the slot. */}
-              {Boolean(remaining) && <span className="skill-cooldown">{remaining}</span>}{hudPrefs.skillLabels && <span className="skill-mana">{skill.mana} MP</span>}
-            </button>;
-          })}
+              const skill = SKILLS[id];
+              const remaining = character.devMode ? 0 : Math.max(0, Math.ceil(((cooldowns[skill.id] ?? 0) - now) / 1000));
+              return <button key={index} className={`skill-slot ${character.realm < skillRealm(skill) || skill.path && skill.path !== character.path ? 'locked' : ''} ${skill.ultimate ? 'ultimate' : ''}`}
+                disabled={!connected || character.realm < skillRealm(skill) || Boolean(skill.path && skill.path !== character.path) || !isWorldZone(character.scene) || ((inSect || inVillage) && skill.id !== 'healing_bloom') || character.hp <= 0 || Boolean(remaining)}
+                onClick={() => onSkill(skill.id)} title={`${skill.name} — ${skill.description} (từ ${REALMS[skillRealm(skill)]}; ${skill.mana} MP)`}>
+                <kbd>{index + 1}</kbd><span className="skill-symbol" style={{ color: skill.color }}>{skill.icon}</span>{hudPrefs.skillLabels && <span className="skill-name">{skill.name}</span>}
+                {/* A cooling skill only shows its remaining seconds inside the slot. */}
+                {Boolean(remaining) && <span className="skill-cooldown">{remaining}</span>}{hudPrefs.skillLabels && <span className="skill-mana">{skill.mana} MP</span>}
+              </button>;
+            })}
           <div className="hotbar-divider" />
           <button className={`utility-slot ${panel === 'inventory' ? 'selected' : ''}`} onClick={() => onPanel(panel === 'inventory' ? null : 'inventory')} title="Túi đồ (I)"><Backpack size={20} /><span>Túi đồ</span><kbd>I</kbd></button>
           <button className={`utility-slot flight-slot ${flying ? 'selected' : ''}`} disabled={!canFly} onClick={() => onAction('flight:toggle')} title={canFly ? `${mountItem?.name} · phi hành (R)` : 'Trang bị vật phẩm phi hành để bay'}>
