@@ -159,7 +159,9 @@ export class SceneEngine {
    */
   setFlightAltitude(metres: number): void {
     const next = Math.max(0, Math.min(900, metres));
-    if (Math.abs(next - this.flightAltitude) < 0.05) return;
+    // No dead zone: the altitude is already an integrated value, and rounding it to 5 cm steps
+    // quantised the whole climb — at the 0.9 m/s of a landing that was a visible tick every frame.
+    if (next === this.flightAltitude) return;
     this.flightAltitude = next;
     // Only the haze depends on height, and recomputing it here keeps the per-frame path free.
     if (this.scene.fog instanceof THREE.FogExp2) this.scene.fog.density = this.baseFogDensity / (1 + next * 0.12);
