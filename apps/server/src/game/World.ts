@@ -5,7 +5,7 @@ import {
   SANCTUM_EXIT, HABITATS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PATH_LABEL, PORTALS, PUBLIC_ZONES, REALMS, RECIPES, SHOP_STOCK, SKILLS,
   TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_RADIUS, DEV_TELEPORTS, HOTBAR_SLOTS, SLOT_LABEL, canRideMount, expForStage, flightItemOf, isSafeScene, normalizeHotbar, skillRealm, skillsForPath, isWorldZone,
   type ActionResult, type BossState, type CharacterState, type ChatMessage, type DailyQuestId,
-  type CombatEvent, type FormationState, type GameScene, type MonsterState, type OwnCharacter, type Path, type PublicPlayer,
+  type CombatEvent, type FormationState, type GameScene, type MonsterState, type MotionUpdate, type OwnCharacter, type Path, type PublicPlayer,
   type TribulationState, type Vector3, type WorldDrop, type WorldSnapshot, type WorldZone,
 } from '@van-thuong/shared';
 import type { Identity } from '../auth.js';
@@ -82,6 +82,8 @@ export class World {
   private bossAttackAt = Date.now() + 10_000;
   private lastTickAt = Date.now();
   private nextSnapshotAt = 0;
+  /** 10 Hz position reference for private rooms and trials, which send no world snapshot. */
+  private nextMotionAt = 0;
   private nextCharacterAt = 0;
   private nextPersistAt = 0;
   private nextRosterAt = 0;
@@ -1248,6 +1250,16 @@ export class World {
     for (const [id, drop] of this.drops) if (drop.expiresAt <= now) this.drops.delete(id);
     for (const [id, formation] of this.formations) if (formation.expiresAt <= now) this.formations.delete(id);
     if (now >= this.nextSnapshotAt) { this.nextSnapshotAt = now + 100; this.sendSnapshots(); }
+    // Private rooms and the tribulation arena are not part of a public snapshot, so their players
+    // would otherwise only get a position once a second — a walk that looks like a stutter.
+    if (now >= this.nextMotionAt) {
+      this.nextMotionAt = now + 100;
+      for (const s of this.players.values()) {
+        if (isWorldZone(s.character.scene)) continue;
+        s.socket.emit('motion', { scene: s.character.scene, position: { ...s.character.position },
+          rotation: s.character.rotation, at: now } satisfies MotionUpdate);
+      }
+    }
     if (now >= this.nextCharacterAt) {
       this.nextCharacterAt = now + 1000;
       for (const s of this.players.values()) {

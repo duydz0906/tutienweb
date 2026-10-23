@@ -16,6 +16,7 @@ import { SectWayfinding } from './SectWayfinding';
 import { CombatFeedback } from './CombatEffects';
 import { LandingPuff } from './LandingPuff';
 import { stepFlight } from './flight';
+import { LOCAL_DELAY_MS, clearPlayerTracks, playerTrack, recordMotion } from './interpolation';
 
 const BloomEffects = lazy(() => import('./BloomEffects'));
 
@@ -70,7 +71,28 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     avatar.current?.position.set(character.position.x, character.position.y, character.position.z);
     avatar.current?.rotation.set(0, character.rotation, 0);
     engine.current?.enterZone(character.scene, character.position);
+    // A new map invalidates every position sample: interpolating across a portal would drag the
+    // body (and everyone else's) across the old map for a couple of frames.
+    clearPlayerTracks();
+    playerTrack(character.id).reset(performance.now(), character.position.x, character.position.z);
   }, [character?.id, character?.scene]);
+
+  /**
+   * Feed the interpolation tracks the moment a packet lands. The *arrival* time matters, not the
+   * position alone: a body that stopped keeps sending the same coordinates, and only the timing
+   * tells the track that its velocity is now zero.
+   */
+  useEffect(() => {
+    if (!visibleWorld) return;
+    const at = performance.now();
+    for (const player of visibleWorld.players) recordMotion(playerTrack(player.id), at, player.position.x, player.position.z);
+  }, [visibleWorld]);
+
+  /** Off the public maps (home, sanctum, tribulation) the character itself is the only reference. */
+  useEffect(() => {
+    if (!character || visibleWorld?.players.some((player) => player.id === character.id)) return;
+    recordMotion(playerTrack(character.id), performance.now(), character.position.x, character.position.z);
+  }, [visibleWorld, character?.id, character?.position, character?.scene]);
   useEffect(() => {
     engine.current?.setPreviewView(character ? null : preview.view);
   }, [character?.id, preview.view]);
@@ -163,8 +185,15 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       setLanding({ at: performance.now(), x: avatar.current?.position.x ?? serverPosition.x,
         z: avatar.current?.position.z ?? serverPosition.z });
     }
+    // Reconcile against the interpolated path, not the newest packet. The packets arrive ten times
+    // a second, and pulling the body towards a stepped position is what made walking — and flying
+    // twice as much — visibly judder. The engine's prediction is untouched: it still starts on the
+    // frame the key is pressed, this only decides where the correction is measured against.
+    const now = performance.now();
+    const path = character ? playerTrack(character.id).at(now - LOCAL_DELAY_MS) : null;
+    const reference = path ? { x: path.x, y: serverPosition.y, z: path.z } : serverPosition;
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
-    controller.update(delta, avatar.current, serverPosition, character?.flying ? 10.5 : 6, Boolean(character));
+    controller.update(delta, avatar.current, reference, character?.flying ? 10.5 : 6, Boolean(character));
   });
 
   return <>

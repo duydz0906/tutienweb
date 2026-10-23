@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { AlertCircle, CheckCircle2, LoaderCircle, Sparkles, X } from 'lucide-react';
 import { DEFAULT_APPEARANCE, ASCENDANT_GATE, HOME_CHEST, HOME_EXIT, HOME_GATE, MAX_REALM, PORTALS, REBIRTH_ALTAR, SANCTUM_EXIT, SECRET_GATE, SKILLS, VILLAGE_GATE, isSafeScene, isWorldZone, skillRealm, type ActionResult, type ChatMessage, type CombatEvent, type DailyQuestProgress, type LeaderboardEntry,
-  type NpcId, type OwnCharacter, type Path, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
+  type MotionUpdate, type NpcId, type OwnCharacter, type Path, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { WorldScene, type PreviewOptions } from './game/WorldScene';
 import { type VisualEffect } from './game/WorldDecor';
 import { playSwordWhoosh } from './game/sound';
@@ -183,6 +183,10 @@ export function App() {
     socket.on('fatal', (text: string) => { notify(text, 'bad'); setError(text); setWorld(null); setPhase('entering'); });
     socket.on('world', (snapshot: WorldSnapshot) => { setWorld(snapshot); setError(null); setPhase((current) => current === 'entering' ? 'game' : current); });
     socket.on('character', (next: OwnCharacter) => setCharacter(next));
+    // Private rooms and trials have no world snapshot; this 10 Hz reference keeps their movement
+    // smooth instead of stepping once a second.
+    socket.on('motion', (next: MotionUpdate) => setCharacter((current) => current && current.scene === next.scene
+      ? { ...current, position: next.position, rotation: next.rotation } : current));
     socket.on('tribulation', (next: TribulationState) => setTrial(next.active ? next : null));
     socket.on('cooldowns', (next: Record<string, number>) => setCooldowns(next));
     socket.on('admin:players', (next: AdminPlayer[]) => setRoster(next));

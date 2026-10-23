@@ -17,6 +17,12 @@ export const VILLAGE_RADIUS = 152;
 export type WorldZone = 'overworld' | 'wilderness' | 'ascendant' | 'village';
 export type GameScene = WorldZone | 'residence' | 'sanctum' | 'tribulation';
 export const PUBLIC_ZONES: readonly WorldZone[] = ['overworld', 'wilderness', 'ascendant', 'village'];
+/**
+ * 10 Hz position reference for the scenes that have no public snapshot (home, sanctum, tribulation).
+ * The client interpolates these exactly like a snapshot: without them a body in a private room is
+ * only redrawn once a second and its movement looks broken, however well the renderer smooths it.
+ */
+export type MotionUpdate = { scene: GameScene; position: Vector3; rotation: number; at: number };
 export function isWorldZone(scene: GameScene): scene is WorldZone { return PUBLIC_ZONES.includes(scene as WorldZone); }
 /** No hostile casts and no monster spawns: the sect plateau and the village valley. */
 export function isSafeScene(scene: GameScene): boolean { return scene === 'overworld' || scene === 'village'; }
