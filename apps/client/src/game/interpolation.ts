@@ -17,12 +17,18 @@
  */
 export type MotionPoint = { x: number; z: number };
 
-/** A body is drawn this far behind the newest sample, so there are almost always two to interpolate. */
+/**
+ * Smallest playback delay, in milliseconds: the body is drawn this far behind the newest sample so
+ * there are almost always two to interpolate between. The real delay adapts upwards from here — see
+ * {@link MotionTrack.delayMs}.
+ */
 export const LOCAL_DELAY_MS = 90;
 /** Remote bodies can afford a longer delay: nothing the player does depends on them. */
 export const REMOTE_DELAY_MS = 130;
+/** Extra slack for other players' bodies on top of their measured packet interval. */
+export const REMOTE_EXTRA_MS = 40;
 /** Never guess further ahead than this past the newest sample, or a stop would overshoot. */
-export const MAX_EXTRAPOLATION_MS = 70;
+export const MAX_EXTRAPOLATION_MS = 100;
 /** Older than this, the newest sample is treated as the truth and the body stops dead. */
 export const STALE_MS = 340;
 /** Faster than any mount; a velocity above this is a teleport, not motion. */
@@ -32,8 +38,24 @@ export class MotionTrack {
   private times: number[] = [];
   private xs: number[] = [];
   private zs: number[] = [];
+  /** Smoothed gap between packets, in ms. The playback delay is derived from it. */
+  private interval = 100;
 
   constructor(private readonly capacity = 20) {}
+
+  /**
+   * How far behind the newest sample to draw this body.
+   *
+   * A fixed 90 ms looked fine in theory and starved in practice: the server's snapshot cadence
+   * drifts, the network adds its own jitter, and whenever a packet arrived late the playback point
+   * ran past the newest sample and had to *extrapolate* — a guess that is wrong in a straight line
+   * and visibly right at walking speed but a stutter at 10.5 m/s. Sizing the delay from the measured
+   * interval keeps two real samples around the playback point at all times, which is why flying now
+   * looks as smooth as standing still.
+   */
+  get delayMs(): number {
+    return Math.max(LOCAL_DELAY_MS, Math.min(220, Math.round(25 + this.interval * 1.4)));
+  }
 
   get size(): number { return this.times.length; }
 
@@ -51,6 +73,7 @@ export class MotionTrack {
     this.times = [time];
     this.xs = [x];
     this.zs = [z];
+    // The interval survives a reset on purpose: a teleport says nothing about the connection.
   }
 
   push(time: number, x: number, z: number): void {
@@ -63,6 +86,9 @@ export class MotionTrack {
       this.zs[count - 1] = z;
       return;
     }
+    const gap = time - newest;
+    // Long pauses (a stalled tab, a zone change) are not a cadence; only plausible gaps shape it.
+    if (gap >= 20 && gap <= 500) this.interval = this.interval * 0.82 + gap * 0.18;
     this.times.push(time); this.xs.push(x); this.zs.push(z);
     if (this.times.length > this.capacity) {
       this.times.shift(); this.xs.shift(); this.zs.shift();
@@ -206,11 +232,13 @@ export class LocalReconciler {
 
   /** Record where the body is, then return how far to move it towards the server. */
   step(now: number, body: MotionPoint, dt: number, speed: number, reference: MotionPoint | null,
-    idle: boolean): ReconcileFix {
+    idle: boolean, delayMs = LOCAL_DELAY_MS): ReconcileFix {
     if (!this.history.size) this.reset(now, body.x, body.z);
     // Only meaningful once the history reaches back a full delay; before that the "past" sample
-    // would just be the present and the difference would be latency rather than disagreement.
-    const own = now - this.since >= LOCAL_DELAY_MS ? this.history.at(now - LOCAL_DELAY_MS) : null;
+    // would just be the present and the difference would be latency rather than disagreement. The
+    // delay must be the one the reference was sampled at, or the two instants would not line up and
+    // the difference would be speed × delay instead of a real disagreement.
+    const own = now - this.since >= delayMs ? this.history.at(now - delayMs) : null;
     this.history.push(now, body.x, body.z);
     if (!own || !reference) return { x: 0, z: 0, snap: false, engaged: false };
     const fix = reconcileStep(own, reference, dt, speed, idle);

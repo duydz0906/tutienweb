@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { ITEMS, SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type MoveObstacle, type NpcId, type OwnCharacter,
+import { FLIGHT_SPEED, ITEMS, SKILLS, WALK_SPEED, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type MoveObstacle, type NpcId, type OwnCharacter,
   type PublicPlayer, type SpiritRoot, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { AdminFireTrail, Avatar } from './Avatar';
 import { SceneEngine } from './SceneEngine';
@@ -212,17 +212,24 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     // twice as much — visibly judder. The engine's prediction is untouched: it still starts on the
     // frame the key is pressed, this only decides where the correction is measured against.
     const now = performance.now();
-    const path = character ? playerTrack(character.id).at(now - LOCAL_DELAY_MS) : null;
+    // The delay adapts to the measured packet interval, so the playback point always sits between
+    // two real samples instead of guessing past the newest one.
+    const delay = character ? playerTrack(character.id).delayMs : LOCAL_DELAY_MS;
+    const path = character ? playerTrack(character.id).at(now - delay) : null;
     const reference = path ? { x: path.x, y: serverPosition.y, z: path.z } : serverPosition;
     // Predict with the server's own movement rule and the same obstacles it collides with, so the
     // body stops at a wall here exactly where the server does — no correction, no slide.
     const moveContext: MoveContext | undefined = character ? {
       scene: character.scene,
-      obstacles: obstaclesFor(character.scene, visibleWorld, character.id),
-      collide: character.scene !== 'tribulation',
+      // In the air the rider is above walls, monsters and heads: the server stops colliding there, so
+      // the client must stop too — otherwise it would brake for an obstacle the server ignores, or
+      // miss one it does not, and every such disagreement is a visible hitch.
+      obstacles: character.flying ? [] : obstaclesFor(character.scene, visibleWorld, character.id),
+      collide: character.scene !== 'tribulation' && !character.flying,
     } : undefined;
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
-    controller.update(delta, avatar.current, reference, character?.flying ? 10.5 : 6, Boolean(character), moveContext);
+    controller.update(delta, avatar.current, reference, character?.flying ? FLIGHT_SPEED : WALK_SPEED,
+      Boolean(character), moveContext, delay);
   });
 
   return <>

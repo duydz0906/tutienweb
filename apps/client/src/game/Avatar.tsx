@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ELEMENT_COLOR, ITEMS, normalizeAppearance, type PublicPlayer } from '@van-thuong/shared';
 import { RealmAura } from './RealmAura';
-import { REMOTE_DELAY_MS, playerTrack } from './interpolation';
+import { REMOTE_EXTRA_MS, playerTrack } from './interpolation';
 import { RIG, buildCultivator, type CultivatorLook } from './sculpt/cultivator';
 import { buildMountModel, buildPetModel } from './sculpt/beasts';
 import { humanLookKey, instantiateHuman, rigOf, type HumanRig } from './human/character';
@@ -236,7 +236,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
       // and it is seeded here in case this avatar exists before the first snapshot that contains them.
       const track = playerTrack(player.id);
       if (!track.size) track.reset(performance.now(), player.position.x, player.position.z);
-      const path = track.at(performance.now() - REMOTE_DELAY_MS);
+      const path = track.at(performance.now() - track.delayMs - REMOTE_EXTRA_MS);
       outer.position.x = path?.x ?? player.position.x;
       outer.position.z = path?.z ?? player.position.z;
       outer.position.y = player.position.y;

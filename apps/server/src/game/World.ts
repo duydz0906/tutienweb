@@ -23,10 +23,14 @@ import { activateDevMode, equipDevLoadout, hasDevPower, ownCharacter, revokeDevM
 import { advanceDaily, claimDaily, ensureDaily, requireNpc } from './sect.js';
 
 type Trial = { state: TribulationState; returnPosition: Vector3; returnScene: WorldZone };
+/** Snapshot cadence. A fixed grid so the client always knows what to expect (see the tick). */
+const SNAPSHOT_MS = 100;
 type LivePlayer = {
   identity: Identity; character: CharacterState; socket: Socket;
   input: { x: number; z: number }; lastInputAt: number;
   cooldowns: Map<string, number>; lastChatAt: number; lastAdminAt: number;
+  /** When this body was last integrated; movement is integrated over the real elapsed time. */
+  movedAt: number;
   casting: boolean; shieldUntil: number;
   guardUntil: number; trial: Trial | null; respawnAt: number; flightDrainAt: number;
 };
@@ -81,10 +85,11 @@ export class World {
   };
   private readonly contributors = new Set<string>();
   private bossAttackAt = Date.now() + 10_000;
-  private lastTickAt = Date.now();
-  private nextSnapshotAt = 0;
+  // Seeded from the clock: the schedule is a fixed grid, and a zero seed would make the tick walk
+  // decades of missed slots before it sent its first packet.
+  private nextSnapshotAt = Date.now() + SNAPSHOT_MS;
   /** 10 Hz position reference for private rooms and trials, which send no world snapshot. */
-  private nextMotionAt = 0;
+  private nextMotionAt = Date.now() + SNAPSHOT_MS;
   private nextCharacterAt = 0;
   private nextPersistAt = 0;
   private nextRosterAt = 0;
@@ -169,7 +174,7 @@ export class World {
     if (ensureDaily(character) || legacyWorld || interruptedTrial || invalidScene) await this.store.save(character);
     const retainedCooldowns = await this.cache.cooldowns(character.id);
     const s: LivePlayer = {
-      identity: effectiveIdentity, character, socket, input: { x: 0, z: 0 }, lastInputAt: 0,
+      identity: effectiveIdentity, character, socket, input: { x: 0, z: 0 }, lastInputAt: 0, movedAt: Date.now(),
       cooldowns: new Map(Object.entries(retainedCooldowns)), lastChatAt: 0, lastAdminAt: 0,
       casting: false, shieldUntil: 0,
       guardUntil: 0, trial: null, respawnAt: 0, flightDrainAt: 0,
@@ -1147,8 +1152,6 @@ export class World {
 
   private tick(): void {
     const now = Date.now();
-    const dt = Math.min(0.1, Math.max(0, (now - this.lastTickAt) / 1000));
-    this.lastTickAt = now;
     for (const s of this.players.values()) {
       if (s.respawnAt && now >= s.respawnAt) {
         s.respawnAt = 0;
@@ -1163,6 +1166,12 @@ export class World {
         s.socket.emit('notice', 'Thần hồn quy vị. Bạn đã hồi sinh tại Tông Môn.' );
       }
       if (now - s.lastInputAt <= 400 && (s.character.hp > 0 || this.god(s))) {
+        // Integrate over the time since this body last moved, not over the tick. A tick that ran late
+        // used to be truncated at 0.1 s, so the server quietly travelled less than the client's own
+        // prediction and the difference had to be corrected later — a hitch. Real elapsed time, with
+        // a generous sanity clamp for a stalled event loop, keeps both sides on the same clock.
+        const elapsed = Math.min(0.25, Math.max(0, (now - s.movedAt) / 1000));
+        s.movedAt = now;
         // Flight is a real mount speed; walking pace stays identical for admins and players.
         const speed = s.character.flying ? FLIGHT_SPEED : WALK_SPEED;
         const zone = s.character.scene;
@@ -1177,12 +1186,16 @@ export class World {
         // One shared movement rule (`resolveMove`): clamp to the map, sweep the sect walls, refuse to
         // walk into another body. The client predicts with the very same function, which is what keeps
         // its body from ever needing a correction in the first place.
+        // In the air the rider is above walls, monsters and heads, so only the map boundary counts.
+        // Colliding with something the client cannot see moving (a monster that walked during the
+        // last packet) is exactly what a flying body would stop dead against for no visible reason.
         s.character.position = resolveMove(previous, {
-          x: previous.x + s.input.x * speed * dt, y: 0, z: previous.z + s.input.z * speed * dt,
-        }, { scene: zone, obstacles, collide: !s.trial, radius: s.trial ? TRIAL_RADIUS : undefined });
+          x: previous.x + s.input.x * speed * elapsed, y: 0, z: previous.z + s.input.z * speed * elapsed,
+        }, { scene: zone, obstacles: s.character.flying ? [] : obstacles,
+          collide: !s.trial && !s.character.flying, radius: s.trial ? TRIAL_RADIUS : undefined });
         if (zone === 'overworld' && isAtSpiritLake(zone, previous) !== isAtSpiritLake(zone, s.character.position))
           bankCultivation(s.character, now, { scene: zone, position: previous });
-      }
+      } else s.movedAt = now;
       // Sky-riding spends chân khí. Running dry lands the rider instead of leaving them stranded.
       if (s.character.flying) {
         // Losing the mount (or the sky) during a flight grounds the rider immediately.
@@ -1244,11 +1257,18 @@ export class World {
     }
     for (const [id, drop] of this.drops) if (drop.expiresAt <= now) this.drops.delete(id);
     for (const [id, formation] of this.formations) if (formation.expiresAt <= now) this.formations.delete(id);
-    if (now >= this.nextSnapshotAt) { this.nextSnapshotAt = now + 100; this.sendSnapshots(); }
+    // The schedule is a fixed grid, not "now + 100". Resetting from the moment the packet was sent
+    // meant that a tick landing a few milliseconds late pushed the next snapshot a whole tick
+    // further out, so the cadence jumped between 100 and 150 ms — and the client, whose whole job is
+    // to hide that cadence, was left extrapolating a sixth of a second at a time.
+    if (now >= this.nextSnapshotAt) {
+      while (this.nextSnapshotAt <= now) this.nextSnapshotAt += SNAPSHOT_MS;
+      this.sendSnapshots();
+    }
     // Private rooms and the tribulation arena are not part of a public snapshot, so their players
     // would otherwise only get a position once a second — a walk that looks like a stutter.
     if (now >= this.nextMotionAt) {
-      this.nextMotionAt = now + 100;
+      while (this.nextMotionAt <= now) this.nextMotionAt += SNAPSHOT_MS;
       for (const s of this.players.values()) {
         if (isWorldZone(s.character.scene)) continue;
         s.socket.emit('motion', { scene: s.character.scene, position: { ...s.character.position },

@@ -273,6 +273,8 @@ export class SceneEngine {
     movementSpeed: number,
     canMove: boolean,
     collision?: MoveContext,
+    /** Playback delay of the reference the caller passes, in ms (see `MotionTrack.delayMs`). */
+    referenceDelay = LOCAL_DELAY_MS,
   ): void {
     const dt = Math.min(delta, 0.05);
     if (avatar) {
@@ -308,7 +310,7 @@ export class SceneEngine {
       // respawn) is corrected smoothly instead of by yanking.
       this.target.set(serverPosition.x, 0, serverPosition.z);
       const fix = this.reconciler.step(performance.now(), avatar.position, dt, movementSpeed,
-        { x: this.target.x, z: this.target.z }, this.movementInput() < 0.02);
+        { x: this.target.x, z: this.target.z }, this.movementInput() < 0.02, referenceDelay);
       avatar.position.x += fix.x;
       avatar.position.z += fix.z;
       // Height is written, never accumulated. Adding the lift on top of last frame's height turned

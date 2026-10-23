@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LOCAL_DELAY_MS, MAX_EXTRAPOLATION_MS, MotionTrack, REMOTE_DELAY_MS, STALE_MS, clearPlayerTracks, playerTrack } from './interpolation';
+import { LOCAL_DELAY_MS, MAX_EXTRAPOLATION_MS, MotionTrack, REMOTE_DELAY_MS, REMOTE_EXTRA_MS, STALE_MS, clearPlayerTracks, playerTrack } from './interpolation';
 
 /**
  * These tests pin the fix for "nhân vật bị giật khi đi bộ / khi phi hành": the server broadcasts a
@@ -113,8 +113,43 @@ describe('motion track: 10 Hz packets drawn at 60 Hz', () => {
   });
 
   it('uses a longer delay for remote bodies, which is still monotone', () => {
-    const drawn = render(walking(2), 120, REMOTE_DELAY_MS);
+    const drawn = render(walking(2), 120, REMOTE_DELAY_MS + REMOTE_EXTRA_MS);
     for (let i = 1; i < drawn.length; i++) expect(drawn[i]!).toBeGreaterThanOrEqual(drawn[i - 1]!);
+  });
+
+  it('sizes its playback delay from the measured packet interval', () => {
+    const track = new MotionTrack();
+    for (let i = 0; i < 12; i++) track.push(i * 100, i * 0.6, 0);
+    // A steady 100 ms stream: enough delay to sit between two samples, not a fifth of a second.
+    expect(track.delayMs).toBeGreaterThanOrEqual(LOCAL_DELAY_MS);
+    expect(track.delayMs).toBeLessThan(170);
+    // A slow stream (the server's cadence used to degenerate to 150 ms) gets a longer delay, so the
+    // playback point never runs past the newest sample and has to guess.
+    const slow = new MotionTrack();
+    for (let i = 0; i < 12; i++) slow.push(i * 150, i * 0.9, 0);
+    expect(slow.delayMs).toBeGreaterThan(track.delayMs);
+    expect(slow.delayMs).toBeLessThanOrEqual(220);
+  });
+
+  it('never runs out of samples on a 150 ms cadence — no stall, no extrapolation jump', () => {
+    // What the server actually did before the schedule was put on a fixed grid: a tick landing a few
+    // milliseconds late pushed every snapshot out to 150 ms. At 10.5 m/s that is 1.6 m of guessing
+    // per cycle, which is the "khựng" a rider felt.
+    const speed = 10.5;
+    const track = new MotionTrack();
+    const drawn: number[] = [];
+    let pushed = 0;
+    for (let frame = 0; frame < 240; frame++) {
+      const t = frame * FRAME;
+      while (pushed * 150 <= t) { track.push(pushed * 150, speed * (pushed * 150) / 1000, 0); pushed++; }
+      const point = track.at(t - track.delayMs);
+      // The first second is the buffer filling up and the delay adapting; the body is not on screen yet.
+      if (point && t > 1200) drawn.push(point.x);
+    }
+    const steps = drawn.slice(1).map((x, i) => x - drawn[i]!);
+    const expected = speed / 60;
+    expect(Math.max(...steps)).toBeLessThan(expected + 0.01);
+    expect(Math.min(...steps)).toBeGreaterThan(expected - 0.01);
   });
 
   it('hands out one shared track per body and forgets them on a zone change', () => {
