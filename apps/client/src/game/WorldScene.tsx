@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { ITEMS, SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type NpcId, type OwnCharacter, type PublicPlayer, type SpiritRoot,
-  type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
+import { ITEMS, SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type MoveObstacle, type NpcId, type OwnCharacter,
+  type PublicPlayer, type SpiritRoot, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { AdminFireTrail, Avatar } from './Avatar';
 import { SceneEngine } from './SceneEngine';
 import { clearFlightInput, flightInput, setFlightInput } from './flightInput';
@@ -16,9 +16,26 @@ import { SectWayfinding } from './SectWayfinding';
 import { CombatFeedback } from './CombatEffects';
 import { LandingPuff } from './LandingPuff';
 import { stepFlight } from './flight';
+import type { MoveContext } from './SceneEngine';
 import { LOCAL_DELAY_MS, clearPlayerTracks, playerTrack, recordMotion } from './interpolation';
 
 const BloomEffects = lazy(() => import('./BloomEffects'));
+
+/**
+ * The round obstacles the server refuses to let a body walk through, rebuilt from the snapshot the
+ * client already has. Kept identical to `World.tick` (same radii, same filters) — a mismatch would
+ * show up as the body stopping on the client at a different spot than the server allows.
+ */
+function obstaclesFor(scene: OwnCharacter['scene'], world: WorldSnapshot | null, selfId: string): MoveObstacle[] {
+  if (!world || world.scene !== scene) return [];
+  const obstacles: MoveObstacle[] = [];
+  if (scene === 'wilderness' && world.boss && world.boss.hp > 0) obstacles.push({ position: world.boss.position, radius: 2.7 });
+  if (scene === 'wilderness' || scene === 'ascendant') {
+    for (const monster of world.monsters) if (monster.hp > 0) obstacles.push({ position: monster.position, radius: monster.radius + 0.35 });
+  }
+  for (const player of world.players) if (player.id !== selfId) obstacles.push({ position: player.position, radius: 1.05 });
+  return obstacles;
+}
 
 export type PreviewOptions = { name: string; gender: Gender; appearance: Appearance; view: 'body' | 'face'; root?: SpiritRoot };
 type Props = {
@@ -154,9 +171,14 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     equipment: { robe: 'novice_robe' }, isAdmin: false, devMode: false,
   }, [character, preview]);
   const others = useMemo(() => (visibleWorld?.players ?? []).filter((player) => player.id !== character?.id), [visibleWorld?.players, character?.id]);
+  // A stable callback: a fresh arrow every render made the avatar re-render with the HUD's 10 Hz
+  // snapshot, for no benefit — it only ever reads the engine's current steering.
+  const movementIntent = useCallback(() => engine.current?.movementInput() ?? 0, []);
   const serverPosition = character && visibleWorld?.players.find((player) => player.id === character.id)?.position || local.position;
 
   // Network movement ticks independently of WebGL frames (which can slow down while loading avatars).
+  // Thirty times a second rather than twenty: the server can only ever move the body with the last
+  // input it received, so this interval *is* part of the delay the prediction has to hide.
   useEffect(() => {
     if (!character) return;
     const send = () => {
@@ -165,7 +187,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       controller.setTouchInput(touch.current.right, touch.current.forward);
       onInput(controller.getMovement());
     };
-    const timer = window.setInterval(send, 50);
+    const timer = window.setInterval(send, 30);
     return () => window.clearInterval(timer);
   }, [character?.id, character?.scene, onInput, touch]);
 
@@ -192,8 +214,15 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const now = performance.now();
     const path = character ? playerTrack(character.id).at(now - LOCAL_DELAY_MS) : null;
     const reference = path ? { x: path.x, y: serverPosition.y, z: path.z } : serverPosition;
+    // Predict with the server's own movement rule and the same obstacles it collides with, so the
+    // body stops at a wall here exactly where the server does — no correction, no slide.
+    const moveContext: MoveContext | undefined = character ? {
+      scene: character.scene,
+      obstacles: obstaclesFor(character.scene, visibleWorld, character.id),
+      collide: character.scene !== 'tribulation',
+    } : undefined;
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
-    controller.update(delta, avatar.current, reference, character?.flying ? 10.5 : 6, Boolean(character));
+    controller.update(delta, avatar.current, reference, character?.flying ? 10.5 : 6, Boolean(character), moveContext);
   });
 
   return <>
@@ -218,8 +247,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       </> : character && <Wilderness zone={zone === 'ascendant' ? 'ascendant' : 'wilderness'} monsters={visibleWorld?.monsters ?? []} herbs={visibleWorld?.herbs ?? []}
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
-    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}
-      intent={() => engine.current?.movementInput() ?? 0}
+    <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar} intent={movementIntent}
       attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at}
       castAt={effects.filter((e) => e.type === 'cast' && e.sourceId === local.id).at(-1)?.at} />
     {landing && <LandingPuff key={landing.at} x={landing.x} z={landing.z} />}

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import type { GameScene, Vector3 } from '@van-thuong/shared';
-import { LOCAL_DELAY_MS, MotionTrack, correctionStep } from './interpolation';
+import { resolveMove, type GameScene, type MoveObstacle, type Vector3 } from '@van-thuong/shared';
+import { LOCAL_DELAY_MS, LocalReconciler, MotionTrack } from './interpolation';
+
+/** What the client needs to predict movement exactly the way the server integrates it. */
+export type MoveContext = { scene: GameScene; obstacles: readonly MoveObstacle[]; collide: boolean };
 
 /**
  * How high the body is, as a fraction of the hop, `progress` seconds into it.
@@ -36,15 +39,11 @@ export class SceneEngine {
   private readonly lookAt = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
   /**
-   * Where this body was drawn, frame by frame. Reconciliation compares this history with the server's
-   * history *at the same instant* (both `LOCAL_DELAY_MS` ago) instead of comparing where the body is
-   * now with where the server was a packet ago — that comparison is dominated by latency, so the
-   * old code spent every frame dragging the body backwards, which is what made walking and flying
-   * look like the character was wading through water.
+   * Where this body was drawn, frame by frame, plus the correction state. Reconciliation compares
+   * this history with the server's path *at the same instant* (both `LOCAL_DELAY_MS` ago), so the
+   * latency of the connection cancels out instead of being mistaken for an error.
    */
-  private readonly history = new MotionTrack(90);
-  /** When the history was last restarted; a comparison needs a full delay of it before it means anything. */
-  private historySince = 0;
+  private readonly reconciler = new LocalReconciler();
   private readonly cameraAim = new THREE.Vector3();
   private dragging = false;
   private previousPointerX = 0;
@@ -64,6 +63,8 @@ export class SceneEngine {
    * the genre look and stops the landing from snapping. The old single sine curve dropped the body
    * back to the ground in the last two frames.
    */
+  /** Radians per second the body turns at: 45° in about 65 ms, so it still feels immediate. */
+  private static readonly TURN_RATE = 12;
   private static readonly JUMP_MS = 1150;
   private static readonly JUMP_RISE = 0.34;
   private static readonly JUMP_HEIGHT = 1.5;
@@ -180,11 +181,6 @@ export class SceneEngine {
 
   getFlightAltitude(): number { return this.flightAltitude; }
 
-  private resetHistory(time: number, x: number, z: number): void {
-    this.history.reset(time, x, z);
-    this.historySince = time;
-  }
-
   private jumpOffset(): number {
     if (!this.jumpStartedAt) return 0;
     const progress = (performance.now() - this.jumpStartedAt) / SceneEngine.JUMP_MS;
@@ -201,7 +197,7 @@ export class SceneEngine {
     this.keys.clear();
     this.touchInput = { right: 0, forward: 0 };
     this.flightAltitude = 0; // never arrive in a new zone floating
-    this.resetHistory(performance.now(), position.x, position.z); // a new map is a new baseline
+    this.reconciler.reset(performance.now(), position.x, position.z); // a new map is a new baseline
     // Place the camera to the side of the room's entry door. Otherwise the exit door
     // blocks the avatar and its sprite fills the screen on arrival.
     const interior = zone === 'residence' || zone === 'sanctum';
@@ -276,15 +272,30 @@ export class SceneEngine {
     serverPosition: { x: number; y: number; z: number },
     movementSpeed: number,
     canMove: boolean,
+    collision?: MoveContext,
   ): void {
     const dt = Math.min(delta, 0.05);
     if (avatar) {
-      if (canMove) {
+      // While the server insists the body cannot follow its input (a late obstacle, a closed gate) the
+      // input is ignored until it agrees again: without this the two would push against each other
+      // forever, which looks like creeping and snapping.
+      if (canMove && !this.reconciler.held) {
         const { x, z, rotation } = this.getMovement();
-        avatar.position.x += x * movementSpeed * dt;
-        avatar.position.z += z * movementSpeed * dt;
-        // A locked camera also turns a standing body so it keeps facing away from the view.
-        if (x !== 0 || z !== 0 || this.cameraLocked) avatar.rotation.y = rotation;
+        // Predict with the server's own movement rule (`resolveMove`): map clamp, sect walls, other
+        // bodies. Without this every wall the server refused came back as a correction — a slide.
+        const target = { x: avatar.position.x + x * movementSpeed * dt, y: 0,
+          z: avatar.position.z + z * movementSpeed * dt };
+        const resolved = collision ? resolveMove(avatar.position, target, collision) : target;
+        avatar.position.x = resolved.x;
+        avatar.position.z = resolved.z;
+        // A locked camera also turns a standing body so it keeps facing away from the view. The turn
+        // itself is rate limited: WASD only offers eight directions, and snapping between them read
+        // as the body twitching whenever the player changed their mind.
+        if (x !== 0 || z !== 0 || this.cameraLocked) {
+          const delta = Math.atan2(Math.sin(rotation - avatar.rotation.y), Math.cos(rotation - avatar.rotation.y));
+          const maxTurn = SceneEngine.TURN_RATE * dt;
+          avatar.rotation.y += Math.abs(delta) <= maxTurn ? delta : Math.sign(delta) * maxTurn;
+        }
       }
       // Reconcile on the HORIZONTAL plane only. Doing it in 3D meant that once a rider climbed more
       // than 6 m, every frame took the "too far, snap" branch: the client's own movement was thrown
@@ -295,21 +306,11 @@ export class SceneEngine {
       // speed then cancel exactly: a walking body matches its server counterpart almost perfectly and
       // is not corrected at all, while a real disagreement (a wall the server refused, a clamp, a
       // respawn) is corrected smoothly instead of by yanking.
-      const now = performance.now();
-      if (!this.history.size) this.resetHistory(now, avatar.position.x, avatar.position.z);
-      // Only meaningful once the history reaches back a full delay; before that the "past" sample
-      // would just be the present, and the difference would be latency rather than disagreement.
-      const own = now - this.historySince >= LOCAL_DELAY_MS ? this.history.at(now - LOCAL_DELAY_MS) : null;
-      this.history.push(now, avatar.position.x, avatar.position.z);
       this.target.set(serverPosition.x, 0, serverPosition.z);
-      if (own) {
-        const fix = correctionStep(own, { x: this.target.x, z: this.target.z }, dt, movementSpeed,
-          this.movementInput() < 0.02);
-        avatar.position.x += fix.x;
-        avatar.position.z += fix.z;
-        // A teleport (portal, respawn, dev jump): take the server's word and forget the history.
-        if (fix.snap) this.resetHistory(now, avatar.position.x, avatar.position.z);
-      }
+      const fix = this.reconciler.step(performance.now(), avatar.position, dt, movementSpeed,
+        { x: this.target.x, z: this.target.z }, this.movementInput() < 0.02);
+      avatar.position.x += fix.x;
+      avatar.position.z += fix.z;
       // Height is written, never accumulated. Adding the lift on top of last frame's height turned
       // the hop into a lagged filter that snapped a few centimetres downward at the end of every
       // jump ("rớt giật xuống"); assigning base + lift makes the hop exactly the curve it is.

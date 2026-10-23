@@ -11,9 +11,7 @@ const COMMON_ELEMENTS: Element[] = ['kim', 'moc', 'thuy', 'hoa', 'tho'];
 const MUTATED_ELEMENTS: Element[] = ['bang', 'phong', 'loi', 'am', 'quang'];
 export const GOD_STAT = 999_999_999;
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
-export { WORLD_RADIUS, SECT_RADIUS } from '@van-thuong/shared';
-export const TRIAL_RADIUS = 17;
-export const PRIVATE_RADIUS = 8.5;
+export { WORLD_RADIUS, SECT_RADIUS, TRIAL_RADIUS, PRIVATE_RADIUS } from '@van-thuong/shared';
 
 /** Integer draw has no floating-point bias: 6000 + 3000 + 900 + 100 = 10000. */
 export function rollSpiritRoot(draw: (max: number) => number = randomInt): SpiritRoot {
