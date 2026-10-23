@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import {
   CONSUMABLES, DEFAULT_APPEARANCE, EQUIPMENT_SLOTS, FACE_SHAPES, HAIR_COLORS, HOTBAR_SLOTS,
   HAIR_STYLES, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, ROBE_COLORS, ROOT_MULTIPLIER, SKIN_TONES, expForStage,
-  HOME_CHEST, REBIRTH_ALTAR, absorptionMultiplier, inSpiritLake, storageCapacity,
+  HOME_CHEST, REBIRTH_ALTAR, absorptionMultiplier, cultivationCost, inSpiritLake, storageCapacity,
   type Appearance, type CharacterState, type Element, type EquipmentSlot,
   type Gender, type SpiritRoot, type Vector3, type WorldZone,
 } from '@van-thuong/shared';
@@ -121,15 +121,22 @@ export function canEnterSanctum(c: CharacterState): boolean {
   return c.rebirths > 0 || c.realm === MAX_REALM && c.minorStage === LEVEL_CONFIG.minorStages;
 }
 
-/** A single prestige cycle: house, possessions and lifetime score persist; realm/stats restart. */
+/**
+ * The Tái Sinh Đài only answers to Tiên Đế tầng 9 — every time, not only the first time. A reborn
+ * cultivator may still walk into the chamber (the Thượng Giới gate lives there), but the altar
+ * itself stays sealed until they have climbed back to the top.
+ */
+export function canRebirth(c: CharacterState): boolean {
+  return c.realm === MAX_REALM && c.minorStage === LEVEL_CONFIG.minorStages;
+}
+
+/** A prestige cycle: house, possessions and lifetime score persist; realm/stats restart. */
 export function reincarnate(c: CharacterState, now = Date.now()): void {
   if (c.scene !== 'sanctum' || c.hp <= 0 || distanceXZ(c.position, REBIRTH_ALTAR.position) > REBIRTH_ALTAR.radius)
     throw new Error('Hãy đến trước Tái Sinh Đài trong mật thất.');
-  if (c.rebirths > 0) throw new Error('Bạn đã tái sinh một lần, không thể nhận lại phần thưởng.');
-  if (c.realm !== MAX_REALM || c.minorStage !== LEVEL_CONFIG.minorStages)
-    throw new Error('Chỉ Tiên Đế tầng 9 mới có thể tái sinh.');
+  if (!canRebirth(c)) throw new Error('Chỉ Tiên Đế tầng 9 mới có thể tái sinh.');
   c.highestRealm = MAX_REALM;
-  c.rebirths = 1;
+  c.rebirths += 1;
   c.realm = 0; c.minorStage = 0; c.cultivation = 12;
   c.cultivationBank = 0; c.lastCultivatedAt = now;
   c.maxHp = 120; c.maxMp = 100; c.hp = 120; c.mp = 100;
@@ -158,15 +165,16 @@ export function artifactDropChance(scene: WorldZone, reborn: boolean): number {
   return scene === 'ascendant' && reborn ? 55 : scene === 'wilderness' ? reborn ? 20 : 5 : 0;
 }
 
-export function breakthroughCost(realm: number, minorStage = LEVEL_CONFIG.minorStages): number | null {
-  return majorBreakthroughCost(realm, minorStage);
+export function breakthroughCost(realm: number, minorStage = LEVEL_CONFIG.minorStages, rebirths = 0): number | null {
+  const base = majorBreakthroughCost(realm, minorStage);
+  return base === null ? null : cultivationCost(base, rebirths);
 }
 
 /** A minor advancement consumes the listed EXP exactly once and grants permanent base stats. */
 export function advanceMinorStage(c: CharacterState): number {
   if (c.realm < 1 || c.realm > MAX_REALM || c.minorStage >= LEVEL_CONFIG.minorStages)
     throw new Error('Cần ở Luyện Khí trở lên và chưa đạt tầng 9.');
-  const cost = expForStage(c.minorStage);
+  const cost = cultivationCost(expForStage(c.minorStage), c.rebirths);
   if (c.cultivation < cost) throw new Error(`Cần ${cost.toLocaleString('vi-VN')} tu vi để lên tầng ${c.minorStage + 1}.`);
   c.cultivation -= cost;
   c.minorStage++;
@@ -179,7 +187,8 @@ export function advanceMinorStage(c: CharacterState): number {
 
 /** Called only after the server resolves all nine tribulation waves and the success roll. */
 export function completeMajorBreakthrough(c: CharacterState): number {
-  const cost = majorBreakthroughCost(c.realm, c.minorStage);
+  const base = majorBreakthroughCost(c.realm, c.minorStage);
+  const cost = base === null ? null : cultivationCost(base, c.rebirths);
   if (cost === null || c.cultivation < cost) throw new Error('Chưa đủ điều kiện đột phá Đại cảnh giới.');
   c.cultivation -= cost;
   c.realm++;

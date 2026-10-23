@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APPEARANCE, expForStage, LEVEL_CONFIG, MAX_REALM, normalizeAppearance, REALMS } from '@van-thuong/shared';
+import { cultivationCost, DEFAULT_APPEARANCE, expForStage, LEVEL_CONFIG, MAX_REALM, normalizeAppearance, REALMS } from '@van-thuong/shared';
 import { MemoryStore } from '../db/store.js';
 import { addItem, advanceMinorStage, breakthroughCost, clampToWorld, completeMajorBreakthrough, distanceXZ, equipItem,
   gainCultivation, hitsTarget, newCharacter, OFFLINE_CAP_MS, parseAppearance, parseCreation, rollSpiritRoot } from './rules.js';
@@ -102,6 +102,24 @@ describe('characters, AFK and equipment', () => {
     }
     expect(c.realm).toBe(MAX_REALM);
     expect(breakthroughCost(MAX_REALM, 9)).toBeNull();
+  });
+
+  it('halves every breakthrough after a rebirth, and never compounds with more rebirths', () => {
+    expect(breakthroughCost(4, 9, 0)).toBe(39_062_500);
+    expect(breakthroughCost(4, 9, 1)).toBe(19_531_250);
+    expect(breakthroughCost(4, 9, 7)).toBe(19_531_250); // the second and later rebirths are ½, not ¼
+    expect(breakthroughCost(0, 0, 1)).toBe(cultivationCost(LEVEL_CONFIG.exp.entryCost, 1));
+    expect(cultivationCost(expForStage(1), 0)).toBe(100);
+    expect(cultivationCost(expForStage(1), 1)).toBe(50);
+    expect(cultivationCost(3, 1)).toBe(2); // a cost always rounds to at least one unit of tu vi
+
+    const c = newCharacter('discount', data);
+    c.rebirths = 1; c.realm = 1; c.minorStage = 1; c.cultivation = 50;
+    expect(advanceMinorStage(c)).toBe(50); // 100 → 50 for a reborn cultivator
+    expect(c.minorStage).toBe(2);
+    c.minorStage = 9; c.cultivation = 19_531_250;
+    expect(completeMajorBreakthrough(c)).toBe(19_531_250);
+    expect([c.realm, c.minorStage]).toEqual([2, 1]);
   });
 });
 

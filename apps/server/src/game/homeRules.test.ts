@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { ASCENDANT_BONUS, HOME_CHEST, LINH_GIOI_BONUS, LINH_GIOI_SECTS, MAX_REALM, REBIRTH_ALTAR, REBIRTH_BONUS,
   SPIRIT_LAKE, absorptionMultiplier, houseAbsorptionBonus, houseLevel, linhGioiSectAt, storageCapacity } from '@van-thuong/shared';
-import { addItem, artifactDropChance, bankCultivation, canEnterSanctum, cultivationRate,
+import { addItem, artifactDropChance, bankCultivation, canEnterSanctum, canRebirth, cultivationRate,
   gainCultivation, moveStoredItem, newCharacter, reincarnate } from './rules.js';
 
 const make = (uid: string) => newCharacter(uid, { name: 'Đệ Tử Thử', gender: 'nu', appearance: {
   hair: 'long', hairColor: 'ink', robeColor: 'ivory', face: 'oval', skinTone: 'warm', height: 0.5, build: 0.5,
 } }, 100_000);
 
-describe('private housing, context-based spirit absorption and single rebirth', () => {
+describe('private housing, context-based spirit absorption and repeatable rebirth', () => {
   it('raises house capacity and EXP bonus at every major realm and never above +20%', () => {
     const bonuses = Array.from({ length: MAX_REALM + 1 }, (_, realm) => houseAbsorptionBonus(realm));
     expect(bonuses[0]).toBe(0.05);
@@ -91,7 +91,7 @@ describe('private housing, context-based spirit absorption and single rebirth', 
     expect(() => moveStoredItem(owner, 'withdraw', 'old-0')).toThrow('Túi đồ đã đầy');
   });
 
-  it('opens the hidden chamber at the true top, resets progress only once, keeps items and house', () => {
+  it('opens the hidden chamber at the true top, resets progress but keeps items and house, every cycle', () => {
     const c = make('rebirth-account');
     expect(canEnterSanctum(c)).toBe(false);
     c.realm = MAX_REALM; c.minorStage = 8;
@@ -112,7 +112,16 @@ describe('private housing, context-based spirit absorption and single rebirth', 
     expect(c.inventory.some((entry) => entry.instanceId === item)).toBe(true);
     expect(c.equipment).toEqual(equipment); expect(c.root).toEqual(root);
     expect(canEnterSanctum(c)).toBe(true);
-    expect(() => reincarnate(c, 120_001)).toThrow('đã tái sinh');
+    // The altar is sealed again immediately: rebirth needs Tiên Đế tầng 9 every single time.
+    expect(canRebirth(c)).toBe(false);
+    expect(() => reincarnate(c, 120_001)).toThrow('Tiên Đế tầng 9');
+    // Climbing back up re-opens it, and the second rebirth works exactly like the first.
+    c.realm = MAX_REALM; c.minorStage = 9; c.hp = c.maxHp;
+    expect(canRebirth(c)).toBe(true);
+    reincarnate(c, 130_000);
+    expect([c.realm, c.minorStage, c.rebirths, c.maxHp]).toEqual([0, 0, 2, 120]);
+    expect(canEnterSanctum(c)).toBe(true); // the Thượng Giới gate stays reachable
+    expect(canRebirth(c)).toBe(false);
     expect(artifactDropChance('wilderness', false)).toBe(5);
     expect(artifactDropChance('wilderness', true)).toBe(20);
     expect(artifactDropChance('ascendant', true)).toBe(55);

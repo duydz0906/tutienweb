@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Backpack, BookOpen, Camera, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Compass, Crown, Feather, Flame,
   FlaskConical, Gem, House, MapPin, Menu, MessageCircle, Radio, RotateCcw, ScrollText, Send, Shield, Sparkles, Swords, Trophy, Waves, Wifi, WifiOff, Zap } from 'lucide-react';
-import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HABITATS, HOME_CHEST, HOME_EXIT, HOME_GATE, HOTBAR_SLOTS, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, NPCS, PORTALS, REALMS, REBIRTH_ALTAR, ROOT_LABEL, SANCTUM_EXIT, SECRET_GATE, SECT_NPCS, SECT_RANK_LABEL, SKILLS, SPIRIT_LAKE, LINH_GIOI_SECTS, TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_NPCS, VILLAGE_RADIUS, WORLD_RADIUS, absorptionMultiplier, canRideMount, houseAbsorptionBonus, houseLevel, inSpiritLake, linhGioiSectAt, isWorldZone, skillRealm,
+import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HABITATS, HOME_CHEST, HOME_EXIT, HOME_GATE, HOTBAR_SLOTS, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, NPCS, PORTALS, REALMS, REBIRTH_ALTAR, ROOT_LABEL, SANCTUM_EXIT, SECRET_GATE, SECT_NPCS, SECT_RANK_LABEL, SKILLS, SPIRIT_LAKE, LINH_GIOI_SECTS, TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_NPCS, VILLAGE_RADIUS, WORLD_RADIUS, absorptionMultiplier, canRideMount, cultivationCost, houseAbsorptionBonus, houseLevel, inSpiritLake, linhGioiSectAt, isWorldZone, skillRealm, tribulationBolts,
   type ChatMessage, type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import type { ActivePanel } from './Panels';
 import type { HudPrefs } from '../lib/uiPrefs';
@@ -26,7 +26,10 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages.length]);
   const rootColor = ELEMENT_COLOR[character.root.elements[0]];
   const minorAdvance = character.realm > 0 && character.minorStage < LEVEL_CONFIG.minorStages;
-  const cost = minorAdvance ? expForStage(character.minorStage) : majorBreakthroughCost(character.realm, character.minorStage) ?? 0;
+  // Rebirth halves every breakthrough; the HUD uses the same helper as the server's charge.
+  const cost = minorAdvance
+    ? cultivationCost(expForStage(character.minorStage), character.rebirths)
+    : cultivationCost(majorBreakthroughCost(character.realm, character.minorStage) ?? 0, character.rebirths);
   const progress = cost ? Math.min(100, character.cultivation / cost * 100) : 100;
   const inTrial = character.scene === 'tribulation';
   const inSect = character.scene === 'overworld';
@@ -45,6 +48,8 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   // Linh Giới tĩnh tọa terrace: the +40% AFK spot of the upper realm.
   const atLinhGioi = linhGioiSectAt(character.scene, livePosition);
   const canOpenSanctum = character.rebirths > 0 || character.realm === MAX_REALM && character.minorStage === LEVEL_CONFIG.minorStages;
+  // The Tái Sinh Đài only answers to the true top of the mountain — on every cycle, not just the first.
+  const canRebirthNow = character.realm === MAX_REALM && character.minorStage === LEVEL_CONFIG.minorStages;
   const gate = isWorldZone(character.scene) ? PORTALS[character.scene] : null;
   const nearby = (target: { position: { x: number; z: number }; radius: number }) =>
     Math.hypot(livePosition.x - target.position.x, livePosition.z - target.position.z) <= target.radius;
@@ -55,7 +60,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   const nearChest = inHome && nearby(HOME_CHEST);
   const nearHomeExit = inHome && nearby(HOME_EXIT);
   const nearSanctumExit = inSanctum && nearby(SANCTUM_EXIT);
-  const nearAltar = inSanctum && !character.rebirths && nearby(REBIRTH_ALTAR);
+  const nearAltar = inSanctum && canRebirthNow && nearby(REBIRTH_ALTAR);
   const nearAscendantGate = inSanctum && character.rebirths > 0 && nearby(ASCENDANT_GATE);
   const hasFoundationPill = character.inventory.some((item) => item.itemId === 'foundation_pill');
   const sceneNpcs: readonly NpcId[] = inSect ? SECT_NPCS : inVillage ? VILLAGE_NPCS : [];
@@ -136,7 +141,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
           <div className="cultivate-info"><span><span className="pulse-dot" /> Tích lũy: <b>+{format(pending)}</b> tu vi</span><small>{rate.toFixed(1)}/giây · +{Math.round((multiplier - 1) * 100)}% · 8 giờ</small></div>
           {atLake && <div className="lake-bonus"><Waves size={14} /> Đang AFK tại Hồ Tụ Linh · +15% linh khí</div>}
           {atLinhGioi && <div className="lake-bonus"><Sparkles size={14} /> Tĩnh tọa tại {atLinhGioi.name} · +40% linh khí</div>}
-          {Boolean(character.rebirths) && <div className="rebirth-bonus"><RotateCcw size={14} /> Đã tái sinh · +50% vĩnh viễn{inAscendant ? ' · Thượng Giới +35%' : ''}</div>}
+          {Boolean(character.rebirths) && <div className="rebirth-bonus"><RotateCcw size={14} /> Đã tái sinh{character.rebirths > 1 ? ` ×${character.rebirths}` : ''} · +50% linh khí · đột phá −50% tu vi{inAscendant ? ' · Thượng Giới +35%' : ''}</div>}
           <div className="cultivate-actions"><button className="btn btn-teal" disabled={!connected || inTrial || pending < 1} onClick={() => onAction('cultivate')}><Sparkles size={15} /> Thu linh khí</button><button className="btn btn-outline-gold" disabled={!connected || inTrial || !cost || character.cultivation < cost}
             onClick={() => onAction(minorAdvance ? 'advance-stage' : 'breakthrough', minorAdvance ? {} : { usePill: usePill && hasFoundationPill })}><Zap size={15} /> {minorAdvance ? 'Thăng tầng' : 'Độ kiếp'}</button></div>
           {cost > 0 && !minorAdvance && !inTrial && <label className="foundation-option"><input type="checkbox" disabled={!hasFoundationPill} checked={hasFoundationPill && usePill} onChange={(e) => setUsePill(e.target.checked)} />
@@ -216,7 +221,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         </button>
       </section> : !inTrial ? <section className="boss-card glass-panel"><div className="boss-card-header"><div className="boss-emblem"><Flame size={22} /></div><div><small>{inAscendant ? 'YÊU THÚ · THƯỢNG GIỚI' : focusedMonster ? 'MỤC TIÊU · HOANG VỰC' : 'THẾ GIỚI BOSS · NGOẠI GIỚI'}</small><strong>{focusedMonster?.name ?? (inAscendant ? 'Linh thú đang tái sinh' : 'Huyền Thiên Cổ Long')}</strong></div><span className="boss-level">LV. {focusedMonster?.level ?? 88}</span></div>
         {focusedMonster ? <><div className="boss-health-heading"><span>SINH LỰC YÊU THÚ</span><b>{format(focusedMonster.hp)} / {format(focusedMonster.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${focusedMonster.hp / focusedMonster.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Chuột trái / J: chém thường · Space: nhảy · 1–9: công pháp</div></> : boss && boss.hp > 0 ? <><div className="boss-health-heading"><span>SINH LỰC CỔ LONG</span><b>{format(boss.hp)} / {format(boss.maxHp)}</b></div><div className="vital-track boss-health"><span className="vital-fill" style={{ width: `${boss.hp / boss.maxHp * 100}%` }} /></div><div className="boss-tip"><Swords size={14} /> Đi theo lối đá đến Long Vực và xuất chiêu</div></> : <div className="boss-defeated"><Sparkles size={15} /> {inAscendant ? 'Tiên thú đang hồi sinh. Hãy hái tiên thảo hoặc tĩnh tọa (+35%).' : `Đã bị đánh bại · Hồi sinh sau ${Math.max(0, Math.ceil(((boss?.respawnAt ?? now) - now) / 1000))}s`}</div>}
-      </section> : <section className="trial-card glass-panel"><div className="trial-card-head"><Zap size={20} /> CỬU THIÊN LÔI KIẾP</div><div className="trial-wave">Đạo lôi <strong>{Math.min((trial?.wave ?? 0) + 1, 9)} / 9</strong></div><div className="trial-pips">{Array.from({ length: 9 }, (_, i) => <span key={i} className={i < (trial?.wave ?? 0) ? 'done' : i === (trial?.wave ?? 0) ? 'current' : ''} />)}</div><p>{trial?.phase === 'warning' ? '⚠ VÙNG ĐỎ! Di chuyển khỏi tâm lôi ngay!' : trial?.phase === 'strike' ? 'Thiên lôi vừa giáng xuống!' : 'Chuẩn bị... Quan sát mặt đất và né tránh.'}</p>
+      </section> : <section className="trial-card glass-panel"><div className="trial-card-head"><Zap size={20} /> CỬU THIÊN LÔI KIẾP</div><div className="trial-wave">Đạo lôi <strong>{Math.min((trial?.wave ?? 0) + 1, 9)} / 9</strong> · <span className="trial-volley">{tribulationBolts(trial?.wave ?? 0)} đạo mỗi đợt</span></div><div className="trial-pips">{Array.from({ length: 9 }, (_, i) => <span key={i} className={i < (trial?.wave ?? 0) ? 'done' : i === (trial?.wave ?? 0) ? 'current' : ''} />)}</div><p>{trial?.phase === 'warning' ? `⚠ ${trial?.targets.length ?? 3} VÙNG ĐỎ! Chạy khỏi mọi tâm lôi!` : trial?.phase === 'strike' ? `${trial?.targets.length ?? 0} đạo thiên lôi vừa giáng cùng lúc!` : 'Chuẩn bị... Quan sát mặt đất và né tránh.'}</p>
         <button className="btn btn-outline-gold btn-full guard-button" disabled={!connected || !character.equipment.artifact || character.mp < 18 || trial?.guarding || (cooldowns.trial_guard ?? 0) > now} onClick={() => onAction('guard')}>
           <Shield size={14} /> {trial?.guarding ? 'Pháp bảo đang hộ thể' : (cooldowns.trial_guard ?? 0) > now ? `Hồi pháp bảo ${Math.ceil((cooldowns.trial_guard - now) / 1000)}s` : 'Xuất Pháp Bảo · F'}
         </button>

@@ -69,7 +69,8 @@ function MountainRiver() {
   </>;
 }
 
-function Lake({ playerPosition }: { playerPosition: Vector3 }) {
+/** `nearLake` is a plain boolean so the lake (and the whole sect landscape) can be memoised. */
+function Lake({ nearLake }: { nearLake: boolean }) {
   const { x, z } = SPIRIT_LAKE.position;
   const radius = SPIRIT_LAKE.radius;
   const ripples = useRef<THREE.Group>(null);
@@ -107,7 +108,7 @@ function Lake({ playerPosition }: { playerPosition: Vector3 }) {
     </mesh>
     {/* At the water the HUD already shows the bonus. Hide the world-space sprite
         so it cannot grow across the whole screen when the camera passes through it. */}
-    {Math.hypot(playerPosition.x - x, playerPosition.z - z) > radius + 8 &&
+    {!nearLake &&
       <BillboardLabel text="HỒ TỤ LINH · AFK +15%" position={[0, 2.7, 0]} width={4.8} color="#c7ffec" />}
   </group>;
 }
@@ -180,7 +181,7 @@ function MountainForest() {
 }
 
 /** The playable sect is a broad summit with a river, lake and a descending wooded mountain. */
-export function SectLandscape({ playerPosition }: { playerPosition: Vector3 }) {
+export function SectLandscape({ nearLake }: { nearLake: boolean }) {
   return <>
     <mesh castShadow receiveShadow position={[0, -8.9, 0]}>
       <cylinderGeometry args={[SECT_RADIUS, SECT_RADIUS + 20, 17.8, 96, 5]} /><meshStandardMaterial color="#657568" roughness={1} flatShading />
@@ -192,7 +193,7 @@ export function SectLandscape({ playerPosition }: { playerPosition: Vector3 }) {
       <cylinderGeometry args={[SECT_RADIUS - 0.1, SECT_RADIUS, 0.14, 96]} /><meshStandardMaterial color="#79917a" roughness={1} />
     </mesh>
     <MountainRiver />
-    <Lake playerPosition={playerPosition} />
+    <Lake nearLake={nearLake} />
     <MountainForest />
   </>;
 }
