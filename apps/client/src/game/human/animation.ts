@@ -162,10 +162,14 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
  * leg. Rather than fight the skeleton with magic wrist offsets, every pose states the blade
  * direction it wants and `aimGrip` rotates the wrist to match — which is exactly the freedom a real
  * wrist has, and the reason a swing now reads as a swing instead of a windmill.
+ *
+ * The idle aim points the blade UP: a jian carried at the side with the point down is a reverse
+ * (ice-pick) grip, which is what players described as holding the sword "ngược/xuôi". Thumbs-up
+ * forehand is the natural carry: pommel under the fist, steel rising in front of the shoulder.
  */
 const IDLE_AIM: Record<'L' | 'R', THREE.Vector3> = {
-  L: new THREE.Vector3(0.28, -0.88, 0.38).normalize(),
-  R: new THREE.Vector3(-0.28, -0.88, 0.38).normalize(),
+  L: new THREE.Vector3(0.26, 0.9, 0.35).normalize(),
+  R: new THREE.Vector3(-0.26, 0.9, 0.35).normalize(),
 };
 /** Vertical guard used by skill casts: blade up beside the shoulder, tip clear of the head. */
 const CAST_AIM: Record<'L' | 'R', THREE.Vector3> = {
@@ -180,10 +184,11 @@ const CAST_AIM: Record<'L' | 'R', THREE.Vector3> = {
  */
 const ATTACK_AIM: [number, THREE.Vector3][] = [
   [0, IDLE_AIM.R.clone()],
-  [0.2, new THREE.Vector3(-0.46, 0.78, 0.3).normalize()],
-  [0.4, new THREE.Vector3(-0.12, 0.62, 0.36).normalize()],
-  [0.62, new THREE.Vector3(0.52, -0.52, 0.38).normalize()],
-  [0.8, new THREE.Vector3(0.42, -0.78, 0.3).normalize()],
+  [0.18, new THREE.Vector3(-0.5, 0.76, 0.32).normalize()],
+  [0.38, new THREE.Vector3(-0.06, 0.7, 0.42).normalize()],
+  [0.6, new THREE.Vector3(0.5, -0.5, 0.38).normalize()],
+  [0.78, new THREE.Vector3(0.42, -0.74, 0.3).normalize()],
+  [0.9, new THREE.Vector3(0.1, 0.24, 0.5).normalize()],
   [1, IDLE_AIM.R.clone()],
 ];
 

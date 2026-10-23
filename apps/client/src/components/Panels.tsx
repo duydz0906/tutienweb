@@ -4,10 +4,10 @@ import { ArrowDownToLine, ArrowRight, Backpack, BookOpen, ChevronRight, Crown, F
 import { CONSUMABLES, DEV_TELEPORTS, EQUIPMENT_SLOTS, HOME_CHEST, HOTBAR_SLOTS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, REALMS, REBIRTH_ALTAR, RECIPES, SLOT_LABEL,
   canRideMount, flightItemOf, houseAbsorptionBonus, houseLevel, storageCapacity, type Appearance, type ConsumableId, type Gender, type LeaderboardEntry, type OwnCharacter, type Path } from '@van-thuong/shared';
 import { AppearanceControls } from './AppearanceControls';
-import { AlchemyPanel, BeastPanel, QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
+import { AlchemyPanel, BeastPanel, InnPanel, QuestPanel, SectPanel, ShopPanel, SkillsPanel } from './SectPanels';
 import type { HudPrefs } from '../lib/uiPrefs';
 
-export type ActivePanel = 'inventory' | 'craft' | 'alchemy' | 'beast' | 'dev' | 'leaderboard' | 'help' | 'home' | 'menu' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
+export type ActivePanel = 'inventory' | 'craft' | 'alchemy' | 'beast' | 'dev' | 'leaderboard' | 'help' | 'home' | 'inn' | 'menu' | 'rebirth' | 'quests' | 'sect' | 'shop' | 'skills' | 'admin' | null;
 export type AdminPlayer = { id: string; name: string; position: { x: number; y: number; z: number }; realm: number; scene: string; hp: number };
 const rarityLabel: Record<string, string> = { common: 'Phàm phẩm', rare: 'Linh phẩm', epic: 'Thượng phẩm', immortal: 'Tiên Khí' };
 /** Dev shortcuts: the five paths with a one-line reminder of what each one fights with. */
@@ -56,7 +56,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
     Math.hypot(character.position.x - REBIRTH_ALTAR.position.x, character.position.z - REBIRTH_ALTAR.position.z) <= REBIRTH_ALTAR.radius;
   const title = { inventory: 'Túi Càn Khôn', craft: 'Bách Nghệ Tiên Gia', alchemy: 'Phòng Luyện Đan', beast: 'Ngự Thú Viện', dev: 'Đổi Nhân Vật · Dev Tools', leaderboard: 'Thiên Kiêu Bảng',
     help: 'Thiên Đạo Chỉ Dẫn', home: 'Nhà Riêng & Rương Đồ', menu: 'Menu · Hành Trang & Cài Đặt', rebirth: 'Mật Thất Tái Sinh', quests: 'Nhiệm Vụ Các', sect: 'Chính Điện',
-    shop: 'Cửa Hàng Tông Môn', skills: 'Công Pháp & Hotbar', admin: 'Thiên Đạo · God Mode' }[panel];
+    shop: 'Cửa Hàng Tông Môn', skills: 'Công Pháp & Hotbar', admin: 'Thiên Đạo · God Mode', inn: 'Quán Trọ · Tửu Lầu' }[panel];
   const mount = flightItemOf(character.equipment, character.inventory);
   const togglePrefs: { key: keyof HudPrefs; label: string; hint: string; icon: React.ReactNode }[] = [
     { key: 'chatOpen', label: 'Khung chat', hint: 'Bật / ẩn chat thế giới (phím C)', icon: <MessageCircle size={16} /> },
@@ -151,6 +151,7 @@ export function Panels({ panel, onClose, onNavigate, onOpenPath, character, lead
       {panel === 'quests' && <QuestPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'sect' && <SectPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'shop' && <ShopPanel character={character} connected={connected} onAction={onAction} />}
+      {panel === 'inn' && <InnPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'skills' && <SkillsPanel character={character} connected={connected} onAction={onAction} />}
       {panel === 'home' && <div className="drawer-scroll housing-panel">
         <div className="housing-banner"><House size={32} /><div><span className="eyebrow">PHÒNG RIÊNG · {character.name.toUpperCase()}</span>

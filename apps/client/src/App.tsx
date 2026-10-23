@@ -410,7 +410,7 @@ export function App() {
     if (phase !== 'game') return;
     // The village elder points newcomers at the handbook instead of opening a shop.
     openPanel(id === 'master' ? 'sect' : id === 'quest' ? 'quests' : id === 'alchemist' ? 'alchemy' : id === 'beast' ? 'beast'
-      : id === 'village_elder' ? 'help' : 'shop');
+      : id === 'village_elder' ? 'help' : id === 'innkeeper' || id === 'tavern' || id === 'sect_inn' ? 'inn' : 'shop');
   }, [phase]);
   const chat = useCallback((text: string) => { socketRef.current?.emit('chat', text); }, []);
   const selectPath = (path: Path) => { void action('choose-path', { path }).then((ok) => { if (ok) setPathModal(false); }); };

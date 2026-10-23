@@ -3,6 +3,23 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { GameScene, Vector3 } from '@van-thuong/shared';
 
 /**
+ * How high the body is, as a fraction of the hop, `progress` seconds into it.
+ *
+ * Both halves are eased, which is what "float up, settle down" looks like:
+ *   · take-off: sin easing, so the feet leave the ground without a jerk;
+ *   · descent: 1 − smoothstep, so it hangs at the apex, falls through the middle and *slows* into
+ *     the landing. The old single sine curve dropped the last metre in two frames, which players
+ *     read as being yanked into the ground ("rớt giật xuống một phát");
+ *   · the hop is stretched to 1.15 s, three quarters of it spent coming down.
+ */
+export function jumpHeight(progress: number, rise = 0.34): number {
+  const p = Math.max(0, Math.min(1, progress));
+  if (p < rise) return Math.sin((p / rise) * Math.PI / 2);
+  const t = (p - rise) / (1 - rise);
+  return Math.max(0, 1 - t * t * (3 - 2 * t));
+}
+
+/**
  * Owns the browser-only 3D controls. React Three Fiber supplies the renderer,
  * scene and camera; the server, NOT this class, owns the actual world position.
  */
@@ -31,8 +48,15 @@ export class SceneEngine {
   private cameraLocked = false;
   /** Space: purely visual hop of the avatar, timed here so it survives avatar re-renders. */
   private jumpStartedAt = 0;
-  private static readonly JUMP_MS = 640;
-  private static readonly JUMP_HEIGHT = 1.35;
+  /**
+   * A hop is a fast rise and a *slow* fall: the character hangs at the apex and drifts down, which is
+   * the genre look and stops the landing from snapping. The old single sine curve dropped the body
+   * back to the ground in the last two frames.
+   */
+  private static readonly JUMP_MS = 1150;
+  private static readonly JUMP_RISE = 0.34;
+  private static readonly JUMP_HEIGHT = 1.5;
+
   private yaw = 0.27;
   private pitch = 0.31;
   private distance = 14;
@@ -43,6 +67,8 @@ export class SceneEngine {
   private isWilderness = false;
   private isAscendant = false;
   private isInterior = false;
+  /** Fog density at ground level, before the altitude thinning. */
+  private baseFogDensity = 0.0042;
   private isAdminSky = false;
   private wasCinematic = false;
   private previewView: 'body' | 'face' | null = null;
@@ -126,7 +152,18 @@ export class SceneEngine {
    * snapshot lerp, so the chase camera rises with the rider instead of watching them leave frame.
    * The authoritative position the server knows about is still on the ground plane.
    */
-  setFlightAltitude(metres: number): void { this.flightAltitude = Math.max(0, Math.min(9, metres)); }
+  /**
+   * No ceiling: a cultivator climbs until they run out of patience, not out of sky. The value is
+   * only clamped to the sensible range of `float` and to the camera's far plane, and the fog thins
+   * out with altitude so the world stays readable from cloud height.
+   */
+  setFlightAltitude(metres: number): void {
+    const next = Math.max(0, Math.min(900, metres));
+    if (Math.abs(next - this.flightAltitude) < 0.05) return;
+    this.flightAltitude = next;
+    // Only the haze depends on height, and recomputing it here keeps the per-frame path free.
+    if (this.scene.fog instanceof THREE.FogExp2) this.scene.fog.density = this.baseFogDensity / (1 + next * 0.12);
+  }
 
   getFlightAltitude(): number { return this.flightAltitude; }
 
@@ -134,7 +171,7 @@ export class SceneEngine {
     if (!this.jumpStartedAt) return 0;
     const progress = (performance.now() - this.jumpStartedAt) / SceneEngine.JUMP_MS;
     if (progress >= 1) { this.jumpStartedAt = 0; return 0; }
-    return Math.sin(Math.max(0, progress) * Math.PI) * SceneEngine.JUMP_HEIGHT;
+    return jumpHeight(progress) * SceneEngine.JUMP_HEIGHT;
   }
 
   setTouchInput(right: number, forward: number): void {
@@ -229,6 +266,11 @@ export class SceneEngine {
       // Applied after the reconciliation lerp so the hop is not pulled back to the ground.
       const lift = this.jumpOffset() + this.flightAltitude;
       if (lift > 0) avatar.position.y += lift;
+      // Follow the player with the shadow frustum. A fixed ±42 m box around the origin left the
+      // whole enlarged map unshadowed; shadows now stay crisp wherever the player walks.
+      this.sun.target.position.copy(avatar.position);
+      this.sun.position.set(avatar.position.x - 16, 28, avatar.position.z + 12);
+      this.sun.target.updateMatrixWorld();
       this.lookAt.copy(avatar.position).add(new THREE.Vector3(0, this.previewView === 'face' ? 1.62 : this.previewView ? 1.03 : 1.65, 0));
     } else {
       this.lookAt.set(0, this.previewView === 'face' ? 1.62 : 1.65, 0);
@@ -293,13 +335,18 @@ export class SceneEngine {
     this.applyAtmosphere();
   }
 
+
   private applyAtmosphere(): void {
     const dark = this.isTribulation || this.wasCinematic;
     const color = dark ? '#171729' : this.isInterior ? '#342f42' : this.isAscendant ? '#9cbad2' : this.isAdminSky ? '#b97c68' : this.isWilderness ? '#828e9e' : '#8bb8bb';
     this.scene.background = new THREE.Color(color);
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.color.set(color);
-      this.scene.fog.density = dark ? 0.023 : this.isInterior ? 0.007 : this.isAscendant ? 0.012 : this.isWilderness ? 0.016 : 0.008;
+      // The maps are twenty times larger than the old island, so the haze is thinner: a player
+      // should see the next district from a ridge, not a wall of fog eighty metres away.
+      this.baseFogDensity = dark ? 0.02 : this.isInterior ? 0.007 : this.isAscendant ? 0.0055 : this.isWilderness ? 0.0068 : 0.0042;
+      // From a few metres up the haze must thin out, or the ground vanishes behind the fog.
+      this.scene.fog.density = this.baseFogDensity / (1 + this.flightAltitude * 0.12);
     }
     this.sun.color.set(dark ? '#b1a5ed' : this.isInterior ? '#f2d6c5' : this.isAscendant ? '#e3f2ff' : this.isAdminSky ? '#ffb77a' : this.isWilderness ? '#e1d0c1' : '#ffebc8');
     this.hemisphere.intensity = dark ? 0.65 : this.isInterior ? 1.2 : this.isAscendant ? 1.85 : this.isWilderness ? 1.15 : 1.6;

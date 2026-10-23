@@ -1,5 +1,5 @@
 import { ArrowRight, BadgeCheck, BookOpen, Crown, Feather, Gem, MapPin, Package, ScrollText, Sparkles, Swords } from 'lucide-react';
-import { CONSUMABLES, DAILY_QUESTS, HOTBAR_SLOTS, ITEMS, NPCS, REALMS, RECIPES, SECT_RANK_LABEL, SHOP_STOCK, SKILLS, skillRealm,
+import { CONSUMABLES, DAILY_QUESTS, HOTBAR_SLOTS, INN_NPCS, INN_RADIUS, ITEMS, NPCS, REALMS, RECIPES, SECT_RANK_LABEL, SHOP_STOCK, SKILLS, innRestCost, skillRealm,
   type DailyQuestId, type NpcId, type OwnCharacter } from '@van-thuong/shared';
 
 const resourceNames = { stones: 'Linh Thạch', herbs: 'Dược thảo', ore: 'Linh thiết', ink: 'Phù mực' } as const;
@@ -164,5 +164,46 @@ export function AlchemyPanel({ character: c, connected, onAction }: { character:
         <button className={`mt-3 ${actionButton}`} disabled={!connected || !canMake || !atFurnace && !c.devMode || c.inventory.length >= 80 || c.scene === 'tribulation'} onClick={() => onAction('craft', { recipeId: recipe.id })}>Luyện đan <ArrowRight size={12} className="inline" /></button>
       </article>;
     })}
+  </div>;
+}
+
+/**
+ * Quán trọ / tửu lầu. A bed costs a few spirit stones and gives body and qi back, which is what
+ * makes the long walk out to the new hunting grounds survivable; the panel also lists where the
+ * other two inns are, so a player can always find one.
+ */
+export function InnPanel({ character: c, connected, onAction }: { character: OwnCharacter; connected: boolean; onAction: (event: string, payload?: object) => void }) {
+  const here = INN_NPCS.find((id) => c.scene === ((NPCS[id] as { scene?: string }).scene ?? 'overworld') &&
+    Math.hypot(c.position.x - NPCS[id].position.x, c.position.z - NPCS[id].position.z) <= INN_RADIUS);
+  const cost = here ? innRestCost(here) : 0;
+  const full = c.hp >= c.maxHp && c.mp >= c.maxMp;
+  return <div className="drawer-scroll sect-drawer space-y-4 p-1 text-parchment">
+    <div className="rounded border border-amberlight/30 bg-amberlight/10 p-4">
+      <div className="flex items-center gap-2 text-amberlight"><Package size={20} /><strong className="text-sm">
+        {here ? NPCS[here].name : 'Quán Trọ & Tửu Lầu'}</strong></div>
+      <p className="mt-2 text-xs leading-5 text-slate-300">
+        {here ? NPCS[here].role : 'Một đêm ngon giấc hồi đầy sinh lực và chân khí. Ba chỗ nghỉ nằm ở Vân Cốc và trong tông môn.'}
+        {' '}Nghỉ trọ tốn linh thạch — rẻ nhất ở khách điếm trong tông môn, đắt nhất ở tửu lầu.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-4 text-xs">
+        <span>❤ {Math.round(c.hp)}/{c.maxHp}</span><span>☯ {Math.round(c.mp)}/{c.maxMp}</span>
+        <span>◈ {balance(c, c.resources.stones)} Linh Thạch</span>
+      </div>
+    </div>
+    {here ? <>
+      <button className={actionButton} disabled={!connected || full || (!c.devMode && c.resources.stones < cost)}
+        onClick={() => onAction('inn:rest', { npcId: here })}>
+        <Sparkles size={13} className="inline" /> Nghỉ trọ · hồi đầy HP & chân khí ({cost} linh thạch)
+      </button>
+      {full && <p className="text-[11px] text-amberlight">Sinh lực và chân khí đã đầy, chưa cần nghỉ.</p>}
+      {!c.devMode && c.resources.stones < cost && <p className="text-[11px] text-amberlight">Không đủ linh thạch cho một đêm trọ.</p>}
+    </> : <p className="text-[11px] text-amberlight"><MapPin size={12} className="inline" /> Hãy đến gần chủ quán để nghỉ trọ.</p>}
+    <div className="rounded border border-white/10 p-3 text-[11px] leading-6 text-slate-300">
+      <div className="mb-1 flex items-center gap-2 text-amberlight"><MapPin size={13} /> BA CHỖ NGHỈ</div>
+      {INN_NPCS.map((id) => <div key={id} className="flex items-center justify-between gap-3">
+        <span>{NPCS[id].name}</span>
+        <span className="text-slate-400">X {NPCS[id].position.x} · Z {NPCS[id].position.z} · {innRestCost(id)}◈</span>
+      </div>)}
+    </div>
   </div>;
 }

@@ -75,15 +75,20 @@ beforeAll(async () => {
 }, 60_000);
 
 describe('equipment on the real-human rig', () => {
-  it('puts the sword in the fist, hanging down the side instead of through the legs', () => {
+  it('puts the sword in the fist in a forehand carry, point up instead of reversed', () => {
     const weapon = mountOf('weapon')!;
     expect(weapon.parent?.name).toBe('rig-gripR');
-    // A held blade hangs down and slightly FORWARD once the idle arm pose is applied. Pointing it
-    // backwards (the hand bone's own axis) made the sword look like it was held in reverse.
+    // Forehand: the point rises in front of the shoulder and the pommel sits under the fist.
+    // Following the hand bone's own axis pointed the blade down and back — the "held upside down"
+    // (cầm ngược) look players kept reporting.
     const blade = new THREE.Vector3(0, 1, 0).applyQuaternion(weapon.getWorldQuaternion(new THREE.Quaternion()));
-    expect(blade.y).toBeLessThan(-0.5);
-    expect(blade.z).toBeGreaterThan(0.25);
-    expect(Math.abs(blade.x)).toBeGreaterThan(0.15);
+    expect(blade.y).toBeGreaterThan(0.6);
+    expect(blade.z).toBeGreaterThan(0.2);
+    expect(Math.abs(blade.x)).toBeGreaterThan(0.1);
+    // The blade is above the hand and the pommel below it, not the other way round.
+    const handY = worldPosition(rig.sockets.gripR!).y;
+    expect(box(weapon).max.y).toBeGreaterThan(handY + 0.4);
+    expect(box(weapon).min.y).toBeLessThan(handY + 0.05);
     // A human-scale jian: ~1 m from tip to pommel, not the old 2.6 m slab.
     expect(size(weapon).length()).toBeGreaterThan(0.9);
     expect(size(weapon).length()).toBeLessThan(1.25);

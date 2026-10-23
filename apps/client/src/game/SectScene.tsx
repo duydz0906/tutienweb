@@ -17,6 +17,8 @@ const roles: { id: NpcId; gender: Gender; appearance: Partial<Appearance>; glow:
   { id: 'beast', gender: 'nu', appearance: { hair: 'braid', hairColor: 'chestnut', robeColor: 'jade', face: 'angular', build: 0.7 }, glow: '#adf0b6' },
   { id: 'alchemist', gender: 'nam', appearance: { hair: 'bun', hairColor: 'silver', robeColor: 'ember', face: 'oval', height: 0.72 },
     glow: '#ffd5a0', flavor: { beard: true } },
+  { id: 'sect_inn', gender: 'nu', appearance: { hair: 'bun', hairColor: 'ash', robeColor: 'midnight', face: 'oval', build: 0.62 },
+    glow: '#ffd8a8' },
 ];
 
 /** NPCs and disciples are sculpted from the same cultivator generator as players. */
@@ -40,7 +42,8 @@ function SectNpc({ id, gender, appearance, glow, flavor, onInteract }: typeof ro
       <ringGeometry args={[0.76, 0.82, 42]} /><meshBasicMaterial color={glow} transparent opacity={0.65} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
     <BillboardLabel text={NPCS[id].name} color={glow} position={[p.x, 2.55, p.z]} width={3.6} />
-    <BillboardLabel text={id === 'master' ? 'CHÍNH ĐIỆN' : id === 'quest' ? 'NHIỆM VỤ CÁC' : id === 'beast' ? 'NGỰ THÚ VIỆN' : id === 'alchemist' ? 'PHÒNG LUYỆN ĐAN' : 'TÀNG BẢO CÁC'}
+    <BillboardLabel text={id === 'master' ? 'CHÍNH ĐIỆN' : id === 'quest' ? 'NHIỆM VỤ CÁC' : id === 'beast' ? 'NGỰ THÚ VIỆN'
+      : id === 'alchemist' ? 'PHÒNG LUYỆN ĐAN' : id === 'sect_inn' ? 'NGHÊNH KHÁCH ĐIẾM' : 'TÀNG BẢO CÁC'}
       color="#f5e6bf" position={[p.x, 2.16, p.z]} width={id === 'alchemist' ? 3.3 : 2.5} />
   </group>;
 }

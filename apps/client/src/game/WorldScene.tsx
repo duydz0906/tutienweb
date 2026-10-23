@@ -143,12 +143,11 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const dt = Math.min(delta, 0.05);
     const flying = Boolean(character?.flying) && character?.scene !== 'tribulation';
     const climb = flying ? (flightInput.up ? 1 : 0) - (flightInput.down ? 1 : 0) : 0;
-    if (climb) altitude.current = Math.min(8, Math.max(0, altitude.current + climb * 3.4 * dt));
-    else if (!flying || altitude.current > 0) {
-      const target = flying ? altitude.current : 0;
-      altitude.current += (target - altitude.current) * Math.min(1, dt * (flying ? 1 : 5));
-      if (!flying && altitude.current < 0.01) altitude.current = 0;
-    }
+    // No ceiling: climb as high as you like (the camera's far plane is the only limit). Descending
+    // is held-Shift or, once the mount is gone, a slow glide down instead of a drop to the floor.
+    if (climb) altitude.current = Math.max(0, altitude.current + climb * 7.5 * dt);
+    else if (!flying && altitude.current > 0) altitude.current = Math.max(0, altitude.current - 3.4 * dt);
+    controller.setFlightAltitude(altitude.current);
     controller.setFlightAltitude(altitude.current);
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
     controller.update(delta, avatar.current, serverPosition, character?.flying ? 10.5 : 6, Boolean(character));
@@ -208,7 +207,7 @@ export function WorldScene(props: Props) {
   // WebGL disabled by policy). Keep login and HUD usable rather than blanking the app.
   const supported = useMemo(supportsWebGL2, []);
   return <div className="world-canvas" aria-label="Thế giới 3D Vân Thượng">
-    {supported ? <Canvas shadows dpr={[1, window.matchMedia('(max-width: 720px)').matches ? 1.2 : 1.65]} camera={{ fov: 52, near: 0.1, far: 320, position: [8, 8, 20] }}
+    {supported ? <Canvas shadows dpr={[1, window.matchMedia('(max-width: 720px)').matches ? 1.2 : 1.65]} camera={{ fov: 52, near: 0.1, far: 1600, position: [8, 8, 20] }}
       gl={{ antialias: true, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping }}
       fallback={<div className="webgl-fallback">Trình duyệt cần hỗ trợ WebGL để hiển thị thế giới 3D.</div>}>
       <SceneContent {...props} />

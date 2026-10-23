@@ -60,7 +60,8 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   const nearNpc = sceneNpcs.find((id) => Math.hypot(livePosition.x - NPCS[id].position.x,
     livePosition.z - NPCS[id].position.z) <= 4.2);
   const npcPanel: ActivePanel = nearNpc === 'master' ? 'sect' : nearNpc === 'quest' ? 'quests' : nearNpc === 'alchemist' ? 'alchemy'
-    : nearNpc === 'beast' ? 'beast' : nearNpc === 'village_elder' ? 'help' : 'shop';
+    : nearNpc === 'beast' ? 'beast' : nearNpc === 'village_elder' ? 'help'
+      : nearNpc === 'innkeeper' || nearNpc === 'tavern' || nearNpc === 'sect_inn' ? 'inn' : 'shop';
   // Equipped flight gear decides whether the sky button can even be pressed.
   const mountInstance = character.inventory.find((owned) => owned.instanceId === character.equipment.mount);
   const mountItem = mountInstance ? ITEMS[mountInstance.itemId] : null;
@@ -74,9 +75,12 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
     focusedMonster.hp <= focusedMonster.maxHp * .35 &&
     Math.hypot(focusedMonster.position.x - livePosition.x, focusedMonster.position.z - livePosition.z) <= 3.5;
   const nearestDrop = activeWorld?.drops.find((drop) => Math.hypot(drop.position.x - livePosition.x, drop.position.z - livePosition.z) < 3.5);
-  const mapRadius = inVillage ? VILLAGE_RADIUS : WORLD_RADIUS;
-  const mapX = (x: number) => `${50 + x / mapRadius * 50}%`;
-  const mapZ = (z: number) => `${50 - z / mapRadius * 50}%`;
+  // Minimaps read a local window, not the whole map: the world is now ~300 m across, so squeezing
+  // it into a 150 px square would put every NPC and monster on the same pixel.
+  const mapRadius = inVillage ? Math.min(VILLAGE_RADIUS, 110) : 110;
+  const clamp = (value: number) => `${Math.max(3, Math.min(97, 50 + value / mapRadius * 50))}%`;
+  const mapX = (x: number) => clamp(x - livePosition.x);
+  const mapY = (z: number) => `${Math.max(3, Math.min(97, 50 - (z - livePosition.z) / mapRadius * 50))}%`;
   const available = (amount: number) => character.devMode ? '∞' : format(amount);
   const location = inTrial ? 'Cửu Thiên Lôi Đài' : inSect ? 'Tông Môn Vân Thượng' : inHome ? `Nhà riêng · Cấp ${tier}`
     : inSanctum ? 'Mật Thất Tái Sinh' : inAscendant ? 'Thượng Giới · Tiên Vực' : inVillage ? 'Vân Cốc · Làng dưới chân núi' : 'Hoang Vực · Bãi Quái';
@@ -156,23 +160,23 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         <div className="map-top"><span><Compass size={15} /> BẢN ĐỒ KHU VỰC</span><span>{inTrial ? 'LÔI ĐÀI' : inSect ? 'TÔNG MÔN' : inHome ? 'NHÀ RIÊNG' : inSanctum ? 'MẬT THẤT' : inAscendant ? 'THƯỢNG GIỚI' : inVillage ? 'VÂN CỐC' : 'HOANG VỰC'}</span></div>
         <div className={`minimap ${inSect || inVillage ? '' : 'wilderness'}`}>
           <span className="map-compass">BẮC ↑</span><div className="map-path" />
-          {inSect && <><div className="map-temple" title="Chính Điện" style={{ left: mapX(0), top: mapZ(30) }}>⌂</div>
-            <span className="map-npc" title="Đệ Tử Xá · Nhà riêng" style={{ left: mapX(HOME_GATE.position.x), top: mapZ(HOME_GATE.position.z) }}>⌂</span>
-            <span className="map-npc" title="Hồ Tụ Linh +15%" style={{ left: mapX(SPIRIT_LAKE.position.x), top: mapZ(SPIRIT_LAKE.position.z) }}>≈</span>
-            <span className="map-npc" title="Sơn đạo xuống Vân Cốc" style={{ left: mapX(VILLAGE_GATE.position.x), top: mapZ(VILLAGE_GATE.position.z) }}>⛰</span>
-            {canOpenSanctum && <span className="map-portal" title="Mật Thất Tái Sinh" style={{ left: mapX(SECRET_GATE.position.x), top: mapZ(SECRET_GATE.position.z) }}>✧</span>}</>}
+          {inSect && <><div className="map-temple" title="Chính Điện" style={{ left: mapX(0), top: mapY(30) }}>⌂</div>
+            <span className="map-npc" title="Đệ Tử Xá · Nhà riêng" style={{ left: mapX(HOME_GATE.position.x), top: mapY(HOME_GATE.position.z) }}>⌂</span>
+            <span className="map-npc" title="Hồ Tụ Linh +15%" style={{ left: mapX(SPIRIT_LAKE.position.x), top: mapY(SPIRIT_LAKE.position.z) }}>≈</span>
+            <span className="map-npc" title="Sơn đạo xuống Vân Cốc" style={{ left: mapX(VILLAGE_GATE.position.x), top: mapY(VILLAGE_GATE.position.z) }}>⛰</span>
+            {canOpenSanctum && <span className="map-portal" title="Mật Thất Tái Sinh" style={{ left: mapX(SECRET_GATE.position.x), top: mapY(SECRET_GATE.position.z) }}>✧</span>}</>}
           {sceneNpcs.map((id) => <span key={id} className="map-npc"
-            title={`${NPCS[id].name} · ${NPCS[id].role}`} style={{ left: mapX(NPCS[id].position.x), top: mapZ(NPCS[id].position.z) }}>✶</span>)}
+            title={`${NPCS[id].name} · ${NPCS[id].role}`} style={{ left: mapX(NPCS[id].position.x), top: mapY(NPCS[id].position.z) }}>✶</span>)}
           {inBattle && HABITATS.filter((habitat) => habitat.scene === character.scene).map((habitat) =>
             <span key={habitat.id} className="map-habitat" title={`${habitat.name} · Cấp ${habitat.level}`}
-              style={{ left: mapX(habitat.center.x), top: mapZ(habitat.center.z), '--habitat-color': habitat.color } as React.CSSProperties}>{habitat.level}</span>)}
+              style={{ left: mapX(habitat.center.x), top: mapY(habitat.center.z), '--habitat-color': habitat.color } as React.CSSProperties}>{habitat.level}</span>)}
           {gate && <span className="map-portal" title={`${gate.name} · X ${gate.position.x}, Z ${gate.position.z}`}
-            style={{ left: mapX(gate.position.x), top: mapZ(gate.position.z) }}>◈</span>}
+            style={{ left: mapX(gate.position.x), top: mapY(gate.position.z) }}>◈</span>}
           {!inSect && !inVillage && !inTrial && boss && boss.hp > 0 && <span className="map-boss" title="Huyền Thiên Cổ Long"
-            style={{ left: mapX(boss.position.x), top: mapZ(boss.position.z) }}>✦</span>}
+            style={{ left: mapX(boss.position.x), top: mapY(boss.position.z) }}>✦</span>}
           {activeWorld?.players.filter((p) => p.id !== character.id).map((p) => <span key={p.id} className="map-ally" title={p.name}
-            style={{ left: mapX(p.position.x), top: mapZ(p.position.z) }} />)}
-          <span className="map-me" title={character.name} style={{ left: mapX(livePosition.x), top: mapZ(livePosition.z) }} />
+            style={{ left: mapX(p.position.x), top: mapY(p.position.z) }} />)}
+          <span className="map-me" title={character.name} style={{ left: mapX(livePosition.x), top: mapY(livePosition.z) }} />
         </div>
         <div className="map-footer"><span><span className="legend-dot player" /> Bạn</span>
           {isWorldZone(character.scene) && <span className="portal-legend">◈ Cổng dịch chuyển</span>}

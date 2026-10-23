@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import {
-  CONSUMABLES, DAILY_QUESTS, HERB_NODES, ASCENDANT_HERBS, ASCENDANT_GATE, HOME_GATE, HOME_EXIT, SECRET_GATE,
+  CONSUMABLES, DAILY_QUESTS, HERB_NODES, ASCENDANT_HERBS, ASCENDANT_GATE, HOME_GATE, HOME_EXIT, SECRET_GATE, INN_NPCS, INN_RADIUS, innRestCost,
   SANCTUM_EXIT, HABITATS, ITEMS, LEVEL_CONFIG, MAX_REALM, NPCS, PATH_LABEL, PORTALS, PUBLIC_ZONES, REALMS, RECIPES, SHOP_STOCK, SKILLS,
   TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_RADIUS, DEV_TELEPORTS, HOTBAR_SLOTS, SLOT_LABEL, canRideMount, expForStage, flightItemOf, isSafeScene, normalizeHotbar, skillRealm, skillsForPath, isWorldZone,
   type ActionResult, type BossState, type CharacterState, type ChatMessage, type DailyQuestId,
@@ -287,6 +287,7 @@ export class World {
     socket.on('sect:story', action(async () => this.story(s)));
     socket.on('sect:promote', action(async () => this.promote(s)));
     socket.on('shop:buy', action(async (payload: unknown) => this.buy(s, payload)));
+    socket.on('inn:rest', action(async (payload: unknown) => this.restAtInn(s, payload)));
     socket.on('beast:tame', action(async (payload: unknown) => this.tame(s, payload)));
     socket.on('use-item', action(async (payload: unknown) => this.useItem(s, payload)));
     socket.on('assign-hotbar', action(async (payload: unknown) => this.assignHotbar(s, payload)));
@@ -847,6 +848,30 @@ export class World {
       `${tamed.flight ? ' · nhấn R để phi hành' : ''}. Ngự Thú đạo tăng 22% sát thương khi có thú đồng hành.`;
   }
 
+  /**
+   * A night at the inn / a bowl of wine at the tửu lầu: pay a few spirit stones, get body and qi back.
+   * Only the innkeeper standing next to you will take the money, so it cannot be used mid-fight as a
+   * free heal — the whole point of paying for a bed.
+   */
+  private async restAtInn(s: LivePlayer, payload: unknown): Promise<string> {
+    const c = s.character;
+    const npcId = (payload as Record<string, unknown> | null)?.npcId;
+    if (typeof npcId !== 'string' || !INN_NPCS.includes(npcId as (typeof INN_NPCS)[number])) throw new Error('Chủ quán không hợp lệ.');
+    if (c.scene === 'tribulation' || c.hp <= 0) throw new Error('Không thể nghỉ trọ lúc này.');
+    requireNpc(c, npcId as (typeof INN_NPCS)[number], INN_RADIUS);
+    if (c.hp >= c.maxHp && c.mp >= c.maxMp) throw new Error('Sinh lực và chân khí đã đầy, không cần nghỉ.');
+    const cost = innRestCost(npcId as (typeof INN_NPCS)[number]);
+    if (c.resources.stones < cost) throw new Error(`Cần ${cost} linh thạch để nghỉ trọ.`);
+    c.resources.stones -= cost;
+    const healed = c.maxHp - c.hp;
+    const qi = c.maxMp - c.mp;
+    c.hp = c.maxHp;
+    c.mp = c.maxMp;
+    this.combat({ type: 'heal', sourceId: c.id, targetId: c.id, position: { ...c.position }, damage: healed, at: Date.now() }, undefined, c.scene);
+    await this.sync(s);
+    return `${NPCS[npcId as (typeof INN_NPCS)[number]].name} tiếp đãi: hồi ${healed} HP, ${qi} chân khí (−${cost} linh thạch).`;
+  }
+
   private async useItem(s: LivePlayer, payload: unknown): Promise<string> {
     const instanceId = (payload as Record<string, unknown> | null)?.instanceId;
     const c = s.character;
@@ -1248,6 +1273,7 @@ export class World {
     }
   }
 
+  /** Broadcast at 10 Hz (the tick's `nextSnapshotAt` gate): 36 hunting grounds is a lot of state. */
   private sendSnapshots(): void {
     const now = Date.now();
     for (const scene of PUBLIC_ZONES) {
