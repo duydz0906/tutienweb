@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { HABITATS, WORLD_RADIUS, type HerbState, type MonsterState, type Vector3 } from '@van-thuong/shared';
@@ -9,7 +9,12 @@ import { buildMonsterModel } from './sculpt/beasts';
 import { clonePrototype } from './sculpt/cache';
 import { animateCreature, creatureKindTraits } from './creatures';
 
-function Monster({ monster, selected, onSelect }: { monster: MonsterState; selected: boolean; onSelect: (id: string) => void }) {
+/**
+ * Memoised on the fields that actually drive the model. The snapshot rebuilds these objects ten times
+ * a second; without this every monster in view re-rendered (and re-diffed its whole skeleton) at that
+ * rate, which is a frame hitch right when the camera is moving fastest.
+ */
+const Monster = memo(function Monster({ monster, selected, onSelect }: { monster: MonsterState; selected: boolean; onSelect: (id: string) => void }) {
   const group = useRef<THREE.Group>(null);
   const health = useRef<THREE.Group>(null);
   const alive = monster.hp > 0;
@@ -67,9 +72,12 @@ function Monster({ monster, selected, onSelect }: { monster: MonsterState; selec
       <meshBasicMaterial color={selected ? '#ffe4a0' : '#ee8877'} transparent opacity={selected ? 0.85 : 0.26} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   </group>;
-}
+}, (before, after) => before.monster.id === after.monster.id && before.selected === after.selected &&
+  before.onSelect === after.onSelect && before.monster.hp === after.monster.hp && before.monster.level === after.monster.level &&
+  before.monster.kind === after.monster.kind && before.monster.name === after.monster.name &&
+  before.monster.position.x === after.monster.position.x && before.monster.position.z === after.monster.position.z);
 
-function Herb({ patch, onGather }: { patch: HerbState; onGather: (id: string) => void }) {
+const Herb = memo(function Herb({ patch, onGather }: { patch: HerbState; onGather: (id: string) => void }) {
   const plant = useRef<THREE.Group>(null);
   useFrame(({ clock }) => { if (plant.current) {
     plant.current.rotation.y = Math.sin(clock.elapsedTime * 1.5 + patch.position.x) * 0.12;
@@ -89,7 +97,8 @@ function Herb({ patch, onGather }: { patch: HerbState; onGather: (id: string) =>
       <ringGeometry args={[0.64, 0.69, 20]} /><meshBasicMaterial color="#77e2a8" transparent opacity={0.38} side={THREE.DoubleSide} />
     </mesh>
   </group>;
-}
+}, (before, after) => before.patch.id === after.patch.id && before.patch.availableAt === after.patch.availableAt &&
+  before.onGather === after.onGather);
 
 
 function AscendantGround() {
@@ -136,13 +145,14 @@ function AscendantGround() {
  */
 const MONSTER_VIEW = 150;
 
-export function Wilderness({ zone, monsters, herbs, playerPosition, selectedTarget, onSelect, onGather, onTravel }: {
-  zone: 'wilderness' | 'ascendant';
-  monsters: MonsterState[]; herbs: HerbState[]; playerPosition: Vector3; selectedTarget: string | null;
-  onSelect: (id: string) => void; onGather: (id: string) => void; onTravel: () => void;
-}) {
-  const nearMonsters = monsters.filter((monster) => monster.id === selectedTarget ||
-    Math.hypot(monster.position.x - playerPosition.x, monster.position.z - playerPosition.z) <= MONSTER_VIEW);
+export 
+/**
+ * Everything in the hunting grounds that never moves: the ground, the road, the clearings and the
+ * habitats. Split out and memoised on `zone`, because the scene re-renders ten times a second for the
+ * world snapshot and re-describing a few hundred static meshes at that rate costs a frame — most
+ * visible as a hitch while flying over them.
+ */
+const GroundAndDecor = memo(function GroundAndDecor({ zone }: { zone: 'wilderness' | 'ascendant' }) {
   return <>
     {zone === 'ascendant' ? <AscendantGround /> : <>
     {/* A separate instance from the sect: landing pad, path and distinct hunting clearings. */}
@@ -183,7 +193,24 @@ export function Wilderness({ zone, monsters, herbs, playerPosition, selectedTarg
         <meshStandardMaterial color="#ab92c4" emissive="#7554aa" emissiveIntensity={1} /></mesh>
     </group>))}
     </>}
-    {HABITATS.filter((habitat) => habitat.scene === zone).map((habitat) => <HabitatGround key={habitat.id} habitat={habitat} />)}
+  </>;
+});
+
+/** Habitats sit on the ground too, but they are static as well. */
+const Habitats = memo(function Habitats({ zone }: { zone: 'wilderness' | 'ascendant' }) {
+  return <>{HABITATS.filter((habitat) => habitat.scene === zone).map((habitat) => <HabitatGround key={habitat.id} habitat={habitat} />)}</>;
+});
+
+export function Wilderness({ zone, monsters, herbs, playerPosition, selectedTarget, onSelect, onGather, onTravel }: {
+  zone: 'wilderness' | 'ascendant';
+  monsters: MonsterState[]; herbs: HerbState[]; playerPosition: Vector3; selectedTarget: string | null;
+  onSelect: (id: string) => void; onGather: (id: string) => void; onTravel: () => void;
+}) {
+  const nearMonsters = monsters.filter((monster) => monster.id === selectedTarget ||
+    Math.hypot(monster.position.x - playerPosition.x, monster.position.z - playerPosition.z) <= MONSTER_VIEW);
+  return <>
+    <GroundAndDecor zone={zone} />
+    <Habitats zone={zone} />
     <PortalGate zone={zone} playerPosition={playerPosition} onTravel={onTravel} />
     {nearMonsters.map((monster) => <Monster key={monster.id} monster={monster} selected={selectedTarget === monster.id} onSelect={onSelect} />)}
     {herbs.map((patch) => <Herb key={patch.id} patch={patch} onGather={onGather} />)}
