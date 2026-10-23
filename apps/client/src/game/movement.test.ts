@@ -54,6 +54,23 @@ describe('shared movement rule', () => {
     expect(leave.z).toBeCloseTo(1.6, 5);
   });
 
+  it('flies over everything except the edge of the map', () => {
+    // The rider is above walls, monsters and heads — and the server stops colliding there too, so a
+    // flying body cannot be braked by something the client sees in a different place.
+    const monster = { position: { x: 0, y: 0, z: 0 }, radius: 3 };
+    const hall = SECT_BUILDINGS[0];
+    const overMonster = resolveMove({ x: 0, y: 0, z: 4 }, { x: 0, y: 0, z: 0.5 },
+      { scene: 'wilderness', obstacles: [monster], collide: false });
+    expect(overMonster.z).toBeCloseTo(0.5, 5);
+    const overHall = resolveMove({ x: hall.x + 6, y: 0, z: hall.z + 9 }, { x: hall.x + 6, y: 0, z: hall.z },
+      { scene: 'overworld', collide: false });
+    expect(overHall.z).toBeCloseTo(hall.z, 5);
+    // The boundary still applies in the air: the world does not go on forever.
+    const edge = resolveMove({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: WORLD_RADIUS * 2 },
+      { scene: 'wilderness', collide: false });
+    expect(edge.z).toBeCloseTo(WORLD_RADIUS, 5);
+  });
+
   it('predicts a whole second of walking exactly the distance the server integrates', () => {
     // 60 client frames of one 60th of a second against 20 server ticks of 50 ms: the same ground.
     let client = at(0, 0), server = at(0, 0);

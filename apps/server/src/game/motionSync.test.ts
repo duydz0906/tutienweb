@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { io as clientIo, type Socket as ClientSocket } from 'socket.io-client';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APPEARANCE, HOME_GATE, type ActionResult, type MotionUpdate, type OwnCharacter } from '@van-thuong/shared';
+import { DEFAULT_APPEARANCE, HOME_GATE, type ActionResult, type MotionUpdate, type OwnCharacter, type WorldSnapshot } from '@van-thuong/shared';
 import { makeDemoSession, verifyIdentity, type Identity } from '../auth.js';
 import { MemoryCache } from '../db/cache.js';
 import { MemoryStore } from '../db/store.js';
@@ -58,6 +58,20 @@ describe('10 Hz motion reference for scenes without a snapshot', () => {
 
       // Out in the sect there is a world snapshot on the same 100 ms cadence; no duplicate stream.
       expect(await collect(socket, 320)).toHaveLength(0);
+
+      // …and that cadence is a fixed grid. It used to be "now + 100", which a tick landing a few
+      // milliseconds late turned into 150 ms — the client then had to extrapolate a sixth of a second
+      // at a time, which at flight speed is the hitch riders reported.
+      const snapshots = await new Promise<number[]>((resolve) => {
+        const seen: number[] = [];
+        const listener = () => seen.push(Date.now());
+        socket.on('world', listener);
+        setTimeout(() => { socket.off('world', listener); resolve(seen); }, 700);
+      });
+      expect(snapshots.length).toBeGreaterThanOrEqual(5);
+      const gaps = snapshots.slice(1).map((t, i) => t - snapshots[i]!);
+      for (const gap of gaps) expect(gap).toBeGreaterThan(70);
+      for (const gap of gaps) expect(gap).toBeLessThan(140);
 
       expect((await ack(socket, 'home:enter')).ok).toBe(true);
       const packets = await collect(socket, 420);

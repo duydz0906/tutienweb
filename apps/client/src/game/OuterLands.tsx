@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BillboardLabel } from './Billboard';
@@ -319,7 +319,12 @@ export function linhGioiAt(position: Vector3): LinhGioiSect | null {
  * Everything outside the old island. `zone` picks the palette and the content; the ring is measured
  * from the centre so nothing overlaps the hand-placed heart of the map.
  */
-export function OuterLands({ zone }: { zone: 'overworld' | 'village' | 'wilderness' | 'ascendant' }) {
+/**
+ * The outer lands are static: nothing in here depends on a snapshot. They are memoised on `zone`
+ * alone, because the scene re-renders ten times a second for the world snapshot and rebuilding this
+ * forest every 100 ms was a frame spike — which reads as a hitch when the camera is flying fast.
+ */
+export const OuterLands = memo(function OuterLands({ zone }: { zone: 'overworld' | 'village' | 'wilderness' | 'ascendant' }) {
   const sect = zone === 'overworld';
   const village = zone === 'village';
   const ascendant = zone === 'ascendant';
@@ -395,7 +400,7 @@ export function OuterLands({ zone }: { zone: 'overworld' | 'village' | 'wilderne
 
     {ascendant && LINH_GIOI_SECTS.map((sect) => <LinhGioiCompound key={sect.id} sect={sect} />)}
   </>;
-}
+});
 
 /** Spirit wells that dot the outer ring: ambient light without a shadow-casting lantern budget. */
 export function SpiritWells({ spots }: { spots: [number, number][] }) {
