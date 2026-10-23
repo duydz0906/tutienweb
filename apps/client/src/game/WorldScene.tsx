@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ITEMS, SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type NpcId, type OwnCharacter, type PublicPlayer, type SpiritRoot,
@@ -14,6 +14,8 @@ import { VillageScene } from './VillageScene';
 import { ResidenceInterior, SanctumInterior } from './PrivateScenes';
 import { SectWayfinding } from './SectWayfinding';
 import { CombatFeedback } from './CombatEffects';
+import { LandingPuff } from './LandingPuff';
+import { stepFlight } from './flight';
 
 const BloomEffects = lazy(() => import('./BloomEffects'));
 
@@ -45,8 +47,10 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   const { scene, camera, gl } = useThree();
   const engine = useRef<SceneEngine | null>(null);
   const avatar = useRef<THREE.Group>(null);
-  /** Flight height in metres, owned here so a re-render never resets a climb. */
-  const altitude = useRef(0);
+  /** Flight height and vertical speed, integrated by `flight.ts` so no rule can snap it. */
+  const flight = useRef({ altitude: 0, velocity: 0 });
+  /** Where and when the last touchdown happened, for the dust ring. */
+  const [landing, setLanding] = useState<{ at: number; x: number; z: number } | null>(null);
   const lastCinematic = useRef('');
   const inTrial = character?.scene === 'tribulation';
   const zone = character && isWorldZone(character.scene) ? character.scene : 'overworld';
@@ -62,7 +66,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   useEffect(() => {
     if (!character) return;
     document.body.style.cursor = '';
-    altitude.current = 0; // never arrive in a new zone still airborne
+    flight.current = { altitude: 0, velocity: 0 }; // never arrive in a new zone still airborne
     avatar.current?.position.set(character.position.x, character.position.y, character.position.z);
     avatar.current?.rotation.set(0, character.rotation, 0);
     engine.current?.enterZone(character.scene, character.position);
@@ -79,15 +83,12 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
    * Flying height: Space climbs, Shift descends, and the engine lifts the whole avatar group (not
    * just the mesh) so the chase camera follows. Server positions stay on the ground plane.
    *
-   * Take-off lifts the rider onto the mount's own hover height; landing is never a snap — the loop
-   * below glides them down at 3.4 m/s, and that is why this effect only ever raises the altitude.
+   * Take-off is not an assignment either — `hoverAltitude` is the height the integrator eases the
+   * rider *towards*, so mounting lifts them smoothly and never pops them into the air.
    */
   const mountItem = character?.equipment.mount
     ? character.inventory.find((item) => item.instanceId === character.equipment.mount)?.itemId : undefined;
   const hoverAltitude = (mountItem ? ITEMS[mountItem]?.flight?.altitude : undefined) ?? 1.9;
-  useEffect(() => {
-    if (character?.flying) altitude.current = Math.max(altitude.current, hoverAltitude);
-  }, [character?.flying, hoverAltitude]);
   useEffect(() => {
     const hold = (event: KeyboardEvent, pressed: boolean): void => {
       if (event.code === 'Space') setFlightInput('up', pressed);
@@ -150,20 +151,18 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const controller = engine.current;
     if (!controller) return;
     controller.setTouchInput(touch.current.right, touch.current.forward);
-    // Flight height: held Space/Shift steers it, and it settles back to the ground on landing.
-    const dt = Math.min(delta, 0.05);
+    // Flight height: held Space/Shift steers it and it settles back to the ground on landing.
+    // Every rule lives in `stepFlight` — acceleration limits, the landing curve and the hover — so
+    // take-off, hovering, Shift-descent and dismounting all move continuously.
     const flying = Boolean(character?.flying) && character?.scene !== 'tribulation';
     const climb = flying ? (flightInput.up ? 1 : 0) - (flightInput.down ? 1 : 0) : 0;
-    // No ceiling: climb as high as you like (the camera's far plane is the only limit). Descending
-    // is held-Shift or, once the mount is gone, a glide down instead of a drop to the floor. The
-    // glide quickens with height — otherwise a dismount at 900 m left the player floating for
-    // minutes — but it never snaps: the last few metres still settle at the 3.4 m/s glide.
-    if (climb) altitude.current = Math.max(0, altitude.current + climb * 7.5 * dt);
-    else if (!flying && altitude.current > 0) {
-      const glide = Math.max(3.4, Math.min(70, altitude.current * 0.8));
-      altitude.current = Math.max(0, altitude.current - glide * dt);
+    const next = stepFlight(flight.current, delta, { flying, climb, hover: hoverAltitude });
+    flight.current = { altitude: next.altitude, velocity: next.velocity };
+    controller.setFlightAltitude(next.altitude);
+    if (next.landed) {
+      setLanding({ at: performance.now(), x: avatar.current?.position.x ?? serverPosition.x,
+        z: avatar.current?.position.z ?? serverPosition.z });
     }
-    controller.setFlightAltitude(altitude.current);
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
     controller.update(delta, avatar.current, serverPosition, character?.flying ? 10.5 : 6, Boolean(character));
   });
@@ -194,6 +193,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
       intent={() => engine.current?.movementInput() ?? 0}
       attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at}
       castAt={effects.filter((e) => e.type === 'cast' && e.sourceId === local.id).at(-1)?.at} />
+    {landing && <LandingPuff key={landing.at} x={landing.x} z={landing.z} />}
     {local.devMode && <AdminFireTrail player={local} avatarRef={avatar} />}
     {!inTrial && others.map((player) => <Avatar key={player.id} player={player}
       attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === player.id).at(-1)?.at}

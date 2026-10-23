@@ -163,6 +163,8 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
   const lastPosition = useRef(new THREE.Vector3(player.position.x, player.position.y, player.position.z));
   /** Smoothed walking speed in metres/second, measured from the actor's own displacement. */
   const speed = useRef(0);
+  /** 0 on foot, 1 in the air. Fades the hover bob and the mount in and out instead of toggling. */
+  const airborne = useRef(0);
   const [mount, setMount] = useState<THREE.Group | null>(null);
   const [pet, setPet] = useState<THREE.Group | null>(null);
 
@@ -210,8 +212,10 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
     const outer = groupRef?.current ?? internalRef.current;
     if (!outer) return;
     // Altitude is visual only and owned by the engine's flight altitude on the outer group; the body
-    // keeps just the slow hover bob, otherwise a rider at 900 m would be drawn at 1800 m.
-    if (bodyRef.current) bodyRef.current.position.y = flying ? Math.sin(time * 2.1) * 0.09 : 0;
+    // keeps just the slow hover bob, otherwise a rider at 900 m would be drawn at 1800 m. The bob
+    // amplitude follows `airborne`, so touching down settles the body instead of cutting the sway.
+    airborne.current += ((flying ? 1 : 0) - airborne.current) * Math.min(1, dt * 4.5);
+    if (bodyRef.current) bodyRef.current.position.y = Math.sin(time * 2.1) * 0.09 * airborne.current;
     if (!local && !preview) {
       outer.position.lerp(new THREE.Vector3(player.position.x, player.position.y, player.position.z), Math.min(1, dt * 9));
       outer.rotation.y += Math.atan2(Math.sin(player.rotation - outer.rotation.y), Math.cos(player.rotation - outer.rotation.y)) * Math.min(1, dt * 8);
@@ -300,9 +304,12 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
     if (mountRef.current) {
       mountRef.current.position.y = (MOUNT_OFFSET[mountId ?? ''] ?? -0.12) + Math.sin(time * 2.2) * 0.05;
       if (mountId === 'wind_fire_wheel' || mountId === 'cloud_disc') mountRef.current.rotation.y += dt * 0.6;
-      // The mount banks and dips with the flight instead of hanging rigid under the feet.
-      mountRef.current.rotation.z = Math.sin(time * 1.5) * (flying ? 0.1 : 0.03);
-      mountRef.current.rotation.x = Math.sin(time * 1.1 + 0.6) * (flying ? 0.06 : 0.02);
+      // The mount banks and dips with the flight instead of hanging rigid under the feet, and it
+      // grows into place on take-off (the server can flip `flying` between two frames).
+      const settle = Math.min(1, Math.max(0.001, airborne.current));
+      mountRef.current.scale.setScalar(0.72 + 0.28 * settle);
+      mountRef.current.rotation.z = Math.sin(time * 1.5) * (0.03 + 0.07 * settle);
+      mountRef.current.rotation.x = Math.sin(time * 1.1 + 0.6) * (0.02 + 0.04 * settle);
     }
     if (petRef.current) {
       petRef.current.position.set(PET_ORBIT.x + Math.sin(time * 1.1) * 0.12, 0.02 + Math.sin(time * 2.2) * 0.04, PET_ORBIT.z);
