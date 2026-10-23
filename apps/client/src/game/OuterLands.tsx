@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BillboardLabel } from './Billboard';
+import { LINH_GIOI_SECTS, type LinhGioiSect, type Vector3 } from '@van-thuong/shared';
 
 /**
  * The outer lands.
@@ -162,6 +163,159 @@ function Courtyard({ x, z, rotation, count = 6, radius = 13, label }: {
 }
 
 /**
+ * Tĩnh tọa terrace — the AFK spot. Standing on it multiplies cultivation absorption by +40%
+ * (`LINH_GIOI_BONUS` in shared data, so the server and this visual can never disagree), so it has to
+ * read as a place worth sitting down on: a raised dais, four carved pillars, rotating seals and a
+ * column of rising qi.
+ */
+function MeditationTerrace({ name, radius, color }: { name: string; radius: number; color: string }) {
+  const seals = useRef<THREE.Group>(null);
+  const motes = useRef<THREE.Points>(null);
+  const geometry = useMemo(() => {
+    const count = 60;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const angle = i * 2.39996;
+      const r = 0.6 + (i % 7) * 0.5;
+      positions[i * 3] = Math.sin(angle) * r;
+      positions[i * 3 + 1] = 0.1 + ((i * 31) % 100) / 22;
+      positions[i * 3 + 2] = Math.cos(angle) * r;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return g;
+  }, []);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  useFrame(({ clock }) => {
+    const time = clock.elapsedTime;
+    if (seals.current) seals.current.rotation.y = time * 0.34;
+    if (motes.current) {
+      // Motes climb out of the dais and loop, which is what dense qi looks like in the genre.
+      motes.current.position.y = (time * 0.35) % 2.4;
+      motes.current.rotation.y = -time * 0.12;
+    }
+  });
+  return <group>
+    {/* A flat seal platform: tall enough to read as a dais, low enough not to swallow the feet. */}
+    <mesh receiveShadow position={[0, 0.08, 0]}>
+      <cylinderGeometry args={[radius, radius + 0.5, 0.16, 40]} />
+      <meshStandardMaterial color="#b9c6c2" roughness={0.86} />
+    </mesh>
+    {[radius - 0.35, radius * 0.62, radius * 0.24].map((r, i) => <mesh key={r} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.17 + i * 0.004, 0]}>
+      <ringGeometry args={[r - 0.04, r + 0.04, 64]} />
+      <meshBasicMaterial color={color} transparent opacity={0.62 - i * 0.12} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>)}
+    <group ref={seals}>
+      {Array.from({ length: 8 }, (_, i) => {
+        const angle = (i / 8) * Math.PI * 2;
+        return <mesh key={i} position={[Math.sin(angle) * (radius - 0.9), 0.3, Math.cos(angle) * (radius - 0.9)]}
+          rotation={[-Math.PI / 2, 0, -angle]}>
+          <planeGeometry args={[0.22, 0.62]} />
+          <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>;
+      })}
+    </group>
+    {Array.from({ length: 4 }, (_, i) => {
+      const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      return <group key={`pillar-${i}`} position={[Math.sin(angle) * (radius + 1.1), 0, Math.cos(angle) * (radius + 1.1)]}>
+        <mesh castShadow position={[0, 1.5, 0]}><cylinderGeometry args={[0.16, 0.22, 3, 10]} /><meshStandardMaterial color="#9fb0ac" roughness={0.9} /></mesh>
+        <mesh position={[0, 3.1, 0]}><octahedronGeometry args={[0.24, 0]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.4} /></mesh>
+      </group>;
+    })}
+    <points ref={motes} geometry={geometry}>
+      <pointsMaterial color={color} size={0.15} transparent opacity={0.75} depthWrite={false} blending={THREE.AdditiveBlending} />
+    </points>
+    <pointLight color={color} intensity={4} distance={16} position={[0, 2, 0]} />
+    <BillboardLabel text={name} position={[0, 4.4, 0]} width={7.4} color={color} />
+    <BillboardLabel text="TĨNH TỌA · +40% LINH KHÍ" position={[0, 3.5, 0]} width={6.4} color="#f6ecc8" />
+  </group>;
+}
+
+/** A gate with a plaque, used at the front of each Linh Giới compound. */
+function SectGate({ name, color }: { name: string; color: string }) {
+  return <group>
+    {[-1, 1].map((side) => <mesh key={side} castShadow position={[side * 3.6, 2.4, 0]}>
+      <boxGeometry args={[0.5, 4.8, 0.5]} /><meshStandardMaterial color="#93a19c" roughness={0.92} />
+    </mesh>)}
+    <mesh castShadow position={[0, 4.9, 0]}><boxGeometry args={[8.8, 0.6, 0.9]} /><meshStandardMaterial color="#6f7d78" roughness={0.9} /></mesh>
+    <mesh position={[0, 5.5, 0]} rotation={[0, Math.PI / 4, 0]}>
+      <coneGeometry args={[7, 1.3, 4]} /><meshStandardMaterial color="#3f5a52" roughness={0.85} flatShading />
+    </mesh>
+    <mesh position={[0, 4.4, 0.5]}><boxGeometry args={[4.6, 0.8, 0.12]} />
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} /></mesh>
+    <BillboardLabel text={name} position={[0, 6.6, 0]} width={8.4} color={color} />
+  </group>;
+}
+
+/**
+ * One Linh Giới sect: walled compound, main hall facing the terrace, two side halls and a gate.
+ * Positions come from `LINH_GIOI_SECTS`, which is also what the absorption bonus is measured
+ * against, so the terrace you can see is exactly the tile that pays +40%.
+ */
+function LinhGioiCompound({ sect }: { sect: LinhGioiSect }) {
+  const { x, z } = sect.center;
+  return <group position={[x, 0, z]}>
+    <mesh receiveShadow position={[0, -1.6, 0]}>
+      <cylinderGeometry args={[34, 28, 3.2, 40]} /><meshStandardMaterial color="#8ea9a6" roughness={1} flatShading />
+    </mesh>
+    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+      <circleGeometry args={[26, 48]} /><meshStandardMaterial color="#a7b3ad" roughness={0.95} />
+    </mesh>
+    {/* Courtyard wall with a gap at the gate. */}
+    {[-1, 1].map((side) => <mesh key={`wall-${side}`} castShadow position={[side * 24, 1.5, 0]} rotation={[0, 0, 0]}>
+      <boxGeometry args={[0.7, 3, 44]} /><meshStandardMaterial color="#93a19c" roughness={0.94} />
+    </mesh>)}
+    <mesh castShadow position={[0, 1.5, -22]}><boxGeometry args={[48, 3, 0.7]} /><meshStandardMaterial color="#93a19c" roughness={0.94} /></mesh>
+    {[-1, 1].map((side) => <mesh key={`front-${side}`} castShadow position={[side * 17, 1.5, 22]}>
+      <boxGeometry args={[14, 3, 0.7]} /><meshStandardMaterial color="#93a19c" roughness={0.94} />
+    </mesh>)}
+
+    {/* Main hall, three tiers of roof, facing the terrace. */}
+    <group position={[0, 0, -17]}>
+      <mesh receiveShadow position={[0, 0.35, 0]}><boxGeometry args={[sect.hall.width + 3, 0.7, sect.hall.depth + 3]} />
+        <meshStandardMaterial color="#b9c2bd" roughness={0.95} /></mesh>
+      <mesh castShadow receiveShadow position={[0, 2.2, 0]}>
+        <boxGeometry args={[sect.hall.width, 3.4, sect.hall.depth]} /><meshStandardMaterial color="#d6d0bd" roughness={0.92} />
+      </mesh>
+      {[-1, 0, 1].map((side) => <mesh key={side} castShadow position={[side * 5.4, 4.6, 0]} rotation={[0, Math.PI / 4, 0]}>
+        <coneGeometry args={[8.6 - Math.abs(side) * 1.6, 1.9, 4]} /><meshStandardMaterial color="#4d6a60" roughness={0.86} flatShading />
+      </mesh>)}
+      <mesh castShadow position={[0, 6.4, 0]} rotation={[0, Math.PI / 4, 0]}>
+        <coneGeometry args={[6.2, 1.7, 4]} /><meshStandardMaterial color="#3f5a52" roughness={0.85} flatShading />
+      </mesh>
+      <mesh position={[0, 2.1, sect.hall.depth / 2 + 0.06]}><boxGeometry args={[3.4, 3.2, 0.14]} />
+        <meshStandardMaterial color="#4c4132" /></mesh>
+      <mesh position={[0, 4.05, sect.hall.depth / 2 + 0.1]}><boxGeometry args={[sect.hall.width * 0.62, 0.5, 0.14]} />
+        <meshStandardMaterial color={sect.color} emissive={sect.color} emissiveIntensity={0.42} /></mesh>
+      <BillboardLabel text={sect.hall.name} position={[0, 7.6, 0]} width={8.6} color={sect.color} />
+    </group>
+
+    {/* Two side halls: quarters and the scripture room. */}
+    {[-1, 1].map((side) => <group key={`side-${side}`} position={[side * 16, 0, -4]} rotation={[0, side * Math.PI / 2, 0]}>
+      <mesh castShadow position={[0, 1.5, 0]}><boxGeometry args={[11, 3, 7]} /><meshStandardMaterial color="#c9c8b8" roughness={0.93} /></mesh>
+      <mesh castShadow position={[0, 3.4, 0]} rotation={[0, Math.PI / 4, 0]}>
+        <coneGeometry args={[8.4, 1.7, 4]} /><meshStandardMaterial color="#54706a" roughness={0.88} flatShading />
+      </mesh>
+      <mesh position={[0, 1.1, 3.6]}><boxGeometry args={[2, 2.1, 0.1]} /><meshStandardMaterial color="#4c4132" /></mesh>
+    </group>)}
+
+    {/* Gate on the front wall, terrace in the middle of the yard. */}
+    <group position={[0, 0, 22]}><SectGate name={`LINH GIỚI · ${sect.name}`} color={sect.color} /></group>
+    {Array.from({ length: 6 }, (_, i) => <mesh key={`path-${i}`} receiveShadow rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0.03, 12 + i * 1.9]}>
+      <planeGeometry args={[4.2 - i * 0.1, 1.5]} /><meshStandardMaterial color="#9aa8a2" roughness={0.96} />
+    </mesh>)}
+    <MeditationTerrace name={sect.afk.name} radius={sect.afk.radius} color={sect.color} />
+  </group>;
+}
+
+/** Which Linh Giới terrace the player is standing on, for the HUD. */
+export function linhGioiAt(position: Vector3): LinhGioiSect | null {
+  return LINH_GIOI_SECTS.find((sect) => Math.hypot(position.x - sect.afk.position.x, position.z - sect.afk.position.z) <= sect.afk.radius) ?? null;
+}
+
+/**
  * Everything outside the old island. `zone` picks the palette and the content; the ring is measured
  * from the centre so nothing overlaps the hand-placed heart of the map.
  */
@@ -173,9 +327,13 @@ export function OuterLands({ zone }: { zone: 'overworld' | 'village' | 'wilderne
   // The heart of each map stays clear: sect halls reach z = 36, the village square r = 30.
   const inner = village ? 48 : sect ? 62 : 34;
 
-  const pines = useMemo(() => scatter(village ? 91 : sect ? 17 : 41, village ? 220 : 320, inner + 12, village ? 138 : 268), [inner, sect, village]);
-  const rocks = useMemo(() => scatter(23, village ? 90 : 150, inner + 6, village ? 150 : 280), [inner, village]);
-  const grove = useMemo(() => scatter(57, 130, inner + 30, village ? 140 : 250), [inner, village]);
+  // Nothing grows inside a Linh Giới compound, and nothing grows inside the courtyards either.
+  const clearOfSects = useMemo(() => (x: number, z: number) =>
+    LINH_GIOI_SECTS.every((sect) => Math.hypot(x - sect.center.x, z - sect.center.z) > 40), []);
+  const pines = useMemo(() => scatter(village ? 91 : sect ? 17 : 41, village ? 220 : 320, inner + 12, village ? 138 : 268,
+    clearOfSects), [inner, sect, village, clearOfSects]);
+  const rocks = useMemo(() => scatter(23, village ? 90 : 150, inner + 6, village ? 150 : 280, clearOfSects), [inner, village, clearOfSects]);
+  const grove = useMemo(() => scatter(57, 130, inner + 30, village ? 140 : 250, clearOfSects), [inner, village, clearOfSects]);
 
   const shrines = useMemo(() => [
     { x: 0, z: sect ? 72 : 0, rot: 0, label: sect ? 'NGOẠI MÔN · SƠN ĐẠO' : 'SƠN ĐẠO' },
@@ -235,17 +393,7 @@ export function OuterLands({ zone }: { zone: 'overworld' | 'village' | 'wilderne
       <Courtyard x={-28} z={168} rotation={Math.PI} count={6} radius={13} label="TÀNG KINH CÁC" />
     </>}
 
-    {ascendant && <>
-      {/* The higher realm: orthodox sect enclosures floating on their own plateaus. */}
-      <Courtyard x={-160} z={140} rotation={0.5} count={8} radius={18} label="LINH GIỚI · THIÊN KIẾM TÔNG" />
-      <Courtyard x={170} z={132} rotation={-0.5} count={7} radius={16} label="LINH GIỚI · NGỌC HUYỀN MÔN" />
-      <Courtyard x={-152} z={-150} rotation={0.9} count={7} radius={16} label="LINH GIỚI · THÁI HƯ ĐIỆN" />
-      <Courtyard x={168} z={-168} rotation={-0.9} count={8} radius={18} label="LINH GIỚI · CỬU THIÊN CUNG" />
-      {[-160, 170, -152, 168].map((x, i) => <group key={`plateau-${i}`} position={[x, 0, [140, 132, -150, -168][i]!]}>
-        <mesh receiveShadow position={[0, -1.2, 0]}><cylinderGeometry args={[34, 28, 3.2, 32]} />
-          <meshStandardMaterial color="#8ea9a6" roughness={1} flatShading /></mesh>
-      </group>)}
-    </>}
+    {ascendant && LINH_GIOI_SECTS.map((sect) => <LinhGioiCompound key={sect.id} sect={sect} />)}
   </>;
 }
 

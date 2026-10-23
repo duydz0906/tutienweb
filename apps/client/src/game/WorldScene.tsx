@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type NpcId, type OwnCharacter, type PublicPlayer, type SpiritRoot,
+import { ITEMS, SKILLS, isWorldZone, MAX_REALM, houseLevel, type Appearance, type Gender, type NpcId, type OwnCharacter, type PublicPlayer, type SpiritRoot,
   type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import { AdminFireTrail, Avatar } from './Avatar';
 import { SceneEngine } from './SceneEngine';
@@ -45,6 +45,8 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   const { scene, camera, gl } = useThree();
   const engine = useRef<SceneEngine | null>(null);
   const avatar = useRef<THREE.Group>(null);
+  /** Flight height in metres, owned here so a re-render never resets a climb. */
+  const altitude = useRef(0);
   const lastCinematic = useRef('');
   const inTrial = character?.scene === 'tribulation';
   const zone = character && isWorldZone(character.scene) ? character.scene : 'overworld';
@@ -60,6 +62,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   useEffect(() => {
     if (!character) return;
     document.body.style.cursor = '';
+    altitude.current = 0; // never arrive in a new zone still airborne
     avatar.current?.position.set(character.position.x, character.position.y, character.position.z);
     avatar.current?.rotation.set(0, character.rotation, 0);
     engine.current?.enterZone(character.scene, character.position);
@@ -75,8 +78,16 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
   /**
    * Flying height: Space climbs, Shift descends, and the engine lifts the whole avatar group (not
    * just the mesh) so the chase camera follows. Server positions stay on the ground plane.
+   *
+   * Take-off lifts the rider onto the mount's own hover height; landing is never a snap — the loop
+   * below glides them down at 3.4 m/s, and that is why this effect only ever raises the altitude.
    */
-  const altitude = useRef(0);
+  const mountItem = character?.equipment.mount
+    ? character.inventory.find((item) => item.instanceId === character.equipment.mount)?.itemId : undefined;
+  const hoverAltitude = (mountItem ? ITEMS[mountItem]?.flight?.altitude : undefined) ?? 1.9;
+  useEffect(() => {
+    if (character?.flying) altitude.current = Math.max(altitude.current, hoverAltitude);
+  }, [character?.flying, hoverAltitude]);
   useEffect(() => {
     const hold = (event: KeyboardEvent, pressed: boolean): void => {
       if (event.code === 'Space') setFlightInput('up', pressed);
@@ -144,10 +155,14 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
     const flying = Boolean(character?.flying) && character?.scene !== 'tribulation';
     const climb = flying ? (flightInput.up ? 1 : 0) - (flightInput.down ? 1 : 0) : 0;
     // No ceiling: climb as high as you like (the camera's far plane is the only limit). Descending
-    // is held-Shift or, once the mount is gone, a slow glide down instead of a drop to the floor.
+    // is held-Shift or, once the mount is gone, a glide down instead of a drop to the floor. The
+    // glide quickens with height — otherwise a dismount at 900 m left the player floating for
+    // minutes — but it never snaps: the last few metres still settle at the 3.4 m/s glide.
     if (climb) altitude.current = Math.max(0, altitude.current + climb * 7.5 * dt);
-    else if (!flying && altitude.current > 0) altitude.current = Math.max(0, altitude.current - 3.4 * dt);
-    controller.setFlightAltitude(altitude.current);
+    else if (!flying && altitude.current > 0) {
+      const glide = Math.max(3.4, Math.min(70, altitude.current * 0.8));
+      altitude.current = Math.max(0, altitude.current - glide * dt);
+    }
     controller.setFlightAltitude(altitude.current);
     // A mounted rider really moves faster; the server uses the same speed for its own ticks.
     controller.update(delta, avatar.current, serverPosition, character?.flying ? 10.5 : 6, Boolean(character));
@@ -176,6 +191,7 @@ function SceneContent({ character, world, trial, preview, effects, touch, onInpu
         playerPosition={serverPosition} selectedTarget={selectedTarget} onSelect={onTarget} onGather={onGather} onTravel={onPortal} />}
     </>}
     <Avatar player={local} local={Boolean(character)} preview={!character} groupRef={avatar}
+      intent={() => engine.current?.movementInput() ?? 0}
       attackAt={effects.filter((e) => e.type === 'swing' && e.sourceId === local.id).at(-1)?.at}
       castAt={effects.filter((e) => e.type === 'cast' && e.sourceId === local.id).at(-1)?.at} />
     {local.devMode && <AdminFireTrail player={local} avatarRef={avatar} />}

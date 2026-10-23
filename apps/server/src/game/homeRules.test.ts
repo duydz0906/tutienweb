@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ASCENDANT_BONUS, HOME_CHEST, MAX_REALM, REBIRTH_ALTAR, REBIRTH_BONUS, SPIRIT_LAKE,
-  houseAbsorptionBonus, houseLevel, storageCapacity } from '@van-thuong/shared';
+import { ASCENDANT_BONUS, HOME_CHEST, LINH_GIOI_BONUS, LINH_GIOI_SECTS, MAX_REALM, REBIRTH_ALTAR, REBIRTH_BONUS,
+  SPIRIT_LAKE, absorptionMultiplier, houseAbsorptionBonus, houseLevel, linhGioiSectAt, storageCapacity } from '@van-thuong/shared';
 import { addItem, artifactDropChance, bankCultivation, canEnterSanctum, cultivationRate,
   gainCultivation, moveStoredItem, newCharacter, reincarnate } from './rules.js';
 
@@ -38,6 +38,31 @@ describe('private housing, context-based spirit absorption and single rebirth', 
     expect(cultivationRate(c)).toBeCloseTo(2 * (1 + 0.2 + REBIRTH_BONUS + SPIRIT_LAKE.bonus));
     c.scene = 'residence';
     expect(cultivationRate(c)).toBeCloseTo(2 * (1 + 0.2 + REBIRTH_BONUS));
+  });
+
+  it('grants the +40% Linh Giới AFK bonus only on a sect terrace of the ascendant map', () => {
+    const c = make('linh-gioi-account');
+    c.root.multiplier = 1;
+    const [thienKiem] = LINH_GIOI_SECTS;
+    const off = absorptionMultiplier(c);
+    expect(LINH_GIOI_BONUS).toBe(0.4);
+    expect(linhGioiSectAt('ascendant', { x: 0, y: 0, z: 0 })).toBeNull();
+    c.scene = 'ascendant';
+    c.position = { ...thienKiem.afk.position };
+    expect(linhGioiSectAt(c.scene, c.position)?.id).toBe(thienKiem.id);
+    expect(absorptionMultiplier(c)).toBeCloseTo(off + 0.4);
+    expect(cultivationRate(c)).toBeCloseTo(2 * (1 + houseAbsorptionBonus(0) + LINH_GIOI_BONUS));
+    // Just outside the terrace radius gives nothing back.
+    c.position = { x: thienKiem.afk.position.x + thienKiem.afk.radius + 1, y: 0, z: thienKiem.afk.position.z };
+    expect(linhGioiSectAt(c.scene, c.position)).toBeNull();
+    expect(absorptionMultiplier(c)).toBeCloseTo(off);
+    // The same coordinates on the overworld are not a Linh Giới terrace.
+    c.scene = 'overworld'; c.position = { ...thienKiem.afk.position };
+    expect(linhGioiSectAt(c.scene, c.position)).toBeNull();
+    for (const sect of LINH_GIOI_SECTS) {
+      expect(sect.afk.position.x).toBe(sect.center.x);
+      expect(sect.afk.position.z).toBe(sect.center.z);
+    }
   });
 
   it('moves each unique instance once, requires its owner in the room, rejects equipped/full storage and full bag', () => {

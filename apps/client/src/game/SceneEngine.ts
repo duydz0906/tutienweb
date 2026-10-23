@@ -218,6 +218,13 @@ export class SceneEngine {
     this.pitch = view === 'face' ? 0.05 : view === 'body' ? 0.18 : this.isTribulation ? 0.34 : this.isInterior ? 0.24 : 0.27;
   }
 
+  /** 0…1 of steering input, read-only. The avatar uses it so released keys freeze the legs at once. */
+  movementInput(): number {
+    const forward = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) + this.touchInput.forward;
+    const right = Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')) + this.touchInput.right;
+    return Math.min(1, Math.hypot(forward, right));
+  }
+
   getMovement(): { x: number; z: number; rotation: number } {
     const forward = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) + this.touchInput.forward;
     const right = Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')) + this.touchInput.right;
@@ -260,12 +267,22 @@ export class SceneEngine {
         // A locked camera also turns a standing body so it keeps facing away from the view.
         if (x !== 0 || z !== 0 || this.cameraLocked) avatar.rotation.y = rotation;
       }
-      this.target.set(serverPosition.x, serverPosition.y, serverPosition.z);
-      if (avatar.position.distanceTo(this.target) > 6) avatar.position.copy(this.target);
-      else avatar.position.lerp(this.target, Math.min(1, dt * 5));
-      // Applied after the reconciliation lerp so the hop is not pulled back to the ground.
-      const lift = this.jumpOffset() + this.flightAltitude;
-      if (lift > 0) avatar.position.y += lift;
+      // Reconcile on the HORIZONTAL plane only. Doing it in 3D meant that once a rider climbed more
+      // than 6 m, every frame took the "too far, snap" branch: the client's own movement was thrown
+      // away (could not move while flying) and the position ping-ponged (the jitter).
+      this.target.set(serverPosition.x, 0, serverPosition.z);
+      const drift = Math.hypot(avatar.position.x - this.target.x, avatar.position.z - this.target.z);
+      if (drift > 6) {
+        avatar.position.x = this.target.x;
+        avatar.position.z = this.target.z;
+      } else {
+        avatar.position.x += (this.target.x - avatar.position.x) * Math.min(1, dt * 5);
+        avatar.position.z += (this.target.z - avatar.position.z) * Math.min(1, dt * 5);
+      }
+      // Height is written, never accumulated. Adding the lift on top of last frame's height turned
+      // the hop into a lagged filter that snapped a few centimetres downward at the end of every
+      // jump ("rớt giật xuống"); assigning base + lift makes the hop exactly the curve it is.
+      avatar.position.y = serverPosition.y + this.jumpOffset() + this.flightAltitude;
       // Follow the player with the shadow frustum. A fixed ±42 m box around the origin left the
       // whole enlarged map unshadowed; shadows now stay crisp wherever the player walks.
       this.sun.target.position.copy(avatar.position);
