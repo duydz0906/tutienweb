@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { GameScene, Vector3 } from '@van-thuong/shared';
+import { LOCAL_DELAY_MS, MotionTrack, correctionStep } from './interpolation';
 
 /**
  * How high the body is, as a fraction of the hop, `progress` seconds into it.
@@ -34,6 +35,16 @@ export class SceneEngine {
   private readonly desiredCamera = new THREE.Vector3();
   private readonly lookAt = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
+  /**
+   * Where this body was drawn, frame by frame. Reconciliation compares this history with the server's
+   * history *at the same instant* (both `LOCAL_DELAY_MS` ago) instead of comparing where the body is
+   * now with where the server was a packet ago — that comparison is dominated by latency, so the
+   * old code spent every frame dragging the body backwards, which is what made walking and flying
+   * look like the character was wading through water.
+   */
+  private readonly history = new MotionTrack(90);
+  /** When the history was last restarted; a comparison needs a full delay of it before it means anything. */
+  private historySince = 0;
   private readonly cameraAim = new THREE.Vector3();
   private dragging = false;
   private previousPointerX = 0;
@@ -169,6 +180,11 @@ export class SceneEngine {
 
   getFlightAltitude(): number { return this.flightAltitude; }
 
+  private resetHistory(time: number, x: number, z: number): void {
+    this.history.reset(time, x, z);
+    this.historySince = time;
+  }
+
   private jumpOffset(): number {
     if (!this.jumpStartedAt) return 0;
     const progress = (performance.now() - this.jumpStartedAt) / SceneEngine.JUMP_MS;
@@ -185,6 +201,7 @@ export class SceneEngine {
     this.keys.clear();
     this.touchInput = { right: 0, forward: 0 };
     this.flightAltitude = 0; // never arrive in a new zone floating
+    this.resetHistory(performance.now(), position.x, position.z); // a new map is a new baseline
     // Place the camera to the side of the room's entry door. Otherwise the exit door
     // blocks the avatar and its sprite fills the screen on arrival.
     const interior = zone === 'residence' || zone === 'sanctum';
@@ -272,14 +289,26 @@ export class SceneEngine {
       // Reconcile on the HORIZONTAL plane only. Doing it in 3D meant that once a rider climbed more
       // than 6 m, every frame took the "too far, snap" branch: the client's own movement was thrown
       // away (could not move while flying) and the position ping-ponged (the jitter).
+      //
+      // `serverPosition` is the interpolated server path of `LOCAL_DELAY_MS` ago, so it is compared
+      // with *this body's own position at that same moment*, not with where it is now. Latency and
+      // speed then cancel exactly: a walking body matches its server counterpart almost perfectly and
+      // is not corrected at all, while a real disagreement (a wall the server refused, a clamp, a
+      // respawn) is corrected smoothly instead of by yanking.
+      const now = performance.now();
+      if (!this.history.size) this.resetHistory(now, avatar.position.x, avatar.position.z);
+      // Only meaningful once the history reaches back a full delay; before that the "past" sample
+      // would just be the present, and the difference would be latency rather than disagreement.
+      const own = now - this.historySince >= LOCAL_DELAY_MS ? this.history.at(now - LOCAL_DELAY_MS) : null;
+      this.history.push(now, avatar.position.x, avatar.position.z);
       this.target.set(serverPosition.x, 0, serverPosition.z);
-      const drift = Math.hypot(avatar.position.x - this.target.x, avatar.position.z - this.target.z);
-      if (drift > 6) {
-        avatar.position.x = this.target.x;
-        avatar.position.z = this.target.z;
-      } else {
-        avatar.position.x += (this.target.x - avatar.position.x) * Math.min(1, dt * 5);
-        avatar.position.z += (this.target.z - avatar.position.z) * Math.min(1, dt * 5);
+      if (own) {
+        const fix = correctionStep(own, { x: this.target.x, z: this.target.z }, dt, movementSpeed,
+          this.movementInput() < 0.02);
+        avatar.position.x += fix.x;
+        avatar.position.z += fix.z;
+        // A teleport (portal, respawn, dev jump): take the server's word and forget the history.
+        if (fix.snap) this.resetHistory(now, avatar.position.x, avatar.position.z);
       }
       // Height is written, never accumulated. Adding the lift on top of last frame's height turned
       // the hop into a lagged filter that snapped a few centimetres downward at the end of every

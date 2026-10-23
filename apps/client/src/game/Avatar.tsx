@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ELEMENT_COLOR, ITEMS, normalizeAppearance, type PublicPlayer } from '@van-thuong/shared';
 import { RealmAura } from './RealmAura';
+import { REMOTE_DELAY_MS, playerTrack } from './interpolation';
 import { RIG, buildCultivator, type CultivatorLook } from './sculpt/cultivator';
 import { buildMountModel, buildPetModel } from './sculpt/beasts';
 import { humanLookKey, instantiateHuman, rigOf, type HumanRig } from './human/character';
@@ -168,6 +169,19 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
   const [mount, setMount] = useState<THREE.Group | null>(null);
   const [pet, setPet] = useState<THREE.Group | null>(null);
 
+  // The transform is written once, on mount. It used to be bound to props (`player.position`), which
+  // meant every character packet — once a second — re-applied a second-old position and rotation on
+  // top of the predicted body. From here on the engine owns the local body and the interpolation
+  // track owns everybody else's.
+  useEffect(() => {
+    const outer = groupRef?.current ?? internalRef.current;
+    if (!outer) return;
+    outer.position.set(player.position.x, player.position.y, player.position.z);
+    outer.rotation.set(0, player.rotation, 0);
+    // Deliberately mount-only: later packets are not allowed to move the body.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const artifact = useArtifactModel();
   const rootColor = useMemo(() => new THREE.Color(ELEMENT_COLOR[player.root.elements[0]] || '#91e7cf'), [player.root.elements[0]]);
   const aura = useMemo(() => new THREE.ShaderMaterial({
@@ -217,7 +231,15 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
     airborne.current += ((flying ? 1 : 0) - airborne.current) * Math.min(1, dt * 4.5);
     if (bodyRef.current) bodyRef.current.position.y = Math.sin(time * 2.1) * 0.09 * airborne.current;
     if (!local && !preview) {
-      outer.position.lerp(new THREE.Vector3(player.position.x, player.position.y, player.position.z), Math.min(1, dt * 9));
+      // Another player's packets arrive at 10 Hz; drawing them straight made the whole body (and its
+      // gait) jump ten times a second. Their track answers with an interpolated position instead,
+      // and it is seeded here in case this avatar exists before the first snapshot that contains them.
+      const track = playerTrack(player.id);
+      if (!track.size) track.reset(performance.now(), player.position.x, player.position.z);
+      const path = track.at(performance.now() - REMOTE_DELAY_MS);
+      outer.position.x = path?.x ?? player.position.x;
+      outer.position.z = path?.z ?? player.position.z;
+      outer.position.y = player.position.y;
       outer.rotation.y += Math.atan2(Math.sin(player.rotation - outer.rotation.y), Math.cos(player.rotation - outer.rotation.y)) * Math.min(1, dt * 8);
     }
     if (preview) outer.rotation.y = Math.sin(time * 0.23) * 0.13;
@@ -245,7 +267,9 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
     // Idle: no leg motion at all. Moving: the cycle speed follows the body, capped at a run.
     const cadence = preview ? 0 : Math.min(1, speed.current / 3.2);
     const walking = !preview && !meditating && !flying && (wandering || cadence > 0.02);
-    if (model) phase.current += wandering ? dt * 6.2 : step * 1.9;
+    // The stride advances with the *smoothed* speed rather than the raw per-frame displacement: a
+    // reconciliation nudge is not a step, and raw distance made the gait stutter on packet edges.
+    if (model) phase.current += wandering ? dt * 6.2 : speed.current * dt * 1.9;
     if (kind === 'human' && human.current) {
       // Real skeleton: poses are deltas from the mixamo bind pose, plus a pelvis drop for the gait.
       // Both one-shots run 0 → 1 so the pose curves read as wind-up then follow-through.
@@ -334,8 +358,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
 
   const immortal = player.equipment.weapon === 'immortal_sword';
   const shieldActive = Boolean(player.shieldUntil && player.shieldUntil > Date.now());
-  return <group ref={groupRef ?? internalRef} position={[player.position.x, player.position.y, player.position.z]}
-    rotation={[0, player.rotation, 0]} scale={player.devMode ? 1.2 : 1}>
+  return <group ref={groupRef ?? internalRef} scale={player.devMode ? 1.2 : 1}>
     <group ref={bodyRef}>
     {mount && <group ref={mountRef}><primitive object={mount} /></group>}
     {model && <group ref={modelRef}><primitive object={model} /></group>}
