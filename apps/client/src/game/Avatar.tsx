@@ -143,10 +143,12 @@ function SwordHalo() {
 }
 
 function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 0, wandering = false, meditating = false,
-  beard = false, staff = false }: {
+  beard = false, staff = false, intent }: {
   player: PublicPlayer; local: boolean; preview: boolean; attackAt?: number; castAt?: number;
   wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
   beard?: boolean; staff?: boolean;
+  /** Steering input of the local player (0 = keys released). Remote actors are measured instead. */
+  intent?: () => number;
 }) {
   const { model, rig, human, kind } = useCultivator(player, local, preview, { beard, staff });
   const internalRef = useRef<THREE.Group>(null);
@@ -159,7 +161,8 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
   const petRef = useRef<THREE.Group>(null);
   const phase = useRef(0);
   const lastPosition = useRef(new THREE.Vector3(player.position.x, player.position.y, player.position.z));
-  const lastMoveAt = useRef(0);
+  /** Smoothed walking speed in metres/second, measured from the actor's own displacement. */
+  const speed = useRef(0);
   const [mount, setMount] = useState<THREE.Group | null>(null);
   const [pet, setPet] = useState<THREE.Group | null>(null);
 
@@ -206,28 +209,47 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
     const time = clock.elapsedTime;
     const outer = groupRef?.current ?? internalRef.current;
     if (!outer) return;
-    // Altitude is visual only: the server position stays on the ground plane for collision.
-    if (bodyRef.current) bodyRef.current.position.y = flying ? altitude + Math.sin(time * 2.1) * 0.09 : 0;
+    // Altitude is visual only and owned by the engine's flight altitude on the outer group; the body
+    // keeps just the slow hover bob, otherwise a rider at 900 m would be drawn at 1800 m.
+    if (bodyRef.current) bodyRef.current.position.y = flying ? Math.sin(time * 2.1) * 0.09 : 0;
     if (!local && !preview) {
       outer.position.lerp(new THREE.Vector3(player.position.x, player.position.y, player.position.z), Math.min(1, dt * 9));
       outer.rotation.y += Math.atan2(Math.sin(player.rotation - outer.rotation.y), Math.cos(player.rotation - outer.rotation.y)) * Math.min(1, dt * 8);
     }
     if (preview) outer.rotation.y = Math.sin(time * 0.23) * 0.13;
 
-    const moved = outer.position.distanceTo(lastPosition.current) > 0.002;
-    if (moved) lastMoveAt.current = time;
+    // The gait is driven by the distance actually travelled this frame, not by a "moved recently"
+    // timer. Two things fall out of that: standing still leaves the legs perfectly still (the old
+    // timer kept them swinging for a quarter second after every stop, and any reconciliation
+    // nudge re-triggered it), and the stride is foot-locked — the phase advances 1.9 rad per metre
+    // (a 3.3 m stride, the length of this rig's step), so a slow walk takes short steps instead of
+    // moon-walking at one fixed cadence.
+    const step = Math.hypot(outer.position.x - lastPosition.current.x, outer.position.z - lastPosition.current.z);
     lastPosition.current.copy(outer.position);
+    const live = Math.max(dt, 1 / 240);
+    const measured = step / live;
+    // The local body is reconciled against the server every frame, so after a key is released it
+    // still slides a few centimetres. That correction must not be read as walking: a released key
+    // means a still body, and the legs freeze in about a tenth of a second. A snap (teleport, zone
+    // change) is never a sprint either.
+    const input = local && intent ? Math.min(1, Math.max(0, intent())) : 1;
+    const target = step > 1.5 || input < 0.02 ? 0 : measured;
+    speed.current += (target - speed.current) * Math.min(1, dt * (target > speed.current ? 12 : 26));
+    if (speed.current < 0.05) speed.current = 0;
 
     const nodes = rig.current;
-    const walking = !preview && !meditating && !flying && (wandering || time - lastMoveAt.current < 0.24);
-    if (model) phase.current += dt * (walking ? 9 : 2.2);
+    // Idle: no leg motion at all. Moving: the cycle speed follows the body, capped at a run.
+    const cadence = preview ? 0 : Math.min(1, speed.current / 3.2);
+    const walking = !preview && !meditating && !flying && (wandering || cadence > 0.02);
+    if (model) phase.current += wandering ? dt * 6.2 : step * 1.9;
     if (kind === 'human' && human.current) {
       // Real skeleton: poses are deltas from the mixamo bind pose, plus a pelvis drop for the gait.
       // Both one-shots run 0 → 1 so the pose curves read as wind-up then follow-through.
       const swingProgress = attackAt ? Math.min(1, Math.max(0, (Date.now() - attackAt) / 480)) : 0;
       const castProgress = castAt ? Math.min(1, Math.max(0, (Date.now() - castAt) / 760)) : 0;
       const drop = applyHumanPose(human.current, {
-        time, walk: walking || wandering ? 1 : 0, phase: phase.current,
+        // `walk` is the real speed fraction, so a standstill is exactly zero and a sprint is full.
+        time, walk: preview ? 0 : wandering ? Math.max(0.6, cadence) : cadence, phase: phase.current,
         flying, meditating, attack: swingProgress > 0 && swingProgress < 1 ? swingProgress : 0,
         cast: castProgress > 0 && castProgress < 1 ? castProgress : 0,
         // A held weapon closes that hand into a fist around the grip socket.
@@ -238,7 +260,7 @@ function InnerAvatar({ player, local, preview, groupRef, attackAt = 0, castAt = 
       modelRef.current.position.y = meditating ? -0.28 : 0;
     }
     if (model && kind === 'sculpt') {
-      const swing = walking ? Math.sin(phase.current) * 0.5 : 0;
+      const swing = walking ? Math.sin(phase.current) * 0.5 * Math.max(0.35, cadence) : 0;
       if (nodes.legL) nodes.legL.rotation.x = swing;
       if (nodes.legR) nodes.legR.rotation.x = -swing;
       if (nodes.armL) {
@@ -360,7 +382,7 @@ function useArtifactModel(): THREE.Group {
 
 export function Avatar(props: { player: PublicPlayer; local?: boolean; preview?: boolean; attackAt?: number; castAt?: number;
   wandering?: boolean; meditating?: boolean; groupRef?: React.RefObject<THREE.Group | null>;
-  beard?: boolean; staff?: boolean }) {
+  beard?: boolean; staff?: boolean; intent?: () => number }) {
   return <InnerAvatar {...props} local={props.local ?? false} preview={props.preview ?? false} />;
 }
 

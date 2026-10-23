@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Backpack, BookOpen, Camera, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Compass, Crown, Feather, Flame,
   FlaskConical, Gem, House, MapPin, Menu, MessageCircle, Radio, RotateCcw, ScrollText, Send, Shield, Sparkles, Swords, Trophy, Waves, Wifi, WifiOff, Zap } from 'lucide-react';
-import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HABITATS, HOME_CHEST, HOME_EXIT, HOME_GATE, HOTBAR_SLOTS, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, NPCS, PORTALS, REALMS, REBIRTH_ALTAR, ROOT_LABEL, SANCTUM_EXIT, SECRET_GATE, SECT_NPCS, SECT_RANK_LABEL, SKILLS, SPIRIT_LAKE, TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_NPCS, VILLAGE_RADIUS, WORLD_RADIUS, absorptionMultiplier, canRideMount, houseAbsorptionBonus, houseLevel, inSpiritLake, isWorldZone, skillRealm,
+import { ASCENDANT_GATE, ELEMENT_COLOR, ELEMENT_LABEL, expForStage, HABITATS, HOME_CHEST, HOME_EXIT, HOME_GATE, HOTBAR_SLOTS, ITEMS, LEVEL_CONFIG, majorBreakthroughCost, MAX_REALM, NPCS, PORTALS, REALMS, REBIRTH_ALTAR, ROOT_LABEL, SANCTUM_EXIT, SECRET_GATE, SECT_NPCS, SECT_RANK_LABEL, SKILLS, SPIRIT_LAKE, LINH_GIOI_SECTS, TAMEABLE_BEASTS, VILLAGE_GATE, VILLAGE_NPCS, VILLAGE_RADIUS, WORLD_RADIUS, absorptionMultiplier, canRideMount, houseAbsorptionBonus, houseLevel, inSpiritLake, linhGioiSectAt, isWorldZone, skillRealm,
   type ChatMessage, type NpcId, type OwnCharacter, type TribulationState, type WorldSnapshot } from '@van-thuong/shared';
 import type { ActivePanel } from './Panels';
 import type { HudPrefs } from '../lib/uiPrefs';
@@ -42,6 +42,8 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
   const pending = character.cultivationBank + Math.floor(Math.min(8 * 3600 * 1000, Math.max(0, now - character.lastCultivatedAt)) / 1000 * rate);
   const tier = houseLevel(character.devMode ? MAX_REALM : character.highestRealm);
   const atLake = inSpiritLake(character.scene, livePosition);
+  // Linh Giới tĩnh tọa terrace: the +40% AFK spot of the upper realm.
+  const atLinhGioi = linhGioiSectAt(character.scene, livePosition);
   const canOpenSanctum = character.rebirths > 0 || character.realm === MAX_REALM && character.minorStage === LEVEL_CONFIG.minorStages;
   const gate = isWorldZone(character.scene) ? PORTALS[character.scene] : null;
   const nearby = (target: { position: { x: number; z: number }; radius: number }) =>
@@ -133,6 +135,7 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
         {hudPrefs.cultivateOpen && <>
           <div className="cultivate-info"><span><span className="pulse-dot" /> Tích lũy: <b>+{format(pending)}</b> tu vi</span><small>{rate.toFixed(1)}/giây · +{Math.round((multiplier - 1) * 100)}% · 8 giờ</small></div>
           {atLake && <div className="lake-bonus"><Waves size={14} /> Đang AFK tại Hồ Tụ Linh · +15% linh khí</div>}
+          {atLinhGioi && <div className="lake-bonus"><Sparkles size={14} /> Tĩnh tọa tại {atLinhGioi.name} · +40% linh khí</div>}
           {Boolean(character.rebirths) && <div className="rebirth-bonus"><RotateCcw size={14} /> Đã tái sinh · +50% vĩnh viễn{inAscendant ? ' · Thượng Giới +35%' : ''}</div>}
           <div className="cultivate-actions"><button className="btn btn-teal" disabled={!connected || inTrial || pending < 1} onClick={() => onAction('cultivate')}><Sparkles size={15} /> Thu linh khí</button><button className="btn btn-outline-gold" disabled={!connected || inTrial || !cost || character.cultivation < cost}
             onClick={() => onAction(minorAdvance ? 'advance-stage' : 'breakthrough', minorAdvance ? {} : { usePill: usePill && hasFoundationPill })}><Zap size={15} /> {minorAdvance ? 'Thăng tầng' : 'Độ kiếp'}</button></div>
@@ -172,6 +175,9 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
               style={{ left: mapX(habitat.center.x), top: mapY(habitat.center.z), '--habitat-color': habitat.color } as React.CSSProperties}>{habitat.level}</span>)}
           {gate && <span className="map-portal" title={`${gate.name} · X ${gate.position.x}, Z ${gate.position.z}`}
             style={{ left: mapX(gate.position.x), top: mapY(gate.position.z) }}>◈</span>}
+          {character.scene === 'ascendant' && LINH_GIOI_SECTS.map((sect) => <span key={sect.id} className="map-npc"
+            title={`${sect.afk.name} · +40% linh khí`}
+            style={{ left: mapX(sect.afk.position.x), top: mapY(sect.afk.position.z), color: sect.color }}>☯</span>)}
           {!inSect && !inVillage && !inTrial && boss && boss.hp > 0 && <span className="map-boss" title="Huyền Thiên Cổ Long"
             style={{ left: mapX(boss.position.x), top: mapY(boss.position.z) }}>✦</span>}
           {activeWorld?.players.filter((p) => p.id !== character.id).map((p) => <span key={p.id} className="map-ally" title={p.name}
@@ -276,16 +282,19 @@ export function GameHUD({ character, world, trial, connected, cooldowns, message
           <button className="skill-slot basic-slot" disabled={!connected || !inBattle || character.hp <= 0} onClick={onAttack} title="Đòn đánh thường · chuột trái trên bản đồ hoặc phím J · Hoang Vực và Thượng Giới">
             <kbd>J</kbd><span className="skill-symbol"><Swords size={26} /></span>{hudPrefs.skillLabels && <span className="skill-name">Chém thường</span>}<span className="skill-mana">0 MP</span>
           </button>
-          {Array.from({ length: HOTBAR_SLOTS }, (_, index) => {
-            const id = character.hotbar[index];
-            const skill = id && Object.hasOwn(SKILLS, id) ? SKILLS[id] : null;
+          {Array.from({ length: HOTBAR_SLOTS }, (_, index) => ({ index, id: character.hotbar[index] }))
+            // Only equipped techniques take a slot: an empty hotbar is a single attack button, not
+            // nine greyed ⊘ boxes (which on a phone also ate most of the bottom of the screen).
+            .filter((slot): slot is { index: number; id: string } => Boolean(slot.id && Object.hasOwn(SKILLS, slot.id)))
+            .map(({ index, id }) => {
+            const skill = SKILLS[id];
             const remaining = skill && !character.devMode ? Math.max(0, Math.ceil(((cooldowns[skill.id] ?? 0) - now) / 1000)) : 0;
-            return <button key={index} className={`skill-slot ${!skill || skill && (character.realm < skillRealm(skill) || skill.path && skill.path !== character.path) ? 'locked' : ''} ${skill?.ultimate ? 'ultimate' : ''}`}
-              disabled={!skill || !connected || character.realm < skillRealm(skill) || Boolean(skill.path && skill.path !== character.path) || !isWorldZone(character.scene) || ((inSect || inVillage) && skill.id !== 'healing_bloom') || character.hp <= 0 || Boolean(remaining)}
-              onClick={() => skill && onSkill(skill.id)} title={skill ? `${skill.name} — ${skill.description} (từ ${REALMS[skillRealm(skill)]}; ${skill.mana} MP)` : 'Mở Menu → Công pháp để gán phím'}>
-              <kbd>{index + 1}</kbd><span className="skill-symbol" style={{ color: skill?.color }}>{skill?.icon ?? '⊘'}</span>{hudPrefs.skillLabels && <span className="skill-name">{skill?.name ?? 'Chưa gán'}</span>}
+            return <button key={index} className={`skill-slot ${character.realm < skillRealm(skill) || skill.path && skill.path !== character.path ? 'locked' : ''} ${skill.ultimate ? 'ultimate' : ''}`}
+              disabled={!connected || character.realm < skillRealm(skill) || Boolean(skill.path && skill.path !== character.path) || !isWorldZone(character.scene) || ((inSect || inVillage) && skill.id !== 'healing_bloom') || character.hp <= 0 || Boolean(remaining)}
+              onClick={() => onSkill(skill.id)} title={`${skill.name} — ${skill.description} (từ ${REALMS[skillRealm(skill)]}; ${skill.mana} MP)`}>
+              <kbd>{index + 1}</kbd><span className="skill-symbol" style={{ color: skill.color }}>{skill.icon}</span>{hudPrefs.skillLabels && <span className="skill-name">{skill.name}</span>}
               {/* A cooling skill only shows its remaining seconds inside the slot. */}
-              {Boolean(remaining) && <span className="skill-cooldown">{remaining}</span>}{skill && hudPrefs.skillLabels && <span className="skill-mana">{skill.mana} MP</span>}
+              {Boolean(remaining) && <span className="skill-cooldown">{remaining}</span>}{hudPrefs.skillLabels && <span className="skill-mana">{skill.mana} MP</span>}
             </button>;
           })}
           <div className="hotbar-divider" />

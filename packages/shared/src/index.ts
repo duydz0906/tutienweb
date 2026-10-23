@@ -49,6 +49,52 @@ export const ASCENDANT_GATE = { position: { x: 5, y: 0, z: -3 }, radius: 3.2,
 export const SPIRIT_LAKE = { position: { x: -10, y: 0, z: -24 }, radius: 7.2, bonus: 0.15 } as const;
 export const REBIRTH_BONUS = 0.5;
 export const ASCENDANT_BONUS = 0.35;
+/**
+ * The four orthodox sects of Linh Giới (Thượng Giới). They are the "tông môn chính phái khác cảnh
+ * giới cao hơn" the higher realm needed: each has its own walled courtyard, main hall, side halls
+ * and a tĩnh tọa terrace where a cultivator can sit and drink in the denser qi of the upper world.
+ *
+ * Standing on a terrace adds `LINH_GIOI_BONUS` to the absorption multiplier — the AFK spot players
+ * asked for (+40% linh khí). It stacks with the rebirth and Thượng Giới bonuses, and because
+ * `absorptionMultiplier` is shared, the server's rate and the HUD's number can never disagree.
+ */
+export const LINH_GIOI_BONUS = 0.4;
+export type LinhGioiSect = {
+  id: string; name: string; epithet: string; color: string;
+  /** Courtyard centre on the ascendant map. */
+  center: { x: number; z: number };
+  /** Main hall, measured the same way as `SECT_BUILDINGS` so collision and props agree. */
+  hall: { name: string; width: number; depth: number; height: number };
+  /** The tĩnh tọa (AFK) terrace: standing inside the radius grants the bonus. */
+  afk: { name: string; position: Vector3; radius: number };
+};
+export const LINH_GIOI_SECTS: readonly LinhGioiSect[] = [
+  { id: 'thien-kiem', name: 'THIÊN KIẾM TÔNG', epithet: 'Vạn kiếm quy tông', color: '#bfe4ff',
+    center: { x: -160, z: 140 },
+    hall: { name: 'KIẾM TRỦNG ĐIỆN', width: 20, depth: 13, height: 6.2 },
+    afk: { name: 'TĨNH TỌA ĐÀI · THIÊN KIẾM', position: { x: -160, y: 0, z: 140 }, radius: 5.6 } },
+  { id: 'ngoc-huyen', name: 'NGỌC HUYỀN MÔN', epithet: 'Huyền ngọc sinh huy', color: '#c9f5e6',
+    center: { x: 170, z: 132 },
+    hall: { name: 'NGỌC HUYỀN ĐIỆN', width: 18, depth: 12, height: 5.8 },
+    afk: { name: 'TĨNH TỌA ĐÀI · NGỌC HUYỀN', position: { x: 170, y: 0, z: 132 }, radius: 5.6 } },
+  { id: 'thai-hu', name: 'THÁI HƯ ĐIỆN', epithet: 'Hư không vô ảnh', color: '#d8ccff',
+    center: { x: -152, z: -150 },
+    hall: { name: 'THÁI HƯ ĐIỆN', width: 19, depth: 12, height: 6.0 },
+    afk: { name: 'TĨNH TỌA ĐÀI · THÁI HƯ', position: { x: -152, y: 0, z: -150 }, radius: 5.6 } },
+  { id: 'cuu-thien', name: 'CỬU THIÊN CUNG', epithet: 'Chín tầng mây tụ', color: '#ffe6b0',
+    center: { x: 168, z: -168 },
+    hall: { name: 'CỬU THIÊN CUNG', width: 21, depth: 14, height: 6.6 },
+    afk: { name: 'TĨNH TỌA ĐÀI · CỬU THIÊN', position: { x: 168, y: 0, z: -168 }, radius: 5.6 } },
+] as const;
+
+/** Which Linh Giới sect's tĩnh tọa terrace (if any) the character is standing on. */
+export function linhGioiSectAt(scene: GameScene, position: Vector3): LinhGioiSect | null {
+  if (scene !== 'ascendant') return null;
+  for (const sect of LINH_GIOI_SECTS) {
+    if (Math.hypot(position.x - sect.afk.position.x, position.z - sect.afk.position.z) <= sect.afk.radius) return sect;
+  }
+  return null;
+}
 /** One house level per major realm, including Phàm Nhân. Highest attained realm survives rebirth. */
 export function houseLevel(realm: number): number { return Math.max(0, Math.min(MAX_REALM, Math.floor(realm))) + 1; }
 export function storageCapacity(realm: number): number { return 12 + (houseLevel(realm) - 1) * 6; }
@@ -62,6 +108,7 @@ export function absorptionMultiplier(c: { scene: GameScene; position: Vector3; r
   const houseRealm = c.devMode ? MAX_REALM : Math.max(c.realm, c.highestRealm);
   return 1 + houseAbsorptionBonus(houseRealm) + (c.rebirths ? REBIRTH_BONUS : 0) +
     (inSpiritLake(c.scene, c.position) ? SPIRIT_LAKE.bonus : 0) +
+    (linhGioiSectAt(c.scene, c.position) ? LINH_GIOI_BONUS : 0) +
     (c.scene === 'ascendant' && c.rebirths ? ASCENDANT_BONUS : 0);
 }
 /** Open-fronted rooms: width, depth and doorway are also used for authoritative wall collision. */
@@ -353,8 +400,10 @@ export const DEV_TELEPORTS = [
   { id: 'wild-moon', name: 'Hoang Vực · Nguyệt Lang cốc', scene: 'wilderness', position: { x: -118, y: 0, z: 132 } },
   { id: 'wild-crag', name: 'Hoang Vực · Nham Nhai', scene: 'wilderness', position: { x: 146, y: 0, z: -104 } },
   { id: 'wild-delta', name: 'Hoang Vực · Giao Hà', scene: 'wilderness', position: { x: 206, y: 0, z: 40 } },
-  { id: 'linh-gioi', name: 'Linh Giới · Thiên Kiếm Tông', scene: 'ascendant', position: { x: -160, y: 0, z: 150 } },
-  { id: 'linh-gioi-2', name: 'Linh Giới · Cửu Thiên Cung', scene: 'ascendant', position: { x: 168, y: 0, z: -156 } },
+  { id: 'linh-gioi', name: 'Linh Giới · Thiên Kiếm Tông (tĩnh tọa +40%)', scene: 'ascendant', position: { x: -160, y: 0, z: 140 } },
+  { id: 'linh-gioi-2', name: 'Linh Giới · Ngọc Huyền Môn (tĩnh tọa +40%)', scene: 'ascendant', position: { x: 170, y: 0, z: 132 } },
+  { id: 'linh-gioi-3', name: 'Linh Giới · Thái Hư Điện (tĩnh tọa +40%)', scene: 'ascendant', position: { x: -152, y: 0, z: -150 } },
+  { id: 'linh-gioi-4', name: 'Linh Giới · Cửu Thiên Cung (tĩnh tọa +40%)', scene: 'ascendant', position: { x: 168, y: 0, z: -168 } },
   { id: 'ascendant', name: 'Thượng Giới', scene: 'ascendant', position: { x: 0, y: 0, z: 23 } },
 ] as const;
 export type DevTeleportId = (typeof DEV_TELEPORTS)[number]['id'];
@@ -463,10 +512,10 @@ export const HABITATS: readonly Habitat[] = [
   { id: 'wraith-mirror', scene: 'ascendant', kind: 'sky_wraith', name: 'Kính Ảnh', level: 9, center: { x: -256, z: 20 }, radius: 7, color: '#ccb9ff', biome: 'mist', hp: 760 },
   { id: 'stag-moon', scene: 'ascendant', kind: 'spirit_stag', name: 'Nguyệt Lộc', level: 10, center: { x: -120, z: 140 }, radius: 7, color: '#b3f4db', biome: 'grove', hp: 900 },
   { id: 'stag-jade', scene: 'ascendant', kind: 'spirit_stag', name: 'Bích Ngọc Lộc', level: 11, center: { x: 250, z: 20 }, radius: 7, color: '#a1f5db', biome: 'grove', hp: 1050 },
-  { id: 'crane-cloud', scene: 'ascendant', kind: 'cloud_crane', name: 'Cửu Thiên Hạc', level: 12, center: { x: 150, z: 130 }, radius: 7, color: '#c1e8ff', biome: 'cloud', hp: 1180 },
+  { id: 'crane-cloud', scene: 'ascendant', kind: 'cloud_crane', name: 'Cửu Thiên Hạc', level: 12, center: { x: 124, z: 158 }, radius: 7, color: '#c1e8ff', biome: 'cloud', hp: 1180 },
   { id: 'wraith-void', scene: 'ascendant', kind: 'sky_wraith', name: 'Hư Không Ảnh', level: 13, center: { x: -190, z: -120 }, radius: 7, color: '#ccb9ff', biome: 'mist', hp: 1320 },
   { id: 'crane-storm', scene: 'ascendant', kind: 'cloud_crane', name: 'Lôi Vân Hạc', level: 14, center: { x: 62, z: -252 }, radius: 7, color: '#c1e8ff', biome: 'cloud', hp: 1460 },
-  { id: 'serpent-abyss', scene: 'ascendant', kind: 'void_serpent', name: 'Vô Đáy Mãng', level: 15, center: { x: 196, z: -150 }, radius: 7, color: '#a29beb', biome: 'crystal', hp: 1610 },
+  { id: 'serpent-abyss', scene: 'ascendant', kind: 'void_serpent', name: 'Vô Đáy Mãng', level: 15, center: { x: 210, z: -140 }, radius: 7, color: '#a29beb', biome: 'crystal', hp: 1610 },
   { id: 'guardian-heaven', scene: 'ascendant', kind: 'star_guardian', name: 'Thiên Môn Hộ Vệ', level: 16, center: { x: -40, z: 250 }, radius: 7, color: '#f4cc86', biome: 'ruins', hp: 1760 },
 ];
 export type MonsterState = { id: string; scene: 'wilderness' | 'ascendant'; kind: MonsterKind; name: string; level: number;
